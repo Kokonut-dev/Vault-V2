@@ -45,8 +45,9 @@ export function renderMediaList(container, items, options = {}) {
     
     row.innerHTML = `
       <div class="media-list-item-main">
+        <button class="media-list-play" type="button" aria-label="Play">▶</button>
         <div class="media-list-item-cover">
-          <img src="${api.getThumbnailUrl(item.id)}" alt="" loading="lazy" onerror="this.style.display='none'">
+          <img src="${item.type === 'music' ? api.getCoverUrl(item.id) : api.getThumbnailUrl(item.id)}" alt="" loading="lazy" onerror="this.style.display='none'">
         </div>
         <div style="min-width:0;">
           <div class="media-list-item-title">${escapeHtml(item.title)}</div>
@@ -63,7 +64,13 @@ export function renderMediaList(container, items, options = {}) {
         ${item.year || '—'}
       </div>
     `;
-    
+
+    row.querySelector('.media-list-play').addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (onPlay) onPlay(item);
+      else if (onClick) onClick(item);
+    });
+
     row.addEventListener('click', () => {
       if (onClick) onClick(item);
       else if (onPlay) onPlay(item);

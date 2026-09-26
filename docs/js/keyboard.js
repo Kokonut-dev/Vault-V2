@@ -93,7 +93,8 @@ export class KeyboardManager {
       if (navMap[key]) {
         e.preventDefault();
         this.sequence = [];
-        window.dispatchEvent(new CustomEvent('vault:navigate', { detail: { page: navMap[key] } }));
+        const page = navMap[key] === 'home' ? '/' : `/${navMap[key]}`;
+        window.dispatchEvent(new CustomEvent('vault:navigate', { detail: { page } }));
         return;
       }
       this.sequence = [];

@@ -16,10 +16,10 @@ export function renderSettings(container) {
       <p class="page-subtitle">Customize your Vault experience</p>
     </div>
     
-    <div style="display:grid; gap:24px; max-width:800px;">
+    <div class="settings-grid">
       <!-- Appearance -->
-      <div style="background:var(--bg-secondary); border:1px solid var(--border); border-radius:16px; padding:24px;">
-        <h3 style="font-size:16px; font-weight:700; margin-bottom:16px;">Appearance</h3>
+      <div class="settings-card">
+        <h3>Appearance</h3>
         
         <div class="form-group">
           <label class="form-label">Theme</label>
@@ -35,8 +35,8 @@ export function renderSettings(container) {
       </div>
       
       <!-- Playback -->
-      <div style="background:var(--bg-secondary); border:1px solid var(--border); border-radius:16px; padding:24px;">
-        <h3 style="font-size:16px; font-weight:700; margin-bottom:16px;">Playback</h3>
+      <div class="settings-card">
+        <h3>Playback</h3>
         
         <div class="form-group">
           <label class="form-label">Default Volume: <span id="vol-value">${Math.round(store.get('volume') * 100)}%</span></label>
@@ -60,8 +60,8 @@ export function renderSettings(container) {
       </div>
       
       <!-- Server -->
-      <div style="background:var(--bg-secondary); border:1px solid var(--border); border-radius:16px; padding:24px;">
-        <h3 style="font-size:16px; font-weight:700; margin-bottom:16px;">Server</h3>
+      <div class="settings-card">
+        <h3>Server</h3>
         
         <div class="form-group">
           <label class="form-label">API Base URL</label>
@@ -81,8 +81,8 @@ export function renderSettings(container) {
       </div>
       
       <!-- Security -->
-      <div style="background:var(--bg-secondary); border:1px solid var(--border); border-radius:16px; padding:24px;">
-        <h3 style="font-size:16px; font-weight:700; margin-bottom:16px;">Security</h3>
+      <div class="settings-card">
+        <h3>Security</h3>
         
         <div class="form-group">
           <label class="form-label">Change Credentials</label>
@@ -99,8 +99,8 @@ export function renderSettings(container) {
       </div>
       
       <!-- About -->
-      <div style="background:var(--bg-secondary); border:1px solid var(--border); border-radius:16px; padding:24px;">
-        <h3 style="font-size:16px; font-weight:700; margin-bottom:16px;">About Vault</h3>
+      <div class="settings-card">
+        <h3>About Vault</h3>
         <div style="font-size:13px; color:var(--text-secondary); line-height:1.6;">
           <p><strong>Vault v2.0.0</strong> — A premium self-hosted personal media server</p>
           <p style="margin-top:8px;">Built with vanilla JS, Web Audio API, and Node.js. Supports all major audio/video codecs with on-the-fly transcoding.</p>

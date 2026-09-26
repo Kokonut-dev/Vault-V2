@@ -6,6 +6,18 @@ const libraryService = require('../services/library');
 const transcoderService = require('../services/transcoder');
 const logger = require('../utils/logger');
 
+router.get('/audio/:id', (req, res) => {
+  const item = libraryService.getById(req.params.id);
+  if (!item) return res.status(404).json({ error: 'Item not found' });
+
+  if (!fs.existsSync(item.path)) {
+    return res.status(404).json({ error: 'File not found on disk' });
+  }
+
+  const { codec = 'aac', bitrate = '128k' } = req.query;
+  transcoderService.transcodeAudioStream(item.path, res, { codec, bitrate });
+});
+
 router.get('/:id', (req, res) => {
   const item = libraryService.getById(req.params.id);
   if (!item) return res.status(404).json({ error: 'Item not found' });
@@ -29,18 +41,6 @@ router.get('/:id', (req, res) => {
 
   // Stream transcode
   transcoderService.transcodeStream(item.path, res, { quality, format, audioCodec });
-});
-
-router.get('/audio/:id', (req, res) => {
-  const item = libraryService.getById(req.params.id);
-  if (!item) return res.status(404).json({ error: 'Item not found' });
-
-  if (!fs.existsSync(item.path)) {
-    return res.status(404).json({ error: 'File not found on disk' });
-  }
-
-  const { codec = 'aac', bitrate = '128k' } = req.query;
-  transcoderService.transcodeAudioStream(item.path, res, { codec, bitrate });
 });
 
 router.delete('/cache', async (req, res) => {

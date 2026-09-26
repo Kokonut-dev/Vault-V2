@@ -234,12 +234,44 @@ class ApiClient {
 
   getTranscodeUrl(id, quality = '720p') {
     const token = store.get('token') || localStorage.getItem('vault_token');
-    return `${this.baseUrl}/api/media/transcode/${id}?quality=${quality}&token=${encodeURIComponent(token || '')}`;
+    return `${this.baseUrl}/api/transcode/${id}?quality=${quality}&token=${encodeURIComponent(token || '')}`;
   }
 
   getAudioTranscodeUrl(id, codec = 'aac') {
     const token = store.get('token') || localStorage.getItem('vault_token');
-    return `${this.baseUrl}/api/media/transcode/audio/${id}?codec=${codec}&token=${encodeURIComponent(token || '')}`;
+    return `${this.baseUrl}/api/transcode/audio/${id}?codec=${codec}&token=${encodeURIComponent(token || '')}`;
+  }
+
+  _extOf(item) {
+    const name = (item?.filename || item?.path || '').toLowerCase();
+    const idx = name.lastIndexOf('.');
+    return idx >= 0 ? name.slice(idx) : '';
+  }
+
+  needsTranscode(item) {
+    if (!item) return false;
+    const ext = this._extOf(item);
+    if (item.type === 'music') {
+      return !['.mp3', '.wav', '.ogg', '.opus', '.m4a', '.aac', '.flac', '.webm'].includes(ext);
+    }
+    const directExt = ['.mp4', '.webm', '.m4v', '.ogv'];
+    if (!directExt.includes(ext)) return true;
+    const codec = String(item.videoCodec || '').toLowerCase();
+    if (codec && !['h264', 'avc', 'avc1', 'vp8', 'vp9', 'av1', 'unknown', ''].includes(codec)) return true;
+    return false;
+  }
+
+  getPlaybackUrl(item, { forceTranscode = false } = {}) {
+    if (!item) return '';
+    if (forceTranscode || this.needsTranscode(item)) {
+      if (item.type === 'music') return this.getAudioTranscodeUrl(item.id);
+      return this.getTranscodeUrl(item.id);
+    }
+    return this.getStreamUrl(item.id);
+  }
+
+  isMixedContent(url) {
+    return window.location.protocol === 'https:' && typeof url === 'string' && url.startsWith('http:');
   }
 
   getSubtitleUrl(id, subtitleId) {

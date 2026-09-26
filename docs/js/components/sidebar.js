@@ -22,12 +22,22 @@ const NAV_ITEMS = [
   ]},
 ];
 
+function isActivePath(currentPath, route) {
+  if (route === '/') return currentPath === '/' || currentPath === '/home';
+  return currentPath === route || currentPath.startsWith(route + '/');
+}
+
 export function renderSidebar(container) {
+  if (!container) return;
+  container.innerHTML = '';
+
   const isCollapsed = store.get('sidebarCollapsed');
   const currentPath = router.getCurrentPath();
+  const appEl = document.getElementById('app');
+  if (appEl) appEl.classList.toggle('sidebar-collapsed', !!isCollapsed);
 
   const sidebar = document.createElement('aside');
-  sidebar.className = `sidebar ${isCollapsed ? 'collapsed' : ''}`;
+  sidebar.className = `sidebar glass ${isCollapsed ? 'collapsed' : ''}`;
   sidebar.id = 'sidebar';
   sidebar.setAttribute('role', 'navigation');
   sidebar.setAttribute('aria-label', 'Main navigation');
@@ -42,12 +52,13 @@ export function renderSidebar(container) {
         <div class="nav-section">
           <div class="nav-section-title">${section.section}</div>
           ${section.items.map(item => `
-            <a class="nav-item ${currentPath === item.route || (item.route !== '/' && currentPath.startsWith(item.route)) ? 'active' : ''}" 
-               data-route="${item.route}" 
+            <a class="nav-item ${isActivePath(currentPath, item.route) ? 'active' : ''}"
+               href="${router.hrefFor(item.route)}"
+               data-route="${item.route}"
                data-id="${item.id}"
                role="link"
                tabindex="0"
-               aria-current="${currentPath === item.route ? 'page' : 'false'}">
+               aria-current="${isActivePath(currentPath, item.route) ? 'page' : 'false'}">
               <span class="nav-icon">${item.icon}</span>
               <span class="nav-label">${item.label}</span>
             </a>
@@ -56,11 +67,11 @@ export function renderSidebar(container) {
       `).join('')}
     </nav>
     <div class="sidebar-footer">
-      <button class="sidebar-toggle" id="sidebar-toggle" aria-label="Toggle sidebar">
+      <button class="sidebar-toggle" id="sidebar-toggle" type="button" aria-label="Toggle sidebar">
         <span>${isCollapsed ? '→' : '←'}</span>
         <span class="nav-label" style="margin-left:8px;">${isCollapsed ? 'Expand' : 'Collapse'}</span>
       </button>
-      <button class="btn btn-ghost btn-sm" id="logout-btn" style="width:100%;">
+      <button class="btn btn-ghost btn-sm" id="logout-btn" type="button" style="width:100%;">
         <span>Logout</span>
       </button>
     </div>
@@ -68,40 +79,45 @@ export function renderSidebar(container) {
 
   container.appendChild(sidebar);
 
-  // Overlay for mobile
-  const overlay = document.createElement('div');
-  overlay.className = 'sidebar-overlay';
-  overlay.id = 'sidebar-overlay';
-  document.body.appendChild(overlay);
+  let overlay = document.getElementById('sidebar-overlay');
+  if (!overlay) {
+    overlay = document.createElement('div');
+    overlay.className = 'sidebar-overlay';
+    overlay.id = 'sidebar-overlay';
+    document.body.appendChild(overlay);
+    overlay.addEventListener('click', () => {
+      sidebar.classList.remove('open');
+      overlay.classList.remove('active');
+    });
+  }
 
-  // Events
   sidebar.querySelector('#sidebar-toggle').addEventListener('click', () => {
     const collapsed = !store.get('sidebarCollapsed');
     store.set('sidebarCollapsed', collapsed, true);
     sidebar.classList.toggle('collapsed', collapsed);
+    if (appEl) appEl.classList.toggle('sidebar-collapsed', collapsed);
+    const label = sidebar.querySelector('#sidebar-toggle .nav-label');
+    const arrow = sidebar.querySelector('#sidebar-toggle span');
+    if (arrow) arrow.textContent = collapsed ? '→' : '←';
+    if (label) label.textContent = collapsed ? 'Expand' : 'Collapse';
   });
 
   sidebar.querySelector('#logout-btn').addEventListener('click', () => {
     window.dispatchEvent(new CustomEvent('vault:logout'));
   });
 
-  overlay.addEventListener('click', () => {
-    sidebar.classList.remove('open');
-    overlay.classList.remove('active');
-  });
-
-  // Update active state on route change
   window.addEventListener('vault:route-changed', (e) => {
     const path = e.detail.path;
     sidebar.querySelectorAll('.nav-item').forEach(el => {
       const route = el.getAttribute('data-route');
-      const isActive = path === route || (route !== '/' && path.startsWith(route));
-      el.classList.toggle('active', isActive);
-      el.setAttribute('aria-current', isActive ? 'page' : 'false');
+      const active = isActivePath(path, route);
+      el.classList.toggle('active', active);
+      el.setAttribute('aria-current', active ? 'page' : 'false');
     });
+    sidebar.classList.remove('open');
+    overlay.classList.remove('active');
   });
 
-  // Mobile toggle
   window.addEventListener('vault:toggle-sidebar', () => {
     sidebar.classList.toggle('open');
     overlay.classList.toggle('active', sidebar.classList.contains('open'));

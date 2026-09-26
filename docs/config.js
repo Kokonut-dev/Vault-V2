@@ -30,6 +30,8 @@ window.VAULT_CONFIG = {
   defaultGlassIntensity: parseInt(localStorage.getItem('vault_glass') || '20', 10),
   defaultGrainIntensity: parseInt(localStorage.getItem('vault_grain') || '15', 10),
 
-  // GitHub Pages path (for routing)
-  basePath: '/Vault-V2',
+  // GitHub Pages path (for routing). Empty when served from the local server.
+  basePath: (typeof location !== 'undefined' && location.hostname && location.hostname.includes('github.io'))
+    ? '/Vault-V2'
+    : '',
 };

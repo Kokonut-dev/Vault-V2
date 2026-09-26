@@ -26,10 +26,16 @@ export function setApiBaseUrl(url) {
 }
 
 export function getBasePath() {
-  const config = getConfig();
-  // For GitHub Pages, base path is /Vault-V2, for local dev it's ''
-  const isGitHubPages = window.location.hostname.includes('github.io');
-  if (isGitHubPages) return config.basePath || '/Vault-V2';
+  // GitHub Pages project site lives under /Vault-V2. The local server serves at /.
+  // Never use the config basePath when we are not on github.io — that was breaking
+  // in-app navigation when the UI was served from the Node server.
+  const hostname = window.location.hostname || '';
+  if (hostname.includes('github.io')) {
+    const config = getConfig();
+    return config.basePath || '/Vault-V2';
+  }
+  const path = window.location.pathname || '';
+  if (path.startsWith('/Vault-V2')) return '/Vault-V2';
   return '';
 }
 

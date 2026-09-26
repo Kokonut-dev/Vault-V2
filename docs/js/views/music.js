@@ -14,7 +14,7 @@ export function renderMusic(container) {
       <h1 class="page-title">Music</h1>
       <p class="page-subtitle">Your music collection</p>
     </div>
-    <div style="display:flex; gap:8px; margin-bottom:24px; flex-wrap:wrap;">
+    <div class="filter-chips">
       <button class="btn btn-secondary btn-sm active" data-filter="all">All Tracks</button>
       <button class="btn btn-secondary btn-sm" data-filter="artist">Artists</button>
       <button class="btn btn-secondary btn-sm" data-filter="album">Albums</button>
@@ -137,18 +137,20 @@ export function renderMusic(container) {
     
     const items = getFiltered();
     
+    const play = (item) => {
+      window.dispatchEvent(new CustomEvent('vault:play', { detail: { item, queue: items, index: items.findIndex(i => i.id === item.id) } }));
+    };
+    const open = (item) => window.dispatchEvent(new CustomEvent('vault:open-detail', { detail: { item } }));
     if (viewMode === 'grid') {
       renderMediaGrid(content, items, {
-        onClick: (item) => {
-          window.dispatchEvent(new CustomEvent('vault:play', { detail: { item, queue: items, index: items.findIndex(i => i.id === item.id) } }));
-        },
+        onClick: open,
+        onPlay: play,
         emptyMessage: 'No music found. Upload some tracks to get started.'
       });
     } else {
       renderMediaList(content, items, {
-        onClick: (item) => {
-          window.dispatchEvent(new CustomEvent('vault:play', { detail: { item, queue: items, index: items.findIndex(i => i.id === item.id) } }));
-        }
+        onClick: open,
+        onPlay: play,
       });
     }
   }

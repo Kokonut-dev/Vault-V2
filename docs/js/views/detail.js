@@ -59,7 +59,7 @@ function renderVideoDetail(container, item) {
       <span style="color:var(--text-tertiary); font-size:13px;">${item.type} • ${item.year || ''}</span>
     </div>
     
-    <div style="display:grid; grid-template-columns: 300px 1fr; gap:32px; margin-bottom:32px;" class="detail-grid">
+    <div class="detail-layout">
       <div>
         <div style="aspect-ratio:2/3; background:var(--bg-secondary); border-radius:16px; overflow:hidden;">
           <img src="${api.getThumbnailUrl(item.id)}" alt="${escapeHtml(item.title)}" style="width:100%;height:100%;object-fit:cover;" onerror="this.style.display='none'">
@@ -167,7 +167,7 @@ function renderMusicDetail(container, item) {
       <span style="color:var(--text-tertiary); font-size:13px;">${isAlbumView ? 'Album' : 'Track'}</span>
     </div>
     
-    <div style="display:grid; grid-template-columns: 280px 1fr; gap:32px;" class="detail-grid">
+    <div class="detail-layout">
       <div>
         <div style="aspect-ratio:1/1; background:var(--bg-secondary); border-radius:16px; overflow:hidden; box-shadow:var(--shadow-lg);">
           <img src="${api.getCoverUrl(item.id)}" alt="" style="width:100%;height:100%;object-fit:cover;" onerror="this.style.display='none'">

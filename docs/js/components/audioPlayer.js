@@ -1,21 +1,23 @@
 /**
- * Audio Player — with Web Audio API EQ, crossfade, gapless, queue
+ * Audio Player — Web Audio API EQ, queue, gapless-ish preload.
+ * Fixes: AudioContext never resumed (silent playback), MediaElementSource
+ * double-connect, missing transcode fallback, swallowed play errors.
  */
 import { store } from '../store.js';
 import { api } from '../api.js';
 import { toast } from './toast.js';
-import { formatTime } from '../utils/format.js';
 
 let audioContext = null;
-let sourceNode = null;
+let sourceNodes = new WeakMap();
 let gainNode = null;
 let eqNodes = [];
 let compressorNode = null;
 let analyserNode = null;
 let currentAudio = null;
 let nextAudio = null;
-let crossfadeTimeout = null;
 let isCrossfading = false;
+let graphReady = false;
+let unlockBound = false;
 
 const EQ_FREQUENCIES = [32, 64, 125, 250, 500, 1000, 2000, 4000, 8000, 16000];
 
@@ -23,12 +25,11 @@ function initAudioContext() {
   if (audioContext) return audioContext;
   try {
     audioContext = new (window.AudioContext || window.webkitAudioContext)();
-    gainNode = audioContext.createGainNode ? audioContext.createGainNode() : audioContext.createGain();
+    gainNode = audioContext.createGain();
     compressorNode = audioContext.createDynamicsCompressor();
     analyserNode = audioContext.createAnalyser();
     analyserNode.fftSize = 256;
-    
-    // Create 10 EQ bands
+
     eqNodes = EQ_FREQUENCIES.map(freq => {
       const filter = audioContext.createBiquadFilter();
       filter.type = 'peaking';
@@ -37,8 +38,7 @@ function initAudioContext() {
       filter.gain.value = 0;
       return filter;
     });
-    
-    // Connect chain: source -> EQ -> compressor -> gain -> analyser -> destination
+
     let lastNode = null;
     eqNodes.forEach((node, idx) => {
       if (idx === 0) lastNode = node;
@@ -47,7 +47,7 @@ function initAudioContext() {
         lastNode = node;
       }
     });
-    
+
     if (lastNode) {
       lastNode.connect(compressorNode);
       compressorNode.connect(gainNode);
@@ -57,83 +57,108 @@ function initAudioContext() {
       gainNode.connect(analyserNode);
       analyserNode.connect(audioContext.destination);
     }
-    
+
     applyEQ();
-    
+    graphReady = true;
     return audioContext;
   } catch (err) {
     console.warn('Web Audio API not supported:', err);
+    graphReady = false;
     return null;
   }
 }
 
+async function unlockAudio() {
+  initAudioContext();
+  if (!audioContext) return false;
+  if (audioContext.state === 'suspended') {
+    try { await audioContext.resume(); } catch (err) {
+      console.warn('[AudioPlayer] resume failed', err);
+    }
+  }
+  return audioContext.state === 'running';
+}
+
 function applyEQ() {
-  const gains = store.get('eqGains') || [0,0,0,0,0,0,0,0,0,0];
+  const gains = store.get('eqGains') || [0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
   const enabled = store.get('eqEnabled');
-  
   eqNodes.forEach((node, idx) => {
-    node.gain.value = enabled ? gains[idx] : 0;
+    try { node.gain.value = enabled ? (gains[idx] || 0) : 0; } catch {}
   });
-  
-  // Update visual if EQ panel open
   window.dispatchEvent(new CustomEvent('vault:eq-updated', { detail: { gains } }));
 }
 
 function createAudioElement() {
   const audio = new Audio();
-  audio.crossOrigin = 'anonymous';
   audio.preload = 'metadata';
+  audio.playsInline = true;
+  // Only set CORS when the API is cross-origin — same-origin + anonymous can
+  // fail if the stream response is missing ACAO on Range 206.
+  try {
+    const apiOrigin = new URL(api.baseUrl || window.VAULT_CONFIG?.apiBaseUrl || '', window.location.href).origin;
+    if (apiOrigin !== window.location.origin) {
+      audio.crossOrigin = 'anonymous';
+    }
+  } catch {}
   return audio;
 }
 
 function connectAudioToGraph(audio) {
-  if (!audioContext) initAudioContext();
-  if (!audioContext) return;
-  
+  if (!audio || !graphReady || !audioContext) return;
+  if (audioContext.state !== 'running') return;
+  if (sourceNodes.has(audio)) return;
   try {
-    if (sourceNode) {
-      try { sourceNode.disconnect(); } catch {}
-    }
-    sourceNode = audioContext.createMediaElementSource(audio);
+    const sourceNode = audioContext.createMediaElementSource(audio);
+    sourceNodes.set(audio, sourceNode);
     sourceNode.connect(eqNodes[0] || gainNode);
   } catch (err) {
     console.warn('Failed to connect audio to Web Audio:', err.message);
   }
 }
 
+function warnMixedContent(url) {
+  if (api.isMixedContent(url)) {
+    toast.error('Browser blocked media (HTTPS page → HTTP server). Open Vault at http://localhost:4000 or use an HTTPS tunnel.');
+    return true;
+  }
+  return false;
+}
+
 export function initAudioPlayer() {
   initAudioContext();
-  
-  // Create audio elements
+
   currentAudio = createAudioElement();
   nextAudio = createAudioElement();
-  
-  // Volume
-  currentAudio.volume = store.get('volume');
-  if (gainNode) gainNode.gain.value = store.get('volume');
-  
-  // Events — use attach to ensure single registration
+
+  currentAudio.volume = store.get('volume') ?? 0.8;
+  if (gainNode) gainNode.gain.value = store.get('volume') ?? 0.8;
+
   attachAudioListeners(currentAudio);
-  
-  // Store subscriptions
+
+  if (!unlockBound) {
+    unlockBound = true;
+    const unlock = () => { unlockAudio(); };
+    document.addEventListener('pointerdown', unlock, { passive: true });
+    document.addEventListener('keydown', unlock, { passive: true });
+    document.addEventListener('click', unlock, { passive: true });
+  }
+
   store.subscribe('volume', (vol) => {
     if (currentAudio) currentAudio.volume = vol;
     if (gainNode) gainNode.gain.value = vol;
   });
-  
+
   store.subscribe('eqGains', applyEQ);
   store.subscribe('eqEnabled', applyEQ);
-  
-  // Player actions
+
   window.addEventListener('vault:play', (e) => {
-    const { item, queue, index } = e.detail;
+    const { item, queue, index } = e.detail || {};
     if (queue) {
       store.set('queue', queue, true);
       store.set('queueIndex', index ?? 0, true);
       playItem(queue[index ?? 0]);
     } else if (item) {
-      // Add to queue and play
-      const currentQueue = store.get('queue');
+      const currentQueue = store.get('queue') || [];
       const existingIdx = currentQueue.findIndex(t => t.id === item.id);
       if (existingIdx >= 0) {
         store.set('queueIndex', existingIdx, true);
@@ -146,38 +171,41 @@ export function initAudioPlayer() {
       }
     }
   });
-  
+
   window.addEventListener('vault:player-action', (e) => {
-    const { action, percent } = e.detail;
+    const { action, percent } = e.detail || {};
     handleAction(action, percent);
   });
-  
-  // Expose for visualizer
+
   window.VAULT_AUDIO = {
     getAnalyser: () => analyserNode,
     getContext: () => audioContext,
+    unlock: unlockAudio,
   };
-  
+
   console.log('[AudioPlayer] Initialized');
 }
 
 function handleAction(action, percent) {
+  if (!currentAudio) return;
   switch (action) {
     case 'playPause':
-      if (currentAudio.paused) currentAudio.play().catch(() => {});
-      else currentAudio.pause();
+      unlockAudio().then(() => {
+        if (currentAudio.paused) currentAudio.play().catch((err) => toast.error(err.message || 'Playback failed'));
+        else currentAudio.pause();
+      });
       break;
     case 'seekBack':
-      currentAudio.currentTime = Math.max(0, currentAudio.currentTime - 10);
+      currentAudio.currentTime = Math.max(0, (currentAudio.currentTime || 0) - 10);
       break;
     case 'seekForward':
-      currentAudio.currentTime = Math.min(currentAudio.duration, currentAudio.currentTime + 10);
+      currentAudio.currentTime = Math.min(currentAudio.duration || 0, (currentAudio.currentTime || 0) + 10);
       break;
     case 'volumeUp':
-      store.set('volume', Math.min(1, store.get('volume') + 0.05), true);
+      store.set('volume', Math.min(1, (store.get('volume') || 0) + 0.05), true);
       break;
     case 'volumeDown':
-      store.set('volume', Math.max(0, store.get('volume') - 0.05), true);
+      store.set('volume', Math.max(0, (store.get('volume') || 0) - 0.05), true);
       break;
     case 'mute':
       store.set('isMuted', !store.get('isMuted'));
@@ -192,11 +220,12 @@ function handleAction(action, percent) {
     case 'shuffle':
       store.set('shuffle', !store.get('shuffle'), true);
       break;
-    case 'repeat':
+    case 'repeat': {
       const modes = ['off', 'all', 'one'];
       const idx = modes.indexOf(store.get('repeat'));
       store.set('repeat', modes[(idx + 1) % modes.length], true);
       break;
+    }
     case 'seekPercent':
       if (percent !== undefined && currentAudio.duration) {
         currentAudio.currentTime = (percent / 100) * currentAudio.duration;
@@ -205,62 +234,68 @@ function handleAction(action, percent) {
   }
 }
 
-export async function playItem(item) {
+export async function playItem(item, { forceTranscode = false } = {}) {
   if (!item) return;
-  
+
   try {
+    await unlockAudio();
     store.set('currentTrack', item);
     store.set('isPlaying', true);
-    
-    // Update Media Session
+
     if ('mediaSession' in navigator) {
-      navigator.mediaSession.metadata = new MediaMetadata({
-        title: item.title,
-        artist: item.artist || 'Unknown',
-        album: item.album || '',
-        artwork: [
-          { src: api.getCoverUrl(item.id), sizes: '512x512', type: 'image/jpeg' }
-        ]
-      });
-      navigator.mediaSession.setActionHandler('play', () => currentAudio.play());
-      navigator.mediaSession.setActionHandler('pause', () => currentAudio.pause());
-      navigator.mediaSession.setActionHandler('nexttrack', playNext);
-      navigator.mediaSession.setActionHandler('previoustrack', playPrev);
+      try {
+        navigator.mediaSession.metadata = new MediaMetadata({
+          title: item.title,
+          artist: item.artist || 'Unknown',
+          album: item.album || '',
+          artwork: [{ src: api.getCoverUrl(item.id), sizes: '512x512', type: 'image/jpeg' }]
+        });
+        navigator.mediaSession.setActionHandler('play', () => currentAudio.play());
+        navigator.mediaSession.setActionHandler('pause', () => currentAudio.pause());
+        navigator.mediaSession.setActionHandler('nexttrack', playNext);
+        navigator.mediaSession.setActionHandler('previoustrack', playPrev);
+      } catch {}
     }
-    
-    // Set source
-    const streamUrl = api.getStreamUrl(item.id);
+
+    const streamUrl = api.getPlaybackUrl(item, { forceTranscode });
+    if (warnMixedContent(streamUrl)) {
+      store.set('isPlaying', false);
+      return;
+    }
+
+    currentAudio.pause();
     currentAudio.src = streamUrl;
     currentAudio.load();
-    
-    // Connect to Web Audio
     connectAudioToGraph(currentAudio);
-    
+
     await currentAudio.play();
-    
-    // Update history
+
     store.addToHistory(item.id, 0);
     api.addHistory({ itemId: item.id, progress: 0, duration: item.duration }).catch(() => {});
-    
-    // Preload next for gapless
+
     preloadNext();
-    
     window.dispatchEvent(new CustomEvent('vault:track-changed', { detail: { item } }));
-    
   } catch (err) {
     console.error('Play failed', err);
+    // If direct play failed, try transcode once
+    if (!forceTranscode && item.type === 'music') {
+      try {
+        await playItem(item, { forceTranscode: true });
+        return;
+      } catch {}
+    }
+    store.set('isPlaying', false);
     toast.error(`Failed to play ${item.title}`);
   }
 }
 
 function preloadNext() {
-  const queue = store.get('queue');
+  const queue = store.get('queue') || [];
   const idx = store.get('queueIndex');
   const nextIdx = idx + 1;
-  
-  if (nextIdx < queue.length) {
+  if (nextIdx < queue.length && nextAudio) {
     const nextItem = queue[nextIdx];
-    nextAudio.src = api.getStreamUrl(nextItem.id);
+    nextAudio.src = api.getPlaybackUrl(nextItem);
     nextAudio.load();
   }
 }
@@ -272,152 +307,146 @@ function onTimeUpdate() {
   audioRaf = requestAnimationFrame(() => {
     audioRaf = null;
     if (!currentAudio?.duration) return;
-    
+
     const progress = (currentAudio.currentTime / currentAudio.duration) * 100;
     const currentTrack = store.get('currentTrack');
-    
-    // Debounce history: save every 10s
+
     const now = Date.now();
     if (currentTrack && now - lastHistorySave > 10000) {
       lastHistorySave = now;
       store.addToHistory(currentTrack.id, progress);
     }
-    
-    // Crossfade
+
     const crossfade = store.get('crossfade');
     if (crossfade > 0 && currentAudio.duration - currentAudio.currentTime <= crossfade && !isCrossfading) {
-      const queue = store.get('queue');
+      const queue = store.get('queue') || [];
       const idx = store.get('queueIndex');
       if (idx + 1 < queue.length) {
         isCrossfading = true;
         crossfadeToNext();
       }
     }
-    
-    window.dispatchEvent(new CustomEvent('vault:timeupdate', { 
-      detail: { 
-        currentTime: currentAudio.currentTime, 
+
+    window.dispatchEvent(new CustomEvent('vault:timeupdate', {
+      detail: {
+        currentTime: currentAudio.currentTime,
         duration: currentAudio.duration,
-        progress 
-      } 
+        progress
+      }
     }));
   });
 }
 
 function cleanupAudioListeners(audio) {
   if (!audio) return;
-  try {
-    audio.removeEventListener('timeupdate', onTimeUpdate);
-    audio.removeEventListener('ended', onEnded);
-    audio.removeEventListener('play', () => store.set('isPlaying', true));
-    audio.removeEventListener('pause', () => store.set('isPlaying', false));
-    audio.removeEventListener('loadedmetadata', onLoadedMetadata);
-  } catch {}
+  audio.removeEventListener('timeupdate', onTimeUpdate);
+  audio.removeEventListener('ended', onEnded);
+  audio.removeEventListener('play', onPlay);
+  audio.removeEventListener('pause', onPause);
+  audio.removeEventListener('loadedmetadata', onLoadedMetadata);
+  audio.removeEventListener('error', onAudioError);
+}
+
+function onPlay() { store.set('isPlaying', true); }
+function onPause() { store.set('isPlaying', false); }
+
+function onAudioError() {
+  const item = store.get('currentTrack');
+  const mediaError = currentAudio?.error;
+  console.error('Audio error', mediaError);
+  if (item && currentAudio?.src && !currentAudio.src.includes('/transcode/')) {
+    playItem(item, { forceTranscode: true });
+    return;
+  }
+  toast.error('Failed to play track');
+  store.set('isPlaying', false);
 }
 
 function attachAudioListeners(audio) {
   if (!audio) return;
-  // Remove existing to prevent duplicates
   cleanupAudioListeners(audio);
   audio.addEventListener('timeupdate', onTimeUpdate);
   audio.addEventListener('ended', onEnded);
-  audio.addEventListener('play', () => store.set('isPlaying', true));
-  audio.addEventListener('pause', () => store.set('isPlaying', false));
+  audio.addEventListener('play', onPlay);
+  audio.addEventListener('pause', onPause);
   audio.addEventListener('loadedmetadata', onLoadedMetadata);
-  audio.addEventListener('error', (e) => {
-    console.error('Audio error', e);
-    toast.error('Failed to play track');
-  });
+  audio.addEventListener('error', onAudioError);
 }
 
 function crossfadeToNext() {
-  const queue = store.get('queue');
+  const queue = store.get('queue') || [];
   const idx = store.get('queueIndex');
   const nextItem = queue[idx + 1];
-  
-  if (!nextItem) {
+
+  if (!nextItem || !nextAudio) {
     isCrossfading = false;
     return;
   }
-  
-  nextAudio.volume = 0;
-  nextAudio.play().catch(() => {});
-  
-  const duration = store.get('crossfade') * 1000;
-  const start = Date.now();
-  
-  const fade = () => {
-    const elapsed = Date.now() - start;
-    const progress = Math.min(elapsed / duration, 1);
-    
-    if (currentAudio) currentAudio.volume = (1 - progress) * store.get('volume');
-    if (nextAudio) nextAudio.volume = progress * store.get('volume');
-    
-    if (progress < 1) {
-      requestAnimationFrame(fade);
-    } else {
-      // Cleanup old current
-      if (currentAudio) {
-        cleanupAudioListeners(currentAudio);
-        try { currentAudio.pause(); } catch {}
+
+  unlockAudio().then(() => {
+    nextAudio.volume = 0;
+    connectAudioToGraph(nextAudio);
+    nextAudio.play().catch(() => {});
+
+    const duration = (store.get('crossfade') || 0) * 1000;
+    const start = Date.now();
+
+    const fade = () => {
+      const elapsed = Date.now() - start;
+      const progress = Math.min(elapsed / duration, 1);
+      if (currentAudio) currentAudio.volume = (1 - progress) * (store.get('volume') || 0.8);
+      if (nextAudio) nextAudio.volume = progress * (store.get('volume') || 0.8);
+
+      if (progress < 1) {
+        requestAnimationFrame(fade);
+      } else {
+        if (currentAudio) {
+          cleanupAudioListeners(currentAudio);
+          try { currentAudio.pause(); } catch {}
+        }
+        const temp = currentAudio;
+        currentAudio = nextAudio;
+        nextAudio = temp;
+        if (nextAudio) {
+          try { nextAudio.pause(); nextAudio.removeAttribute('src'); nextAudio.load(); } catch {}
+          cleanupAudioListeners(nextAudio);
+        }
+        attachAudioListeners(currentAudio);
+        if (currentAudio) currentAudio.volume = store.get('volume') || 0.8;
+        store.set('queueIndex', idx + 1, true);
+        store.set('currentTrack', nextItem);
+        isCrossfading = false;
+        preloadNext();
       }
-      
-      // Swap
-      const temp = currentAudio;
-      currentAudio = nextAudio;
-      nextAudio = temp;
-      
-      if (nextAudio) {
-        try {
-          nextAudio.pause();
-          nextAudio.src = '';
-          nextAudio.load();
-        } catch {}
-        cleanupAudioListeners(nextAudio);
-      }
-      
-      // Ensure new current has listeners
-      attachAudioListeners(currentAudio);
-      if (currentAudio) {
-        currentAudio.volume = store.get('volume');
-        connectAudioToGraph(currentAudio);
-      }
-      
-      store.set('queueIndex', idx + 1, true);
-      store.set('currentTrack', nextItem);
-      isCrossfading = false;
-      
-      preloadNext();
-    }
-  };
-  
-  fade();
+    };
+    fade();
+  });
 }
 
 function onEnded() {
   const repeat = store.get('repeat');
-  
   if (repeat === 'one') {
     currentAudio.currentTime = 0;
     currentAudio.play().catch(() => {});
     return;
   }
-  
   playNext();
 }
 
 function playNext() {
-  const queue = store.get('queue');
+  const queue = store.get('queue') || [];
   let idx = store.get('queueIndex');
   const shuffle = store.get('shuffle');
   const repeat = store.get('repeat');
-  
-  if (shuffle) {
-    idx = Math.floor(Math.random() * queue.length);
-  } else {
-    idx++;
+
+  if (!queue.length) {
+    store.set('isPlaying', false);
+    return;
   }
-  
+
+  if (shuffle) idx = Math.floor(Math.random() * queue.length);
+  else idx++;
+
   if (idx >= queue.length) {
     if (repeat === 'all') idx = 0;
     else {
@@ -425,30 +454,27 @@ function playNext() {
       return;
     }
   }
-  
+
   store.set('queueIndex', idx, true);
   playItem(queue[idx]);
 }
 
 function playPrev() {
-  const queue = store.get('queue');
+  const queue = store.get('queue') || [];
   let idx = store.get('queueIndex');
-  
-  if (currentAudio.currentTime > 3) {
+  if (currentAudio && currentAudio.currentTime > 3) {
     currentAudio.currentTime = 0;
     return;
   }
-  
   idx--;
-  if (idx < 0) idx = queue.length - 1;
-  
+  if (idx < 0) idx = Math.max(0, queue.length - 1);
   store.set('queueIndex', idx, true);
   playItem(queue[idx]);
 }
 
 function onLoadedMetadata() {
   window.dispatchEvent(new CustomEvent('vault:durationchange', {
-    detail: { duration: currentAudio.duration }
+    detail: { duration: currentAudio?.duration || 0 }
   }));
 }
 
