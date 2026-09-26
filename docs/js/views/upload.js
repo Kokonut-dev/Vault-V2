@@ -1,9 +1,10 @@
 /**
- * Upload view
+ * Upload view — optimized
  */
 import { api } from '../api.js';
 import { toast } from '../components/toast.js';
 import { store } from '../store.js';
+import { escapeHtml } from '../utils/format.js';
 
 export function renderUpload(container) {
   container.className = 'page';
@@ -276,9 +277,4 @@ export function renderUpload(container) {
   });
 }
 
-function escapeHtml(str) {
-  if (!str) return '';
-  const div = document.createElement('div');
-  div.textContent = str;
-  return div.innerHTML;
-}
+

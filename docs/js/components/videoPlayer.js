@@ -1,15 +1,19 @@
 /**
- * Video Player — custom UI, theatre, fullscreen, PiP, subtitles, etc.
+ * Video Player — optimized: rAF throttled progress, cleanup listeners, debounced history
  */
 import { store } from '../store.js';
 import { api } from '../api.js';
-import { formatTime } from '../utils/format.js';
+import { formatTime, escapeHtml } from '../utils/format.js';
 
 let videoEl = null;
 let isTheatre = false;
 let isFullscreen = false;
 let controlsTimeout = null;
 let currentItem = null;
+let rafId = null;
+let lastProgressSave = 0;
+let nextEpisodeListener = null;
+let nextEpisodeInterval = null;
 
 export function initVideoPlayer() {
   videoEl = document.getElementById('video-element');
@@ -57,18 +61,24 @@ export function initVideoPlayer() {
     player.classList.add('paused');
   });
   
-  // Progress
+  // Progress — throttled via rAF to avoid layout thrash on every timeupdate
   videoEl.addEventListener('timeupdate', () => {
-    if (!videoEl.duration) return;
-    const percent = (videoEl.currentTime / videoEl.duration) * 100;
-    played.style.width = `${percent}%`;
-    thumb.style.left = `${percent}%`;
-    currentTimeEl.textContent = formatTime(videoEl.currentTime);
-    
-    // Save progress
-    if (currentItem) {
-      store.addToHistory(currentItem.id, percent);
-    }
+    if (rafId) return; // already scheduled
+    rafId = requestAnimationFrame(() => {
+      rafId = null;
+      if (!videoEl.duration) return;
+      const percent = (videoEl.currentTime / videoEl.duration) * 100;
+      played.style.width = `${percent}%`;
+      thumb.style.left = `${percent}%`;
+      currentTimeEl.textContent = formatTime(videoEl.currentTime);
+      
+      // Debounced history save: only every 5s
+      const now = Date.now();
+      if (currentItem && now - lastProgressSave > 5000) {
+        lastProgressSave = now;
+        store.addToHistory(currentItem.id, percent);
+      }
+    });
   });
   
   videoEl.addEventListener('loadedmetadata', () => {
@@ -273,10 +283,15 @@ export function openPlayer(item) {
 
 export function closePlayer() {
   const modal = document.getElementById('video-modal');
-  const videoEl = document.getElementById('video-element');
+  const vEl = document.getElementById('video-element');
   
-  videoEl.pause();
-  videoEl.src = '';
+  if (rafId) { cancelAnimationFrame(rafId); rafId = null; }
+  if (controlsTimeout) { clearTimeout(controlsTimeout); controlsTimeout = null; }
+  if (nextEpisodeListener) { vEl.removeEventListener('timeupdate', nextEpisodeListener); nextEpisodeListener = null; }
+  if (nextEpisodeInterval) { clearInterval(nextEpisodeInterval); nextEpisodeInterval = null; }
+  
+  vEl.pause();
+  vEl.src = '';
   modal.style.display = 'none';
   
   if (document.fullscreenElement) {
@@ -284,6 +299,7 @@ export function closePlayer() {
   }
   
   currentItem = null;
+  lastProgressSave = 0;
 }
 
 function checkNextEpisode(item) {
@@ -296,32 +312,43 @@ function checkNextEpisode(item) {
   
   if (next) {
     const overlay = document.getElementById('next-episode-overlay');
-    document.getElementById('next-episode-title').textContent = `S${next.season}E${next.episode} — ${next.title}`;
-    document.getElementById('next-episode-img').src = api.getThumbnailUrl(next.id);
+    const titleEl = document.getElementById('next-episode-title');
+    if (titleEl) titleEl.textContent = `S${next.season}E${next.episode} — ${escapeHtml(next.title)}`;
+    const imgEl = document.getElementById('next-episode-img');
+    if (imgEl) imgEl.src = api.getThumbnailUrl(next.id);
     
-    // Show near end
-    videoEl.addEventListener('timeupdate', function showNext() {
+    // Cleanup previous listener if any
+    if (nextEpisodeListener && videoEl) {
+      videoEl.removeEventListener('timeupdate', nextEpisodeListener);
+    }
+    nextEpisodeListener = function showNext() {
       if (videoEl.duration - videoEl.currentTime < 30) {
-        overlay.classList.add('active');
+        overlay?.classList.add('active');
         startCountdown(next);
-        videoEl.removeEventListener('timeupdate', showNext);
+        videoEl.removeEventListener('timeupdate', nextEpisodeListener);
+        nextEpisodeListener = null;
       }
-    });
+    };
+    videoEl.addEventListener('timeupdate', nextEpisodeListener);
   }
 }
 
 function startCountdown(nextItem) {
+  if (nextEpisodeInterval) clearInterval(nextEpisodeInterval);
   let count = 10;
   const el = document.getElementById('next-episode-countdown');
-  const interval = setInterval(() => {
+  nextEpisodeInterval = setInterval(() => {
     count--;
-    el.textContent = count;
+    if (el) el.textContent = String(count);
     if (count <= 0) {
-      clearInterval(interval);
+      clearInterval(nextEpisodeInterval);
+      nextEpisodeInterval = null;
       openPlayer(nextItem);
     }
   }, 1000);
   
   // Cancel if user interacts
-  document.getElementById('video-element').addEventListener('click', () => clearInterval(interval), { once: true });
+  document.getElementById('video-element')?.addEventListener('click', () => {
+    if (nextEpisodeInterval) { clearInterval(nextEpisodeInterval); nextEpisodeInterval = null; }
+  }, { once: true });
 }

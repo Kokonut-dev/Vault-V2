@@ -1,5 +1,5 @@
 /**
- * Movies view
+ * Movies view — optimized with debounce, _sortCache, precomputed lower
  */
 import { store } from '../store.js';
 import { renderMediaGrid, renderSkeletonGrid } from '../components/mediaGrid.js';
@@ -39,6 +39,7 @@ export function renderMovies(container) {
   let sort = 'addedAt';
   let order = 'desc';
   let filter = '';
+  let filterTimer = null;
   
   viewButtons.forEach(btn => {
     btn.classList.toggle('active', btn.dataset.view === viewMode);
@@ -59,26 +60,33 @@ export function renderMovies(container) {
   });
   
   filterInput.addEventListener('input', (e) => {
-    filter = e.target.value.toLowerCase();
-    render();
+    clearTimeout(filterTimer);
+    const val = e.target.value.toLowerCase();
+    filterTimer = setTimeout(() => {
+      filter = val;
+      render();
+    }, 150);
   });
   
   function getFiltered() {
-    let items = store.get('library').filter(i => i.type === 'movie');
+    const lib = store.get('library');
+    // Use typeIndex if available via store, else filter
+    let items = lib.filter(i => i.type === 'movie');
     
     if (filter) {
-      items = items.filter(i => 
-        i.title.toLowerCase().includes(filter) ||
-        (i.genre && i.genre.toLowerCase().includes(filter)) ||
-        (i.year && i.year.toString().includes(filter))
-      );
+      items = items.filter(i => {
+        // Use precomputed _haystack if available
+        if (i._haystack) return i._haystack.includes(filter);
+        return i.title.toLowerCase().includes(filter) ||
+          (i.genre && i.genre.toLowerCase().includes(filter)) ||
+          (i.year && i.year.toString().includes(filter));
+      });
     }
     
     items.sort((a, b) => {
-      let aVal = a[sort] || '';
-      let bVal = b[sort] || '';
-      if (typeof aVal === 'string') aVal = aVal.toLowerCase();
-      if (typeof bVal === 'string') bVal = bVal.toLowerCase();
+      // Use _sortCache if available
+      let aVal = a._sortCache?.[sort] ?? a[sort] ?? '';
+      let bVal = b._sortCache?.[sort] ?? b[sort] ?? '';
       if (aVal < bVal) return order === 'asc' ? -1 : 1;
       if (aVal > bVal) return order === 'asc' ? 1 : -1;
       return 0;
@@ -104,6 +112,9 @@ export function renderMovies(container) {
   
   render();
   
-  // Listen for library updates
-  store.subscribe('library', render);
+  let renderTimer;
+  store.subscribe('library', () => {
+    clearTimeout(renderTimer);
+    renderTimer = setTimeout(render, 100);
+  });
 }

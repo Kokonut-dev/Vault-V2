@@ -90,3 +90,16 @@ export function formatResolution(width, height) {
   if (height >= 480) return '480p';
   return `${width}x${height}`;
 }
+
+export function escapeHtml(str) {
+  if (!str) return '';
+  if (typeof str !== 'string') str = String(str);
+  const div = document.createElement('div');
+  div.textContent = str;
+  return div.innerHTML;
+}
+
+export function escapeAttr(str) {
+  if (!str) return '';
+  return escapeHtml(str).replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}

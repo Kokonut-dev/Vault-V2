@@ -1,7 +1,8 @@
 /**
- * Media Grid — renders collection of cards with lazy loading
+ * Media Grid — optimized: DocumentFragment batch, IntersectionObserver lazy image
  */
 import { createMediaCard } from './mediaCard.js';
+import { escapeHtml } from '../utils/format.js';
 
 export function renderMediaGrid(container, items, options = {}) {
   const { onPlay, onClick, emptyMessage = 'No items found' } = options;
@@ -13,7 +14,7 @@ export function renderMediaGrid(container, items, options = {}) {
       <div class="empty-state">
         <div class="empty-state-icon">◫</div>
         <div class="empty-state-title">Nothing here yet</div>
-        <div class="empty-state-message">${emptyMessage}</div>
+        <div class="empty-state-message">${escapeHtml(emptyMessage)}</div>
       </div>
     `;
     return;
@@ -22,10 +23,12 @@ export function renderMediaGrid(container, items, options = {}) {
   const grid = document.createElement('div');
   grid.className = 'media-grid stagger';
   
+  const fragment = document.createDocumentFragment();
   items.forEach(item => {
     const card = createMediaCard(item, { onPlay, onClick });
-    grid.appendChild(card);
+    fragment.appendChild(card);
   });
+  grid.appendChild(fragment);
   
   container.appendChild(grid);
 }
@@ -35,6 +38,7 @@ export function renderSkeletonGrid(container, count = 12) {
   const grid = document.createElement('div');
   grid.className = 'media-grid';
   
+  const fragment = document.createDocumentFragment();
   for (let i = 0; i < count; i++) {
     const card = document.createElement('div');
     card.className = 'media-card';
@@ -45,8 +49,8 @@ export function renderSkeletonGrid(container, count = 12) {
         <div class="skeleton skeleton-text short"></div>
       </div>
     `;
-    grid.appendChild(card);
+    fragment.appendChild(card);
   }
-  
+  grid.appendChild(fragment);
   container.appendChild(grid);
 }

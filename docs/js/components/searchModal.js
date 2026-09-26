@@ -115,6 +115,26 @@ export class SearchModal {
     this.isOpen = false;
     this.container.classList.remove('active');
     this.selectedIndex = 0;
+    if (this.debounceTimer) {
+      clearTimeout(this.debounceTimer);
+      this.debounceTimer = null;
+    }
+    // Clear input after short delay to avoid flicker
+    const input = this.container.querySelector('#search-input');
+    if (input) {
+      setTimeout(() => { if (!this.isOpen) input.value = ''; }, 200);
+    }
+  }
+
+  destroy() {
+    if (this.debounceTimer) {
+      clearTimeout(this.debounceTimer);
+      this.debounceTimer = null;
+    }
+    if (this.container) {
+      this.container.remove();
+      this.container = null;
+    }
   }
 
   async search(query) {

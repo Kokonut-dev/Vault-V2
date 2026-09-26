@@ -1,5 +1,5 @@
 /**
- * Videos view
+ * Videos view — optimized with debounce and _sortCache
  */
 import { store } from '../store.js';
 import { renderMediaGrid } from '../components/mediaGrid.js';
@@ -28,6 +28,7 @@ export function renderVideos(container) {
   
   let viewMode = store.get('viewMode') || 'grid';
   let filter = '';
+  let filterTimer = null;
   
   viewButtons.forEach(btn => {
     btn.classList.toggle('active', btn.dataset.view === viewMode);
@@ -41,16 +42,18 @@ export function renderVideos(container) {
   });
   
   filterInput.addEventListener('input', (e) => {
-    filter = e.target.value.toLowerCase();
-    render();
+    clearTimeout(filterTimer);
+    const val = e.target.value.toLowerCase();
+    filterTimer = setTimeout(() => { filter = val; render(); }, 150);
   });
   
   function getFiltered() {
     let items = store.get('library').filter(i => i.type === 'video');
     if (filter) {
-      items = items.filter(i => i.title.toLowerCase().includes(filter));
+      items = items.filter(i => i._haystack ? i._haystack.includes(filter) : i.title.toLowerCase().includes(filter));
     }
-    return items.sort((a, b) => new Date(b.addedAt) - new Date(a.addedAt));
+    // Use addedAt sort cache
+    return items.sort((a, b) => (b._sortCache?.addedAt ?? 0) - (a._sortCache?.addedAt ?? 0) || new Date(b.addedAt) - new Date(a.addedAt));
   }
   
   function render() {
@@ -68,5 +71,6 @@ export function renderVideos(container) {
   }
   
   render();
-  store.subscribe('library', render);
+  let t;
+  store.subscribe('library', () => { clearTimeout(t); t = setTimeout(render, 100); });
 }

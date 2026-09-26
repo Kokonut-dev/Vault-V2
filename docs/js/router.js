@@ -61,7 +61,6 @@ export class Router {
 
   handleRoute() {
     const path = this.getCurrentPath();
-    console.log('[Router] Navigating to', path);
 
     // Check for exact match
     let handler = this.routes.get(path);
@@ -79,16 +78,52 @@ export class Router {
       }
     }
 
-    // Fallback to home
+    // Fallback to home with 404 handling
     if (!handler) {
+      const isKnown404 = path !== '/' && path !== '';
+      if (isKnown404) {
+        console.warn(`[Router] Route not found: ${path}, falling back to home`);
+        // Optionally render 404 UI in view-container
+        const viewContainer = document.getElementById('view-container');
+        if (viewContainer) {
+          viewContainer.innerHTML = `
+            <div class="empty-state" style="padding:60px 20px; text-align:center;">
+              <div class="empty-state-icon" style="font-size:48px;">∅</div>
+              <div class="empty-state-title" style="font-size:20px; font-weight:700; margin:12px 0;">Page not found</div>
+              <div class="empty-state-message" style="color:var(--text-secondary); margin-bottom:20px;">The page <code>${this.escapeHtml(path)}</code> doesn't exist.</div>
+              <button class="btn btn-primary" onclick="window.Vault.router.navigate('/', true)">Go Home</button>
+            </div>
+          `;
+        }
+      }
       handler = this.routes.get('/') || this.routes.get('/home');
     }
 
     if (handler) {
       this.currentRoute = path;
-      handler(params);
+      try {
+        handler(params);
+      } catch (err) {
+        console.error('[Router] Handler error for', path, err);
+        const viewContainer = document.getElementById('view-container');
+        if (viewContainer) {
+          viewContainer.innerHTML = `
+            <div class="empty-state" style="padding:40px;">
+              <div class="empty-state-title">Error loading page</div>
+              <div class="empty-state-message">${this.escapeHtml(err.message)}</div>
+            </div>
+          `;
+        }
+      }
       window.dispatchEvent(new CustomEvent('vault:route-changed', { detail: { path, params } }));
     }
+  }
+
+  escapeHtml(str) {
+    if (!str) return '';
+    const div = document.createElement('div');
+    div.textContent = str;
+    return div.innerHTML;
   }
 
   matchDynamicRoute(routePattern, actualPath) {

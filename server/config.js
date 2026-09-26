@@ -66,6 +66,11 @@ const DEFAULT_CONFIG = {
       auth: { windowMs: 15 * 60 * 1000, max: 10 },
       upload: { windowMs: 15 * 60 * 1000, max: 30 }
     }
+  },
+  onboarding: {
+    completedAt: null,
+    version: '2.0.0',
+    enablement: true,
   }
 };
 
@@ -146,8 +151,17 @@ function saveConfig(newConfig) {
       maxUploadSizeMB: newConfig.media.maxUploadSizeMB
     },
     cors: newConfig.cors,
-    security: newConfig.security
+    security: newConfig.security,
+    onboarding: newConfig.onboarding || {
+      completedAt: new Date().toISOString(),
+      version: '2.0.0',
+      enablement: true,
+    }
   };
+  // Ensure enablement is true when onboarding exists
+  if (toSave.onboarding) {
+    toSave.onboarding.enablement = true;
+  }
   fs.writeJsonSync(CONFIG_PATH, toSave, { spaces: 2 });
   config = null; // force reload
   return loadConfig();

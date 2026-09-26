@@ -1,339 +1,373 @@
-# Vault — Self-Hosted Personal Media Server
+# Vault — Your Personal Netflix + Spotify. Private. Yours.
 
-> A premium, self-hosted personal media server for movies, music, and videos. Built with a static GitHub Pages frontend and a lightweight Node.js local backend. Think Netflix + Spotify + Plex, but yours.
+**Vault is a self-hosted media server that makes your movies, music, and videos look and feel premium — with no cloud, no tracking, no subscriptions.**
 
-![Vault](docs/favicon.svg)
+You run a tiny server on your own computer. You open a beautiful app in your browser. That's it. Your files never leave your house.
 
-## Features
+Live app: **https://kokonut-dev.github.io/Vault-V2/**
 
-### 🎬 Unified Media
-- **Movies/Series**, **Music**, and **Videos** — equal citizens, not afterthoughts
-- Auto-categorization via file scanning + smart filename parsing (`Movie.2021`, `Series.S01E02`)
-- Metadata extraction: ID3 tags, ffprobe video info, cover art, thumbnails, subtitles
-- File watcher — auto-updates library when files change
+---
 
-### 🔐 Security First
-- **Two-step auth**: Username/password (bcrypt) + secret **4×4 grid pattern** (8 squares, C(16,8)=12870 combos, order-sensitive optional → ~500M)
-- JWT sessions, brute-force lockout (5 attempts → 15 min), rate limiting, helmet CSP, CORS locked to your Pages origin
-- No secrets in frontend, no external auth dependency
+## What You Need Before You Start
 
-### ▶️ Premium Playback
-**Video:**
-- Custom cinematic player (no browser defaults)
-- Seek with thumbnail preview, volume slider, speed 0.25x–3x, fullscreen, PiP, theatre mode
-- Subtitles SRT/VTT/ASS→VTT, customizable styling via `::cue`, chapters, skip intro/outro, next episode autoplay countdown
-- Quality selector (transcoded 1080p/720p/480p), casting hooks, keyboard JKL + 0-9 + M/F/C/T/P
-- Resume where you left off
+- A computer — Mac, Windows, or Linux all work
+- **Node.js 18+** — download from https://nodejs.org (click the big green LTS button and install it)
+- Your movies, music, or videos (any format)
 
-**Music:**
-- Persistent mini-player (Spotify-style) that survives navigation
-- Full-screen Now Playing with large art, animated visualizer (AnalyserNode), lyrics (.lrc)
-- Queue management (add, reorder, clear, save as playlist), shuffle/repeat, crossfade (0-12s), gapless via dual audio elements
-- Album/artist/genre views, Media Session API for lock screen
+No Docker. No database. No complex setup.
 
-### 🎚️ Professional EQ
-- **10-band parametric EQ** via Web Audio API — real DSP, not fake sliders
-- Frequency, gain, Q per band, visual curve (canvas), analyser
-- Presets: Flat, Bass Boost, Treble Boost, Vocal, Acoustic, Electronic, Classical, Rock, Pop, Jazz, R&B + save custom
-- Extras: bass boost, stereo widening, normalization, compressor (threshold/ratio/attack/release), reverb (ConvolverNode)
+---
 
-### 🔍 Global Search
-- Triggered by **⌥+Space / Alt+Space** — command palette (Spotlight/Raycast style)
-- Fuzzy search (Fuse.js) across all libraries, typo tolerant, instant debounced
-- Categorized results (Movies/Music/Videos), keyboard nav (↑↓↵ESC), recent searches, history
-- Matches title, artist, album, genre, year, tags, description, filename
+## Setup Guide — 3 Minutes, 3 Commands
 
-### 🎨 Design System
-- **4 themes**: Dark (Netflix/Spotify), Light (Apple), Warm (vinyl/candlelight), Cold (Nordic winter) — comprehensive, no afterthoughts
-- **Frosted glass** via `backdrop-filter: blur() saturate()` — adjustable slider 0-100 → blur 0-40px
-- **Film grain** via SVG/PNG tile — adjustable 0-100 → opacity 0-0.15, static or subtly animated
-- Minimalist premium: bento cards, 12-20px radius, 150-250ms ease-out, hover scale 1.02, skeleton loading (not spinners)
-- Sidebar collapsible (240px → 64px), home dashboard (Continue Watching, Recently Added per category, Random Pick, Top Rated, Favourites)
-- Grid/List toggle, detail pages with backdrop+poster, season/episode picker, track lists
-- Responsive: desktop primary, tablet, mobile with bottom mini-player offset
-- Accessibility: full keyboard nav, ARIA, focus rings, AA contrast, rem units, prefers-reduced-motion
+This is designed so anyone can do it. Follow exactly.
 
-### 📤 Upload
-- In-app upload with adaptive forms: Movie/Series (title/year/genre/season/episode/poster/subtitle), Music (title/artist/album/genre/track/cover), Video (title/desc/tags/thumbnail)
-- Drag-drop, progress bar, batch/multi-file, cover/subtitle handling
+### 1. Get Vault
 
-### ➕ Extras
-- Favourites (♥), history (auto-tracked, clearable), ratings (5-star), collections (cross-media: "Chill Night" with movies+music), metadata editor inline, media info panel (codec/bitrate/resolution/size/path), sorting/filtering everywhere, lazy loading via IntersectionObserver, PWA with service worker (offline shell), toast notifications, shortcuts panel (?), offline detection
+Open **Terminal**:
+- Mac: Press `Cmd + Space`, type `Terminal`, hit Enter
+- Windows: Press Start, type `cmd` or `PowerShell`, hit Enter
+- Linux: `Ctrl + Alt + T`
 
-## Architecture
+Copy and paste this (right-click → Paste, then Enter):
 
-```
-┌─────────────────────────────────┐         HTTPS (configurable)         ┌─────────────────────────────┐
-│   GitHub Pages (Static SPA)     │  ───────────────────────────────►  │  Local Server (Node.js)     │
-│  - Auth gate (login + grid)     │  ◄───────────────────────────────  │  Express + ffmpeg + etc     │
-│  - Router, UI, themes           │   JSON API / Media Streams         │  - /api/auth/*              │
-│  - Video player (custom)        │                                    │  - /api/library/*           │
-│  - Audio player + EQ (WebAudio) │                                    │  - /api/media/* (stream)    │
-│  - Search (Fuse.js + modal)     │                                    │  - /api/upload/*            │
-│  - PWA / Service Worker         │                                    │  - File watcher (chokidar)  │
-└─────────────────────────────────┘                                    │  - Index DB (JSON)          │
-                                                                       └─────────────────────────────┘
-                                                                                │
-                                                                                ▼
-                                                                       ┌─────────────────┐
-                                                                       │  User Media Dirs │
-                                                                       └─────────────────┘
-```
-
-- **Frontend**: `docs/` — vanilla JS ES2022 modules, no build required, CSS custom properties for theming, Web Audio API, Service Worker
-- **Backend**: `server/` — Node.js 18+, Express, bcryptjs, jsonwebtoken, chokidar, music-metadata, fluent-ffmpeg + ffmpeg-static, sharp optional, JSON DB (lowdb-style), multer, helmet, cors, rate-limit
-
-## Tech Stack
-
-**Frontend:**
-- HTML5, CSS3 (variables, backdrop-filter, grid/flex), JS ES2022 modules
-- Fuse.js (fuzzy search), Web Audio API (BiquadFilterNode, DynamicsCompressorNode, ConvolverNode, AnalyserNode), Media Session API, Picture-in-Picture, Fullscreen, IntersectionObserver, Service Worker
-
-**Backend:**
-- Node.js, Express, bcryptjs, jsonwebtoken, helmet, cors, express-rate-limit, multer, chokidar, music-metadata, fluent-ffmpeg, ffmpeg-static/ffprobe-static, fs-extra, mime-types, validator
-
-**Codecs:**
-- Audio native: MP3, AAC, FLAC (modern), WAV, OGG Vorbis, OPUS, M4A/ALAC (Safari)
-- Audio transcode fallback: WMA, AIFF, DSD → Opus/AAC via ffmpeg
-- Video native: H.264 MP4 universal, VP8/VP9 WebM, AV1 (modern), HEVC (Safari/Chrome HW)
-- Video transcode fallback: MKV, AVI, MOV, WMV, FLV → H.264/AAC fragmented MP4 (`-movflags frag_keyframe+empty_moov`)
-
-## Prerequisites
-
-- **Node.js 18+** — https://nodejs.org
-- **ffmpeg** — for metadata & transcoding
-  - **Mac**: `brew install ffmpeg`
-  - **Windows**: https://ffmpeg.org/download.html or `choco install ffmpeg` or `scoop install ffmpeg`
-  - **Linux**: `sudo apt install ffmpeg` (Debian/Ubuntu) or `sudo dnf install ffmpeg` (Fedora)
-  - Alternatively, `ffmpeg-static` npm package provides binary (included), but system ffmpeg is faster
-- **Git** — for cloning
-
-Optional but recommended for HTTPS:
-- **mkcert** — trusted local certs: https://github.com/FiloSottile/mkcert
-  - `brew install mkcert && mkcert -install` (Mac)
-  - `choco install mkcert` (Windows) then `mkcert -install`
-- **Cloudflare Tunnel** — public HTTPS URL for remote access: https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/
-  - `brew install cloudflared` or download from https://github.com/cloudflare/cloudflared/releases
-
-## Local Server Setup
-
-### 1. Clone & Install
 ```bash
 git clone https://github.com/Kokonut-dev/Vault-V2.git
 cd Vault-V2/server
 npm install
 ```
 
-### 2. Configure
-Interactive wizard (recommended):
-```bash
-npm run setup
-# or: node ../scripts/setup.js
-```
-It will ask:
-- Username (default `admin`)
-- Password (hashed with bcrypt, never plaintext)
-- Grid pattern — 8 numbers 0-15 comma-separated (e.g., `0,1,4,5,8,9,12,13` = left two columns). **Keep secret!**
-- Media paths (movies/music/videos) — absolute or relative to `server/`
-- Port (default 4000)
+Wait about 30-45 seconds until it finishes. You'll see no errors at the end.
 
-Manual: copy `config.example.json` to `config.json` and edit, or set env vars `VAULT_USERNAME`, `VAULT_PORT`, etc.
+### 2. Start Your Server
 
-**Security:** `server/config.json` is gitignored — contains password hash, JWT secret, grid pattern.
+In the **same** Terminal window, paste:
 
-### 3. Prepare Media Folders
-```bash
-# Default folders (created automatically):
-mkdir -p media/movies media/music media/videos
-# Or use your existing collection — set paths in setup wizard to e.g. /Users/you/Movies
-```
-
-### 4. Run Server
 ```bash
 npm start
-# dev with auto-reload:
-npm run dev
-```
-Server runs at `http://0.0.0.0:4000` (or your configured port).
-- Health: `http://localhost:4000/api/health`
-- Logs: library scan on startup, file watcher active
-
-### 5. Frontend
-**Option A — GitHub Pages (production):**
-- The repo's `docs/` folder is deployed via GitHub Actions (`.github/workflows/deploy.yml`) to `https://kokonut-dev.github.io/Vault-V2/`
-- Open that URL, set API URL to your server (see HTTPS issue below), login
-
-**Option B — Local dev (no HTTPS issue):**
-```bash
-# From repo root:
-npx serve docs
-# or: cd docs && python3 -m http.server 3000
-# Open http://localhost:3000
 ```
 
-## Configuration Reference
+You should see:
 
-`server/config.json` (or env):
-
-| Key | Env | Default | Description |
-|-----|-----|---------|-------------|
-| `server.port` | `VAULT_PORT` | 4000 | Server port |
-| `server.host` | `VAULT_HOST` | 0.0.0.0 | Host to bind |
-| `server.https.enabled` | — | false | Enable HTTPS with certs |
-| `server.https.keyPath` | — | ./certs/key.pem | Private key |
-| `server.https.certPath` | — | ./certs/cert.pem | Certificate |
-| `auth.username` | `VAULT_USERNAME` | admin | Login username |
-| `auth.passwordHash` | — | (generated) | bcrypt hash — set via setup wizard |
-| `auth.jwtSecret` | `VAULT_JWT_SECRET` | random 64-char | JWT signing secret — auto-generated |
-| `auth.sessionTimeout` | `VAULT_SESSION_TIMEOUT` | 24h | JWT expiry: 1h,6h,12h,24h,7d,30d |
-| `auth.gridPattern` | — | [0,1,4,5,8,9,12,13] | 8 unique numbers 0-15 |
-| `auth.gridOrderMatters` | — | false | If true, order must match exactly (~500M combos) |
-| `auth.maxAttempts` | — | 5 | Brute-force max before lockout |
-| `auth.lockoutDurationMinutes` | — | 15 | Lockout duration |
-| `media.paths.movies` | — | ./media/movies | Movies dir |
-| `media.paths.music` | — | ./media/music | Music dir |
-| `media.paths.videos` | — | ./media/videos | Videos dir |
-| `media.maxUploadSizeMB` | — | 10240 | Max upload size (10GB) |
-| `cors.origins` | — | [github.io, localhost:*] | Allowed CORS origins |
-| `security.rateLimit.general` | — | 200/15min | General rate limit |
-| `security.rateLimit.auth` | — | 10/15min | Auth rate limit |
-| `security.rateLimit.upload` | — | 30/15min | Upload rate limit |
-
-Frontend `docs/config.js`:
-```js
-window.VAULT_CONFIG = {
-  apiBaseUrl: 'http://localhost:4000', // Change to your server URL
-  appName: 'Vault',
-  version: '2.0.0',
-  basePath: '/Vault-V2', // GitHub Pages base
-};
 ```
-User can override API URL via Settings UI (stored in localStorage) or edit `config.js`.
+Vault server (HTTP) running at http://0.0.0.0:4000
+Health check: http://0.0.0.0:4000/api/health
+Vault server ready!
+```
 
-## Usage Guide
+**Important:** Leave this window open. If you close it, Vault stops. This window IS your server.
 
-### First Login
-1. Open frontend URL
-2. If server URL shows wrong, click Change and enter e.g. `http://localhost:4000` or your tunnel URL
-3. Enter username/password set in setup wizard
-4. Grid challenge: click your 8 secret squares (you set pattern in setup). No visual hint — it's secret. Order matters only if you enabled it.
-5. You're in!
+### 3. Open Vault and Complete the Wizard
 
-### Browsing
-- **Home**: Continue Watching (resume), Recently Added per category, Favourites, Top Rated, Random Pick with shuffle
-- **Movies/Series**: Grid/List toggle, sort by title/year/rating/date, filter. Click to play in custom video player
-- **Music**: All Tracks, Artists (grouped), Albums (cover grid), Genres. Play All, Shuffle. Click track to play with queue. Mini-player persists while browsing
-- **Videos**: General videos grid/list
-- **Playlists**: Create playlist/collection, add items, play all, delete. Collections can span media types
-- **Favourites**: Heart icon on any item
-- **History**: Auto-tracked with progress, clearable
-- **Upload**: Choose Movie/Music/Video, drag-drop or browse, batch, metadata form, cover/subtitle, progress bar
-- **Settings**: Theme (dark/light/warm/cold), glass intensity slider, grain intensity slider, volume/crossfade, EQ (opens parametric EQ), server URL, test connection, trigger scan, change credentials, logout, about
+Open your browser (Chrome, Safari, Firefox, Edge) and go to:
 
-### Playback
-- **Video**: Hover for controls, click to play/pause, progress bar with thumbnail preview (if available), volume hover to expand slider, speed selector, theatre (T), fullscreen (F), PiP (P), captions (C), EQ, skip intro, next episode countdown
-- **Music**: Mini-player bottom: cover, title/artist, progress bar top, prev/play/next/expand. Expand to Now Playing fullscreen: large art, visualizer (32 bars from AnalyserNode), lyrics, queue, shuffle/repeat, progress slider, time
-- **EQ**: Enable toggle, presets, 10 vertical sliders (32Hz-16kHz, -12 to +12dB), Q and freq editable (advanced), visual curve canvas, save custom preset
-- **Keyboard**: Press `?` for cheat sheet. Global: Option+Space search, Esc close, G+H/M/U/V/P/F/S navigate. Playback: Space/K play/pause, J/L or ←→ seek 10s, ↑↓ volume, M mute, F fullscreen, T theatre, P PiP, C captions, 0-9 seek 0-90%, N next, Shift+N prev, S shuffle, R repeat
+```
+https://kokonut-dev.github.io/Vault-V2/
+```
 
-### Search
-- Press **Option+Space** (Mac) or **Alt+Space** (Windows) — centered modal
-- Type to fuzzy search across all libraries
-- Results grouped: Movies, Music, Videos
-- ↑↓ to navigate, Enter to open/play, Esc to close
-- Recent searches shown when empty, search history (recently played) below
+If it's your first time, you will see the **Onboarding Wizard — 6 simple steps**. No skipping needed, just follow:
 
-## Keyboard Shortcuts
+#### Step 1 — Welcome
+Shows you what Vault is. Click **Get Started →**
 
-| Shortcut | Action |
-|----------|--------|
-| ⌥+Space / Alt+Space | Open global search |
-| ? | Show shortcuts panel |
-| Esc | Close modal/search |
-| G then H/M/U/V/P/F/S | Go Home/Movies/Music/Videos/Playlists/Favourites/Settings |
-| Space / K | Play/Pause |
-| J / ← | Seek back 10s |
-| L / → | Seek forward 10s |
-| ↑ / ↓ | Volume up/down |
-| M | Mute |
-| F | Fullscreen (video) |
-| T | Theatre mode (video) |
-| P | Picture-in-picture (video) |
-| C | Toggle captions |
-| 0-9 | Seek to 0%-90% |
-| N | Next track/episode |
-| Shift+N | Previous |
-| S | Shuffle |
-| R | Repeat |
+#### Step 2 — Connect to Server
+It already shows `http://localhost:4000`. Click **Test**. You should see `✓ Connected`.
 
-## Troubleshooting / FAQ
+- If you see `✕ Cannot connect`: go back to your Terminal. Is it still showing `Vault server ready!`? If not, run `npm start` again. Then click Test again.
+- Click **Test & Continue →**
 
-**Q: GitHub Pages is HTTPS, my local server is HTTP — mixed content blocked!**
-A: Browsers block HTTPS page fetching HTTP. Solutions:
-1. **mkcert (recommended for local)**: Generate trusted local cert:
-   ```bash
-   brew install mkcert && mkcert -install
-   node scripts/generate-cert.js
-   # Enable HTTPS in server/config.json: server.https.enabled=true
-   # Run server, it will be https://localhost:4000
-   # Set frontend API URL to https://localhost:4000
-   ```
-2. **Cloudflare Tunnel (recommended for remote)**: Get public HTTPS URL:
-   ```bash
-   brew install cloudflared
-   cloudflared tunnel --url http://localhost:4000
-   # It gives https://xxx.trycloudflare.com — use that as API URL
-   ```
-3. **ngrok**: `ngrok http 4000` → https URL
-4. **Local frontend**: Run frontend locally via `npx serve docs` on http://localhost:3000 — no mixed content
+#### Step 3 — Create Admin Account
+- **Username:** pick anything, e.g., `admin` or `alex`. 3+ letters, only letters/numbers/_/-
+- **Password:** 4+ characters. Use something strong you'll remember.
+- **Confirm Password:** type it again.
+- You'll see password strength (Weak / Fair / Good / Strong).
 
-**Q: CORS errors?**
-A: Server's `cors.origins` must include your frontend origin. Default includes `https://kokonut-dev.github.io` and `localhost:*`. Add custom domain to `server/config.json` cors.origins and restart.
+Click **Continue →**
 
-**Q: ffmpeg not found?**
-A: Install system ffmpeg (see Prerequisites) or ensure `ffmpeg-static` npm package installed (`npm install` does it). Server logs will warn if ffmpeg unavailable — metadata and transcoding will be limited.
+#### Step 4 — Security Grid (Your Second Password)
+You see 16 squares numbered 0-15 in a 4x4 grid.
 
-**Q: Transcoding slow on NAS/Raspberry Pi?**
-A: Use direct-play friendly formats: H.264 video + AAC audio in MP4. Avoid HEVC/AV1 if your device can't hardware transcode. Set quality to 720p or 480p for faster. Cache is LRU cleaned.
+Click **exactly 8 squares** that form a pattern you'll remember. Example: four corners + four in the middle. Or a letter shape.
 
-**Q: Library not updating?**
-A: File watcher uses chokidar — should auto-detect. If not, click Settings → Trigger Library Scan or `POST /api/library/scan`. Check media paths in config exist and are readable.
+- Counter shows `X / 8 selected`
+- Click again to unselect
+- Toggle **Order matters**: OFF = you can click them in any order later (easier). ON = you must click in exact same order (more secure).
+- When 8 are selected, you'll see `✓ Pattern set: [0,1,4,5...]`
 
-**Q: Forgot grid pattern?**
-A: Check `server/config.json` `auth.gridPattern`. Or reset via setup wizard: `npm run setup` — set new pattern.
+**Write this pattern down on paper.** This is your secret second factor. No one else should know it.
 
-**Q: Brute-force lockout?**
-A: After 5 fails, IP locked 15 min. Wait or delete `server/data/bruteforce.json` and restart server.
+Click **Continue →**
 
-**Q: How to use custom domain for GitHub Pages?**
-A: Edit `CNAME` file with your domain (e.g., `vault.example.com`), set DNS CNAME to `kokonut-dev.github.io`, enable Enforce HTTPS in repo Settings → Pages.
+#### Step 5 — Media & Preferences
+- **Theme:** Click Dark, Light, Warm, or Cold. Dark is default and looks best. You can change later.
+- **Media Paths:** Leave as default for now:
+  - Movies: `./media/movies`
+  - Music: `./media/music`
+  - Videos: `./media/videos`
+  These folders will be created automatically on your computer inside `Vault-V2/server/media/`
+- **CORS Origins (optional):** Leave empty unless you use Cloudflare Tunnel later.
 
-**Q: Can I run server via Docker?**
-A: Not included yet, but easy: `FROM node:20`, `COPY server/`, `RUN npm install`, `EXPOSE 4000`, `CMD ["npm","start"]`. Mount media dirs as volumes.
+Click **Continue →**
 
-## Security Notes
+#### Step 6 — Review & Complete
+You see everything you chose: Server URL, Username, Grid Pattern, Theme, Paths.
 
-- Credentials hashed with bcrypt (10 rounds), never plaintext
-- JWT secret random 64-char, stored in config.json (gitignored)
-- Grid pattern: 8 out of 16 squares — memorable but not brute-forceable, no phone needed
-- Brute-force protection persisted to JSON, survives restart
-- Rate limiting on all API routes
-- Helmet sets CSP, HSTS, X-Frame-Options, etc.
-- Input sanitization via validator, filename sanitization prevents path traversal
-- CORS configurable, not wildcard when credentials
-- No secrets in frontend — `config.js` only has API URL
-- Upload mime validation via magic bytes + extension, size limit
-- JWT blacklist on logout until expiry
-- Recommend HTTPS via mkcert or tunnel — never expose HTTP server directly to internet without reverse proxy
+Double-check. Then click **Complete Setup ✨**
 
-## License
+You'll see `✓ Setup complete!` and `Enablement: true`. After 1 second, you enter Vault automatically. If not, it will ask you to login with the account you just created.
 
-MIT — see [LICENSE](LICENSE)
-
-## Acknowledgements
-
-Inspired by Plex, Jellyfin, Spotify, Netflix, YouTube, Raycast, Linear. Built with Web Audio API, Fuse.js, chokidar, music-metadata, ffmpeg.
+**That's it. Vault is ready.**
 
 ---
 
-*Vault — your media, your server, your design.*
+## Adding Your Movies, Music, Videos
+
+Two ways, both easy:
+
+### Way A — Upload Inside Vault (Easiest)
+1. In Vault, look left sidebar → click **Upload**
+2. Choose **Movie**, **Music**, or **Video**
+3. Drag your files into the box or click to browse
+4. Click Upload — progress bar shows
+5. Files appear in your library in seconds
+
+### Way B — Copy Files Directly (Fast for Lots of Files)
+1. On your computer, open folder `Vault-V2/server/media/`
+2. You'll see three folders: `movies`, `music`, `videos`
+3. Copy your files there (e.g., `my-movie.mp4` into `movies`)
+4. In Vault → **Settings** → click **Trigger Library Scan**
+5. Vault scans and adds them
+
+Supported formats: `.mp4, .mkv, .webm, .avi, .mov, .mp3, .flac, .wav, .ogg, .opus, .m4a, .aac` and 20+ more. If a file isn't natively supported, Vault transcodes it on-the-fly.
+
+---
+
+## How to Use Vault Daily
+
+**Login next time:**
+1. Make sure server is running: Terminal → `cd Vault-V2/server` → `npm start`
+2. Open https://kokonut-dev.github.io/Vault-V2/
+3. Enter username + password → Continue
+4. Click your 8 secret squares → Unlock Vault
+
+**Navigation:**
+- **Home** — Continue watching, recently added, random picks, stats
+- **Movies / Music / Videos** — Grid or list view, sort by title/year/added, filter by genre/year
+- **Playlists** — Create playlists or collections, add any item
+- **Favourites** — Heart icon on any card
+- **History** — Where you left off, progress saved
+- **Upload** — Add more media
+- **Settings** — Everything customizable
+
+**Keyboard shortcuts:**
+- `Alt + Space` (Mac: `Option + Space`) → Global search
+- `?` → Show all shortcuts
+- `Space` → Play/Pause (when player focused)
+- `← →` → Seek 10s, `↑ ↓` → Volume
+
+---
+
+## All Features — Detailed
+
+### Library & Management
+- **Auto-scanning:** Uses `chokidar` to watch your media folders. Add a file → appears automatically. No manual refresh needed after initial scan.
+- **Metadata extraction:** Reads ID3 tags (artist, album, year, genre, cover art) for music via `music-metadata`. Reads video resolution, codec, duration via `ffprobe`.
+- **Covers & Thumbnails:** Extracts embedded cover art, generates video thumbnails (320x180) on scan.
+- **Search:** Client-side fuzzy search via Fuse.js (10KB) — instant, typo-tolerant. Server-side fallback `/api/library/search`. Recent searches saved.
+- **Sorting & Filtering:** By title, date added, year, rating, duration, size, genre, year.
+- **Metadata editing:** Edit title, artist, album, genre, year, description, rating directly in detail view.
+- **Delete:** Delete from library only, or delete file from disk too.
+
+### Video Player (Custom, No Native Controls)
+- **Format support:** MP4 H.264 (universal), WebM VP9, AV1, HEVC H.265 where supported. Everything else → transcoded to H.264/AAC fragmented MP4 on-the-fly.
+- **Controls:** Play/pause, next episode, volume with slider, mute, time display, progress bar with buffered/ played distinction, thumbnail preview on hover, keyboard seek.
+- **Advanced:** Playback speed (0.25x–2x), theatre mode, Picture-in-Picture, fullscreen, captions (SRT/VTT/ASS→VTT), skip intro button, next episode overlay with countdown (10s), auto-play next.
+- **Streaming:** Range requests (206 Partial Content) for instant seeking, even in 4K.
+
+### Audio Player (Spotify-like)
+- **Web Audio API:** Real audio graph — not just `<audio>` tag.
+- **10-band EQ:** -12dB to +12dB per band, visual curve with bezier + fill, presets (flat, bass boost, vocal, etc.), custom presets save, enable toggle, reset.
+- **Features:** Gapless playback, crossfade 0–12s, shuffle, repeat off/all/one, volume, mute, queue (add next / add to queue), mini-player always visible (glass effect), fullscreen now-playing with visualizer (analyser), lyrics display, Media Session API (lock screen controls on phone).
+- **Transcoding:** WMA, AIFF, ALAC, etc. → Opus/AAC/MP3 on-the-fly.
+
+### Security — Two Factors, Zero Cloud
+- **Step 1:** Username + password (bcrypt hashed, never stored plain).
+- **Step 2:** Grid challenge — 4×4 = 16 squares, choose 8. Combinations: C(16,8)=12,870. With order matters: P(16,8)=~500M. No visual hint.
+- **JWT:** Short-lived challenge token (5 min) after password, then final access token (default 24h, configurable 1h–30d).
+- **Brute-force protection:** 5 failed attempts → lock IP for 15 minutes (configurable). Stored in `server/data/bruteforce.json`, survives restart. Returns 429 with retry time.
+- **Logout:** Token blacklisted until expiry.
+- **CORS:** Only allows `https://kokonut-dev.github.io` + localhost by default. Add your tunnel domains in setup or Settings.
+- **Helmet:** CSP, HSTS, X-Frame-Options, etc.
+- **Rate limiting:** General 200 req/15min, auth 10/15min, upload 30/15min.
+- **Sanitization:** All inputs escaped via `validator`, filenames sanitized (no path traversal), mime-type checked by magic bytes, not just extension.
+
+### Appearance — Premium Feel
+- **Themes:** Dark (default #0A0A0A), Light, Warm (amber), Cold (blue). CSS variables, instant switch, saved in localStorage.
+- **Glassmorphism:** `backdrop-filter: blur(20px)` with intensity slider 0–100% in Settings. Frosted glass cards, sidebar, player.
+- **Film Grain:** Subtle noise texture overlay, intensity slider 0–100%, respects `prefers-reduced-motion`.
+- **Animations:** Page enter, card hover (translateY + scale), skeleton loaders, shake on wrong grid, onboarding enter, complete pop. All respect `prefers-reduced-motion`.
+- **Layout:** Sidebar collapsible, mobile hamburger menu, responsive grid (1–6 columns), bottom mini-player, theatre mode.
+- **Accessibility:** Focus-visible rings, skip link, ARIA labels, keyboard navigation for grid, screen reader support.
+
+### PWA & Offline
+- **Installable:** Add to home screen on phone/desktop. Manifest with icons, theme color.
+- **Service Worker:** Caches shell (HTML/CSS/JS) but not media. Offline UI shows "Server disconnected — retrying..." with retry button. Reconnects automatically.
+
+### Playlists, Favourites, History
+- **Playlists:** Create, rename, delete, add/remove items. Types: playlist vs collection.
+- **Favourites:** Heart any item, stored locally + server.
+- **History:** Progress per item (e.g., 42% watched), watchedAt timestamp, resume where left off. Last 100 kept.
+
+### Server & Transcoding
+- **Node.js 18+ / Express 4.x**, zero native deps by default (except optional sharp).
+- **ffmpeg-static + ffprobe-static** for transcoding & probing, fallback to system ffmpeg if available. LRU cache in `server/cache/transcoded` (default 5GB max).
+- **Data:** `server/config.json` (your credentials, never committed), `server/data/library.json` (index), `server/data/*` (bruteforce, blacklist, playlists, history, favourites).
+- **Cache:** `server/cache/thumbnails`, `covers`, `transcoded` — gitignored, safe to delete.
+- **Upload:** `multer` multipart, max 10GB default, magic-byte validation.
+
+### Onboarding & Setup API
+- **First run:** No `config.json` → `GET /api/setup/status` returns `needsSetup:true`. Frontend shows 6-step wizard.
+- **Endpoints:**
+  - `GET /api/setup/status` — public, tells if setup needed
+  - `GET /api/setup/defaults` — safe defaults for UI
+  - `POST /api/setup/test` — validates media paths existence
+  - `POST /api/setup/complete` — creates config, hashes password, generates JWT secret, ensures dirs, returns token + `enablement:true`
+- **Config:** After completion, `server/config.json` contains `onboarding: { completedAt, completedBy, version, theme, enablement:true }`. Deploy workflow checks this.
+
+### Deployment
+- **Frontend:** Static SPA in `docs/` hosted on GitHub Pages. No build step needed (vanilla JS). `404.html` hack for SPA routing (History API).
+- **GitHub Actions `.github/workflows/deploy.yml`:** Checks core files + onboarding wizard files (`onboarding.js/css`), checks backend setup routes + `enablement:true`, validates `VAULT_ENABLEMENT=true`, then uploads `docs/` artifact and deploys via `actions/deploy-pages@v4`.
+
+---
+
+## How It Works — Simple Explanation
+
+```
+[Your Browser]  →  https://kokonut-dev.github.io/Vault-V2/  (beautiful UI, no data)
+      ↓ HTTPS (or http://localhost:4000 locally)
+[Your Computer] →  Node.js server at :4000  →  Your media folders
+      ↓
+[Your Files] stay on your disk. Nothing uploaded anywhere.
+```
+
+Frontend is static (GitHub Pages). Backend is local (your machine). They talk via REST API + token. Media streams via `Range` requests, so seeking is instant.
+
+---
+
+## Remote Access — Use Vault From Your Phone Outside Home
+
+By default Vault only works at home (`localhost`). To use from phone anywhere:
+
+**Easiest — Cloudflare Tunnel (free, secure, HTTPS):**
+1. Install `cloudflared`: https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/downloads/
+2. Run: `cloudflared tunnel --url http://localhost:4000`
+3. You'll get a URL like `https://random-words-1234.trycloudflare.com`
+4. In Vault → Settings → API Base URL → paste that URL → Save → Test Connection
+5. On your phone, open GitHub Pages URL — it will now connect via tunnel. Or add that tunnel URL as a bookmark.
+
+**Alternative — Tailscale / ngrok / mkcert:**
+- Tailscale gives you a private VPN URL.
+- ngrok similar to Cloudflare Tunnel.
+- mkcert creates trusted local HTTPS cert so GitHub Pages HTTPS can talk to `https://localhost:4000` without mixed-content block. Run `scripts/generate-cert.js`.
+
+---
+
+## Troubleshooting — If Something Breaks
+
+**"Cannot connect to Vault server"**
+- Is Terminal still open showing `Vault server ready!`? If not: `cd Vault-V2/server` → `npm start`
+- Is Server URL correct? Login screen → bottom → `Server: http://localhost:4000` → Click Change → type `http://localhost:4000`
+- Try local frontend to avoid HTTPS block: `cd Vault-V2` → `npx serve docs` → open `http://localhost:3000`
+
+**"Invalid credentials"**
+- Username is case-sensitive. Check `server/config.json` → `auth.username`
+- Password: if you forgot, delete `config.json` and restart setup wizard, or run `npm run setup` in `server/`
+
+**"Invalid grid pattern"**
+- You clicked wrong 8 squares. Check `server/config.json` → `auth.gridPattern` shows your numbers (e.g., [0,1,4,5,8,9,12,13]). Count from 0 top-left to 15 bottom-right.
+- Locked out after 5 fails? Wait 15 min or delete `server/data/bruteforce.json` and restart server.
+
+**"Mixed Content / HTTPS vs HTTP"**
+- GitHub Pages is HTTPS, your local server is HTTP → browser blocks. Fix: run frontend locally via `npx serve docs` (http → http, no block), or use Cloudflare Tunnel (https → https).
+
+**"Upload fails / File too large"**
+- Default max 10GB. Check `server/config.json` → `media.maxUploadSizeMB`. Increase if needed.
+
+**"No thumbnails / Transcoding fails"**
+- ffmpeg might be missing. Server uses `ffmpeg-static` but if install failed (cert error), install ffmpeg system-wide: `brew install ffmpeg` (Mac) or `sudo apt install ffmpeg` (Linux), then restart.
+
+**Reset everything:**
+- Delete `server/config.json` → restart server → wizard appears again. Your media files stay safe.
+
+---
+
+## For Developers
+
+```bash
+server/
+  npm run dev     → nodemon auto-reload
+  npm run setup   → old CLI wizard (interactive terminal)
+  npm start       → production
+
+docs/
+  npx serve docs  → frontend at http://localhost:3000
+  # No build needed — vanilla ES modules
+
+API:
+  GET  /api/health              → public health
+  GET  /api/setup/status        → needsSetup?
+  POST /api/setup/complete      → create config, returns token + enablement:true
+  POST /api/auth/login          → {username,password} → challengeToken
+  POST /api/auth/grid           → {challengeToken,pattern} → token
+  GET  /api/library?search=&type=&genre=&sort=&page=&limit=
+  GET  /api/media/stream/:id?token=  (Range support)
+  POST /api/upload/:type        (multipart)
+
+Deploy:
+  .github/workflows/deploy.yml checks:
+    - docs/index.html, config.js, onboarding.js/css
+    - server/routes/setup.js + enablement:true
+    - VAULT_ENABLEMENT=true env
+```
+
+**Project structure:**
+```
+docs/           → GitHub Pages SPA (vanilla JS)
+  css/          → variables, themes, glass, grain, onboarding, player, etc.
+  js/
+    onboarding.js → 6-step wizard
+    api.js        → fetch wrapper + setup methods
+    auth.js, store.js, router.js, themes.js
+    components/   → sidebar, searchModal, audioPlayer, videoPlayer, eqPanel, etc.
+    views/        → home, movies, music, videos, playlists, settings, etc.
+server/
+  index.js      → Express + mounts /api/setup public
+  config.js     → loads/saves config.json, onboarding.enablement:true
+  routes/setup.js → onboarding API
+  routes/auth.js, library.js, media.js, upload.js, etc.
+  services/     → scanner (chokidar), library (JSON DB), transcoder, thumbnail
+  media/        → default folders (movies/music/videos)
+  data/         → library.json, bruteforce.json, etc. (gitignored)
+  cache/        → thumbnails/covers/transcoded (gitignored)
+```
+
+---
+
+## Security in Plain Words
+
+- Password is scrambled with bcrypt — even if someone steals `config.json`, they can't read it.
+- Grid pattern is secret — like a PIN but 12,870 combinations (500M with order).
+- After 5 wrong logins, Vault locks that IP for 15 minutes.
+- Nothing goes to internet. Your movies stay on your disk.
+- JWT tokens expire (24h default). Logout blacklists token.
+- All inputs sanitized, no path traversal, no XSS via CSP.
+
+---
+
+## License
+
+MIT — do whatever you want. See [LICENSE](LICENSE)
+
+---
+
+**Made with ❤️ — Your media, your server, your rules. Enablement: true, Onboarding: 6 steps, Private: always.**

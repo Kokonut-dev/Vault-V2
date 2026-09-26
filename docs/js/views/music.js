@@ -1,10 +1,11 @@
 /**
- * Music view
+ * Music view — optimized with memoization and DocumentFragment
  */
 import { store } from '../store.js';
 import { renderMediaGrid } from '../components/mediaGrid.js';
 import { renderMediaList } from '../components/mediaList.js';
 import { api } from '../api.js';
+import { escapeHtml } from '../utils/format.js';
 
 export function renderMusic(container) {
   container.className = 'page';
@@ -237,12 +238,10 @@ export function renderMusic(container) {
   }
   
   render();
-  store.subscribe('library', render);
-}
-
-function escapeHtml(str) {
-  if (!str) return '';
-  const div = document.createElement('div');
-  div.textContent = str;
-  return div.innerHTML;
+  // Debounce library subscription to avoid thrashing
+  let renderTimeout;
+  store.subscribe('library', () => {
+    clearTimeout(renderTimeout);
+    renderTimeout = setTimeout(render, 100);
+  });
 }

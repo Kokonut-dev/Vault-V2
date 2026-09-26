@@ -4,11 +4,35 @@
 
 class Store {
   constructor() {
+    const safeParse = (key, fallback) => {
+      try {
+        const raw = localStorage.getItem(key);
+        if (!raw) return fallback;
+        return JSON.parse(raw);
+      } catch {
+        console.warn(`[Store] Corrupted localStorage for ${key}, resetting`);
+        try { localStorage.removeItem(key); } catch {}
+        return fallback;
+      }
+    };
+    const safeInt = (key, fallback) => {
+      try {
+        const v = parseInt(localStorage.getItem(key) || String(fallback), 10);
+        return isNaN(v) ? fallback : v;
+      } catch { return fallback; }
+    };
+    const safeFloat = (key, fallback) => {
+      try {
+        const v = parseFloat(localStorage.getItem(key) || String(fallback));
+        return isNaN(v) ? fallback : v;
+      } catch { return fallback; }
+    };
+
     this.state = {
       // Auth
       isAuthenticated: false,
       user: null,
-      token: localStorage.getItem('vault_token') || null,
+      token: (() => { try { return localStorage.getItem('vault_token') || null; } catch { return null; } })(),
       challengeToken: null,
 
       // Library
@@ -27,41 +51,41 @@ class Store {
 
       // Player
       currentTrack: null,
-      queue: JSON.parse(localStorage.getItem('vault_queue') || '[]'),
-      queueIndex: parseInt(localStorage.getItem('vault_queue_index') || '-1', 10),
+      queue: safeParse('vault_queue', []),
+      queueIndex: safeInt('vault_queue_index', -1),
       isPlaying: false,
-      volume: parseFloat(localStorage.getItem('vault_volume') || '0.8'),
+      volume: safeFloat('vault_volume', 0.8),
       isMuted: false,
       shuffle: localStorage.getItem('vault_shuffle') === 'true',
-      repeat: localStorage.getItem('vault_repeat') || 'off', // off, all, one
-      crossfade: parseInt(localStorage.getItem('vault_crossfade') || '0', 10),
+      repeat: localStorage.getItem('vault_repeat') || 'off',
+      crossfade: safeInt('vault_crossfade', 0),
       playbackRate: 1,
 
       // Video
       currentVideo: null,
-      videoProgress: {}, // id -> progress
+      videoProgress: {},
 
       // UI
       theme: localStorage.getItem('vault_theme') || 'dark',
-      glassIntensity: parseInt(localStorage.getItem('vault_glass') || '20', 10),
-      grainIntensity: parseInt(localStorage.getItem('vault_grain') || '15', 10),
+      glassIntensity: safeInt('vault_glass', 20),
+      grainIntensity: safeInt('vault_grain', 15),
       sidebarCollapsed: localStorage.getItem('vault_sidebar_collapsed') === 'true',
       theatreMode: false,
 
       // Playlists
       playlists: [],
-      favourites: JSON.parse(localStorage.getItem('vault_favourites') || '[]'),
-      history: JSON.parse(localStorage.getItem('vault_history') || '[]'),
+      favourites: safeParse('vault_favourites', []),
+      history: safeParse('vault_history', []),
 
       // EQ
       eqEnabled: localStorage.getItem('vault_eq_enabled') === 'true',
       eqPreset: localStorage.getItem('vault_eq_preset') || 'flat',
-      eqGains: JSON.parse(localStorage.getItem('vault_eq_gains') || '[0,0,0,0,0,0,0,0,0,0]'),
-      eqCustomPresets: JSON.parse(localStorage.getItem('vault_eq_custom') || '{}'),
+      eqGains: safeParse('vault_eq_gains', [0,0,0,0,0,0,0,0,0,0]),
+      eqCustomPresets: safeParse('vault_eq_custom', {}),
 
       // Search
-      recentSearches: JSON.parse(localStorage.getItem('vault_recent_searches') || '[]'),
-      searchHistory: JSON.parse(localStorage.getItem('vault_search_history') || '[]'),
+      recentSearches: safeParse('vault_recent_searches', []),
+      searchHistory: safeParse('vault_search_history', []),
 
       // Connection
       isOnline: navigator.onLine,
@@ -159,47 +183,84 @@ class Store {
     localStorage.removeItem('vault_token');
   }
 
-  // Library helpers
+  // Library helpers — optimized with memoization
   setLibrary(library) {
-    this.set('library', library);
+    // Pre-compute searchable haystack for faster filtering
+    const optimized = library.map(item => ({
+      ...item,
+      _haystack: [
+        item.title, item.artist, item.album, item.genre,
+        item.year?.toString(), item.description, item.filename,
+        item.tags?.join(' ')
+      ].filter(Boolean).join(' ').toLowerCase(),
+      _sortCache: {}
+    }));
+    this.set('library', optimized);
+    this._lastFilterHash = null;
     this.applyFilters();
   }
 
-  applyFilters() {
-    let filtered = [...this.state.library];
+  _getFilterHash() {
+    const { type, genre, year, sort, order } = this.state.filters;
+    return `${type}|${genre}|${year}|${sort}|${order}|${this.state.searchQuery}|${this.state.library.length}`;
+  }
+
+  applyFilters(force = false) {
+    const currentHash = this._getFilterHash();
+    if (!force && this._lastFilterHash === currentHash && this.state.filteredLibrary.length > 0) {
+      return; // memoized, no change
+    }
+    this._lastFilterHash = currentHash;
+
+    let filtered = this.state.library;
     const { type, genre, year, sort, order } = this.state.filters;
     const query = this.state.searchQuery;
 
-    if (type && type !== 'all') {
-      filtered = filtered.filter(i => i.type === type);
-    }
-    if (genre) {
-      filtered = filtered.filter(i => {
-        if (!i.genre) return false;
-        if (Array.isArray(i.genre)) return i.genre.includes(genre);
-        return i.genre === genre;
-      });
-    }
-    if (year) {
-      filtered = filtered.filter(i => i.year === parseInt(year, 10));
-    }
-    if (query) {
-      const q = query.toLowerCase();
+    // Fast path: no filters
+    if ((!type || type === 'all') && !genre && !year && !query) {
+      filtered = [...filtered];
+    } else {
       filtered = filtered.filter(item => {
-        const haystack = [
-          item.title, item.artist, item.album, item.genre,
-          item.year?.toString(), item.description, item.filename,
-          item.tags?.join(' ')
-        ].filter(Boolean).join(' ').toLowerCase();
-        return haystack.includes(q);
+        if (type && type !== 'all' && item.type !== type) return false;
+        if (genre) {
+          if (!item.genre) return false;
+          if (Array.isArray(item.genre)) { if (!item.genre.includes(genre)) return false; }
+          else if (item.genre !== genre) return false;
+        }
+        if (year && item.year !== parseInt(year, 10)) return false;
+        if (query) {
+          const q = query.toLowerCase();
+          // Use precomputed haystack
+          if (item._haystack) {
+            if (!item._haystack.includes(q)) return false;
+          } else {
+            const haystack = [
+              item.title, item.artist, item.album, item.genre,
+              item.year?.toString(), item.description, item.filename,
+              item.tags?.join(' ')
+            ].filter(Boolean).join(' ').toLowerCase();
+            if (!haystack.includes(q)) return false;
+          }
+        }
+        return true;
       });
     }
 
+    // Optimized sort with caching
+    const sortField = sort || 'addedAt';
     filtered.sort((a, b) => {
-      let aVal = a[sort] ?? '';
-      let bVal = b[sort] ?? '';
-      if (typeof aVal === 'string') aVal = aVal.toLowerCase();
-      if (typeof bVal === 'string') bVal = bVal.toLowerCase();
+      let aVal = a._sortCache?.[sortField];
+      let bVal = b._sortCache?.[sortField];
+      if (aVal === undefined) {
+        aVal = a[sortField] ?? '';
+        if (typeof aVal === 'string') aVal = aVal.toLowerCase();
+        if (a._sortCache) a._sortCache[sortField] = aVal;
+      }
+      if (bVal === undefined) {
+        bVal = b[sortField] ?? '';
+        if (typeof bVal === 'string') bVal = bVal.toLowerCase();
+        if (b._sortCache) b._sortCache[sortField] = bVal;
+      }
       if (aVal < bVal) return order === 'asc' ? -1 : 1;
       if (aVal > bVal) return order === 'asc' ? 1 : -1;
       return 0;

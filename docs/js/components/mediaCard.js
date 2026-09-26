@@ -2,7 +2,7 @@
  * Media Card component
  */
 import { api } from '../api.js';
-import { formatTime, formatYear, truncate } from '../utils/format.js';
+import { formatTime, formatYear, truncate, escapeHtml } from '../utils/format.js';
 import { lazyLoadElement } from '../utils/lazyLoad.js';
 
 export function createMediaCard(item, options = {}) {
@@ -64,19 +64,12 @@ function getMeta(item) {
   }
   if (item.type === 'movie') {
     const parts = [];
-    if (item.year) parts.push(item.year);
+    if (item.year) parts.push(String(item.year));
     if (item.genre) parts.push(typeof item.genre === 'string' ? item.genre : item.genre[0]);
     if (item.season && item.episode) parts.push(`S${item.season}E${item.episode}`);
-    return parts.join(' • ') || '';
+    return parts.map(escapeHtml).join(' • ') || '';
   }
   return escapeHtml(item.genre || formatTime(item.duration) || '');
-}
-
-function escapeHtml(str) {
-  if (!str) return '';
-  const div = document.createElement('div');
-  div.textContent = str;
-  return div.innerHTML;
 }
 
 export function formatYear(item) {
