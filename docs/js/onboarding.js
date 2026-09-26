@@ -320,7 +320,6 @@ export class OnboardingManager {
       if (url) {
         this.data.apiUrl = url;
         setApiBaseUrl(url);
-        api.baseUrl = url;
         document.getElementById('server-url-display') && (document.getElementById('server-url-display').textContent = url);
       }
     };
@@ -357,7 +356,6 @@ export class OnboardingManager {
 
     this.data.apiUrl = url;
     setApiBaseUrl(url);
-    api.baseUrl = url;
 
     statusEl.innerHTML = `<div class="connection-test testing"><div class="connection-dot"></div> Testing connection to ${escapeHtml(url)}...</div>`;
 

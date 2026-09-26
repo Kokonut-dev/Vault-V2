@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const authService = require('../services/authService');
-const { blacklistToken } = require('../middleware/auth');
+const { blacklistToken, isTokenBlacklisted } = require('../middleware/auth');
 const { sanitizeString } = require('../utils/validators');
 const logger = require('../utils/logger');
 
@@ -29,6 +29,10 @@ router.post('/login', (req, res) => {
 
   if (!authService.validateCredentials(cleanUsername, cleanPassword)) {
     authService.recordFailedAttempt(ip);
+    // Marks this request for the auth rate limiter: ONLY wrong credentials
+    // count toward the HTTP-layer limit (never successful logins, session
+    // verifies, or expired challenge tokens).
+    res.locals.countAsAuthFailure = true;
     logger.warn(`Failed login attempt for ${cleanUsername} from ${ip}`);
     return res.status(401).json({ error: 'Invalid credentials', code: 'INVALID_CREDENTIALS' });
   }
@@ -67,8 +71,12 @@ router.post('/grid', (req, res) => {
   // Verify challenge token
   const decoded = authService.verifyToken(challengeToken);
   if (!decoded || decoded.step !== 'grid') {
-    authService.recordFailedAttempt(ip);
-    return res.status(401).json({ error: 'Invalid or expired challenge token', code: 'INVALID_CHALLENGE' });
+    // NOTE: not recorded as a brute-force attempt. An expired/invalid challenge
+    // is not a wrong password or wrong grid — it just means the user waited
+    // past the 5-minute challenge window and should log in again. A challenge
+    // token can't be forged without the JWT secret, and WRONG patterns below
+    // are still counted, so brute-force protection is unaffected.
+    return res.status(401).json({ error: 'Invalid or expired challenge token. Please log in again.', code: 'INVALID_CHALLENGE' });
   }
 
   if (!Array.isArray(pattern) || pattern.length !== 8) {
@@ -84,6 +92,9 @@ router.post('/grid', (req, res) => {
 
   if (!authService.validateGridPattern(pattern)) {
     authService.recordFailedAttempt(ip);
+    // Wrong pattern — counts toward the auth rate limit. (Expired/invalid
+    // challenge tokens above deliberately do NOT.)
+    res.locals.countAsAuthFailure = true;
     logger.warn(`Failed grid attempt for ${decoded.username} from ${ip}`);
     return res.status(401).json({ error: 'Invalid grid pattern', code: 'INVALID_GRID' });
   }
@@ -130,6 +141,13 @@ router.get('/verify', (req, res) => {
   const decoded = authService.verifyToken(token);
   if (!decoded || decoded.step === 'grid') {
     return res.status(401).json({ valid: false, error: 'Invalid token' });
+  }
+
+  // Respect logout: blacklisted tokens must not pass session verification
+  // (previously only authMiddleware checked the blacklist, so /verify kept
+  // reporting a logged-out token as valid).
+  if (isTokenBlacklisted(token)) {
+    return res.status(401).json({ valid: false, error: 'Token revoked', code: 'TOKEN_REVOKED' });
   }
 
   res.json({

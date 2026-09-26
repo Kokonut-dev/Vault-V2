@@ -8,7 +8,8 @@
     "start": "node index.js",
     "dev": "nodemon index.js",
     "setup": "node ../scripts/setup.js",
-    "scan": "node -e \"require('./services/scanner').scanAll()\""
+    "scan": "node -e \"require('./services/scanner').scanAll()\"",
+    "generate-cert": "node ../scripts/generate-cert.js"
   },
   "keywords": ["media-server", "self-hosted", "plex", "jellyfin", "vault"],
   "license": "MIT",

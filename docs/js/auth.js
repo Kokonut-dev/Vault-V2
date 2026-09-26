@@ -16,13 +16,13 @@ export class AuthManager {
       store.set('challengeToken', res.challengeToken);
       return { success: true, requiresGrid: true, challengeToken: res.challengeToken };
     } catch (err) {
-      return { success: false, error: err.message };
+      return { success: false, error: err.message, code: err.code || 'LOGIN_FAILED' };
     }
   }
 
   async submitGrid(pattern) {
     if (!this.challengeToken && !store.get('challengeToken')) {
-      return { success: false, error: 'No challenge token. Please login again.' };
+      return { success: false, error: 'No challenge token. Please login again.', code: 'NO_CHALLENGE' };
     }
     const token = this.challengeToken || store.get('challengeToken');
     try {
@@ -32,7 +32,7 @@ export class AuthManager {
       store.set('challengeToken', null);
       return { success: true, token: res.token, user: res.user };
     } catch (err) {
-      return { success: false, error: err.message };
+      return { success: false, error: err.message, code: err.code || 'GRID_FAILED' };
     }
   }
 
@@ -44,8 +44,13 @@ export class AuthManager {
       store.set('isAuthenticated', res.valid);
       store.set('user', res.user);
       return res;
-    } catch {
-      store.clearAuth();
+    } catch (err) {
+      // Only clear the session when the server actively rejected the token.
+      // A network error / server restart must NOT log the user out — they keep
+      // their token and can retry when the server is back.
+      if (err && err.status === 401) {
+        store.clearAuth();
+      }
       return { valid: false };
     }
   }

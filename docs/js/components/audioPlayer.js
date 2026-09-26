@@ -118,7 +118,8 @@ function connectAudioToGraph(audio) {
 
 function warnMixedContent(url) {
   if (api.isMixedContent(url)) {
-    toast.error('Browser blocked media (HTTPS page → HTTP server). Open Vault at http://localhost:4000 or use an HTTPS tunnel.');
+    // Only fires for URLs browsers actually block (non-loopback HTTP).
+    toast.error('Browser blocked HTTP audio on this HTTPS page. Use http://localhost:4000 (allowed by browsers), or serve Vault over HTTPS (npm run generate-cert, or a Cloudflare tunnel).', 'Playback blocked');
     return true;
   }
   return false;

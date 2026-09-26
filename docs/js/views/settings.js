@@ -185,10 +185,10 @@ export function renderSettings(container) {
   
   // API URL
   container.querySelector('#save-api-url').addEventListener('click', () => {
-    const url = container.querySelector('#api-url').value.trim();
+    const url = container.querySelector('#api-url').value.trim().replace(/\/+$/, '');
     if (url) {
       setApiBaseUrl(url);
-      api.baseUrl = url;
+      container.querySelector('#api-url').value = url;
       toast.success(`API URL saved: ${url}`);
     }
   });

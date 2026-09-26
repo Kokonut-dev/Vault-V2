@@ -292,8 +292,10 @@ export function openPlayer(item, { forceTranscode = false } = {}) {
 
   const url = api.getPlaybackUrl(item, { forceTranscode });
   if (api.isMixedContent(url)) {
+    // Only genuinely-blocked URLs reach this point (loopback/localhost URLs are
+    // allowed by browsers and play fine from GitHub Pages).
     showModal(modal);
-    setError('Browser blocked this stream (HTTPS page talking to HTTP server). Open Vault at http://localhost:4000 or use an HTTPS tunnel.', false);
+    setError(api.mixedContentHelp(url), false);
     return;
   }
 

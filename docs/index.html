@@ -77,6 +77,7 @@
         <div class="auth-footer">
           <p>Server: <span id="server-url-display"></span> <button id="change-server-btn" class="btn btn-ghost btn-sm">Change</button></p>
         </div>
+        <div id="mixed-content-warning" class="auth-warning" style="display:none;"></div>
       </div>
       
       <!-- Grid Challenge Step -->
@@ -336,6 +337,23 @@
       border-radius: 10px;
       font-size: 13px;
     }
+    .auth-warning {
+      margin-top: 12px;
+      background: rgba(245,158,11,0.1);
+      border: 1px solid rgba(245,158,11,0.25);
+      color: #F59E0B;
+      padding: 10px 14px;
+      border-radius: 10px;
+      font-size: 12px;
+      line-height: 1.6;
+      word-break: break-word;
+    }
+    .auth-warning code {
+      font-family: var(--font-mono, monospace);
+      background: rgba(245,158,11,0.12);
+      padding: 1px 4px;
+      border-radius: 4px;
+    }
     .auth-footer {
       margin-top: 24px;
       text-align: center;
@@ -446,11 +464,34 @@
         if (newUrl && newUrl.trim()) {
           setApiBaseUrl(newUrl.trim());
           updateServerDisplay();
-          api.baseUrl = newUrl.trim();
+          updateMixedContentWarning();
           toast.info(`Server URL set to ${newUrl.trim()}. Please login again.`);
         }
       });
     }
+
+    // Warn on the login screen when the configured server URL is one the
+    // browser will actually block from this HTTPS page (non-loopback HTTP).
+    // http://localhost / http://127.0.0.1 are allowed by browsers, so no warning.
+    function updateMixedContentWarning() {
+      const box = document.getElementById('mixed-content-warning');
+      if (!box) return;
+      const base = getApiBaseUrl();
+      if (api.isMixedContent(base)) {
+        box.innerHTML = `
+          <strong>⚠ This server URL will be blocked.</strong> Browsers block HTTP media on HTTPS pages
+          (only <code>localhost</code> is allowed).<br>
+          Fixes: use <code>http://localhost:4000</code> if Vault runs on this computer,
+          or give the server HTTPS (<code>npm run generate-cert</code> in <code>server/</code>,
+          enable <code>server.https</code> in config.json), or use an HTTPS tunnel
+          (<code>cloudflared tunnel --url http://localhost:4000</code>).
+        `;
+        box.style.display = 'block';
+      } else {
+        box.style.display = 'none';
+      }
+    }
+    updateMixedContentWarning();
     
     // Auth Gate Logic
     const authGate = document.getElementById('auth-gate');
@@ -531,10 +572,22 @@
         if (gridError) gridError.style.display = 'none';
         
         const result = await authManager.submitGrid(selectedSquares);
-        
+
         if (result.success) {
           toast.success('Welcome to Vault!');
           showApp();
+        } else if (result.code === 'INVALID_CHALLENGE' || result.code === 'NO_CHALLENGE') {
+          // The 5-minute challenge window expired (or was lost) — this is NOT a
+          // wrong pattern. Send the user back to the password step instead of
+          // leaving them stuck on a dead grid.
+          if (gridStep) gridStep.classList.remove('active');
+          if (loginStep) loginStep.classList.add('active');
+          if (loginError) {
+            loginError.textContent = 'Your login session expired — please enter your password again.';
+            loginError.style.display = 'block';
+          }
+          selectedSquares = [];
+          updateGridUI();
         } else {
           if (gridError) {
             gridError.textContent = result.error;

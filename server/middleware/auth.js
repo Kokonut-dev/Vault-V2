@@ -134,4 +134,8 @@ function blacklistToken(token) {
   }
 }
 
-module.exports = { authMiddleware, optionalAuthMiddleware, blacklistToken };
+function isTokenBlacklisted(token) {
+  return blacklist.has(token);
+}
+
+module.exports = { authMiddleware, optionalAuthMiddleware, blacklistToken, isTokenBlacklisted };
