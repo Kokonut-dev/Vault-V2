@@ -318,6 +318,40 @@ class ApiClient {
   health() {
     return this.request('/api/health', { auth: false });
   }
+
+  // Setup / Onboarding
+  getSetupStatus() {
+    return this.request('/api/setup/status', { auth: false });
+  }
+
+  getSetupDefaults() {
+    return this.request('/api/setup/defaults', { auth: false });
+  }
+
+  testSetup(data) {
+    return this.request('/api/setup/test', {
+      method: 'POST',
+      auth: false,
+      body: JSON.stringify(data),
+    });
+  }
+
+  completeSetup(data) {
+    return this.request('/api/setup/complete', {
+      method: 'POST',
+      auth: false,
+      body: JSON.stringify(data),
+    });
+  }
+
+  // For already-setup servers, complete with auth
+  completeSetupAuthed(data) {
+    return this.request('/api/setup/complete', {
+      method: 'POST',
+      auth: true,
+      body: JSON.stringify(data),
+    });
+  }
 }
 
 export const api = new ApiClient();

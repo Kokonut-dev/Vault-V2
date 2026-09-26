@@ -70,6 +70,9 @@ app.get('/api/health', (req, res) => {
   });
 });
 
+// Setup / Onboarding routes (public — handles first-time config)
+app.use('/api/setup', require('./routes/setup'));
+
 // Auth routes (no auth middleware)
 app.use('/api/auth', require('./routes/auth'));
 

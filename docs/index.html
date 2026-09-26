@@ -32,6 +32,7 @@
   <link rel="stylesheet" href="./css/eq.css">
   <link rel="stylesheet" href="./css/animations.css">
   <link rel="stylesheet" href="./css/accessibility.css">
+  <link rel="stylesheet" href="./css/onboarding.css">
   
   <!-- Preconnect for performance -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -42,6 +43,9 @@
   
   <!-- Grain overlay -->
   <div id="grain-overlay" class="grain-overlay" aria-hidden="true"></div>
+
+  <!-- Onboarding Gate (6-step wizard) — injected by JS if setup needed -->
+  <div id="onboarding-host"></div>
   
   <!-- Auth Gate -->
   <div id="auth-gate" class="auth-gate">
@@ -416,30 +420,34 @@
     import { toast } from './js/components/toast.js';
     import { renderSidebar } from './js/components/sidebar.js';
     import { searchModal } from './js/components/searchModal.js';
+    import { onboardingManager } from './js/onboarding.js';
     
     // Initialize
     const serverUrlDisplay = document.getElementById('server-url-display');
     const changeServerBtn = document.getElementById('change-server-btn');
     
     function updateServerDisplay() {
-      serverUrlDisplay.textContent = getApiBaseUrl();
+      if (serverUrlDisplay) serverUrlDisplay.textContent = getApiBaseUrl();
     }
     updateServerDisplay();
     
-    changeServerBtn.addEventListener('click', () => {
-      const current = getApiBaseUrl();
-      const newUrl = prompt('Enter Vault server URL (e.g., http://localhost:4000 or https://your-tunnel.trycloudflare.com)', current);
-      if (newUrl && newUrl.trim()) {
-        setApiBaseUrl(newUrl.trim());
-        updateServerDisplay();
-        api.baseUrl = newUrl.trim();
-        toast.info(`Server URL set to ${newUrl.trim()}. Please login again.`);
-      }
-    });
+    if (changeServerBtn) {
+      changeServerBtn.addEventListener('click', () => {
+        const current = getApiBaseUrl();
+        const newUrl = prompt('Enter Vault server URL (e.g., http://localhost:4000 or https://your-tunnel.trycloudflare.com)', current);
+        if (newUrl && newUrl.trim()) {
+          setApiBaseUrl(newUrl.trim());
+          updateServerDisplay();
+          api.baseUrl = newUrl.trim();
+          toast.info(`Server URL set to ${newUrl.trim()}. Please login again.`);
+        }
+      });
+    }
     
     // Auth Gate Logic
     const authGate = document.getElementById('auth-gate');
     const appEl = document.getElementById('app');
+    const onboardingHost = document.getElementById('onboarding-host');
     const loginStep = document.getElementById('login-step');
     const gridStep = document.getElementById('grid-step');
     const loginForm = document.getElementById('login-form');
@@ -453,6 +461,7 @@
     let selectedSquares = [];
     
     function initGrid() {
+      if (!gridContainer) return;
       gridContainer.innerHTML = '';
       selectedSquares = [];
       for (let i = 0; i < 16; i++) {
@@ -490,74 +499,91 @@
     }
     
     function updateGridUI() {
+      if (!gridContainer) return;
       gridContainer.querySelectorAll('.grid-square').forEach(el => {
         const i = parseInt(el.dataset.index, 10);
         el.classList.toggle('selected', selectedSquares.includes(i));
       });
-      gridCount.textContent = `${selectedSquares.length} / 8 selected`;
-      gridSubmit.disabled = selectedSquares.length !== 8;
+      if (gridCount) gridCount.textContent = `${selectedSquares.length} / 8 selected`;
+      if (gridSubmit) gridSubmit.disabled = selectedSquares.length !== 8;
     }
     
-    gridClear.addEventListener('click', () => {
-      selectedSquares = [];
-      updateGridUI();
-    });
-    
-    gridSubmit.addEventListener('click', async () => {
-      if (selectedSquares.length !== 8) return;
-      gridSubmit.disabled = true;
-      gridSubmit.textContent = 'Verifying...';
-      gridError.style.display = 'none';
-      
-      const result = await authManager.submitGrid(selectedSquares);
-      
-      if (result.success) {
-        toast.success('Welcome to Vault!');
-        showApp();
-      } else {
-        gridError.textContent = result.error;
-        gridError.style.display = 'block';
+    if (gridClear) {
+      gridClear.addEventListener('click', () => {
         selectedSquares = [];
         updateGridUI();
-        // Shake animation
-        gridContainer.style.animation = 'shake 0.4s ease-out';
-        setTimeout(() => gridContainer.style.animation = '', 400);
-      }
-      
-      gridSubmit.disabled = false;
-      gridSubmit.textContent = 'Unlock Vault';
-    });
+      });
+    }
     
-    loginForm.addEventListener('submit', async (e) => {
-      e.preventDefault();
-      const username = document.getElementById('username').value.trim();
-      const password = document.getElementById('password').value;
-      
-      const btn = document.getElementById('login-btn');
-      btn.disabled = true;
-      btn.textContent = 'Checking...';
-      loginError.style.display = 'none';
-      
-      const result = await authManager.login(username, password);
-      
-      if (result.success) {
-        loginStep.classList.remove('active');
-        gridStep.classList.add('active');
-        initGrid();
-      } else {
-        loginError.textContent = result.error;
-        loginError.style.display = 'block';
-      }
-      
-      btn.disabled = false;
-      btn.textContent = 'Continue';
-    });
+    if (gridSubmit) {
+      gridSubmit.addEventListener('click', async () => {
+        if (selectedSquares.length !== 8) return;
+        gridSubmit.disabled = true;
+        gridSubmit.textContent = 'Verifying...';
+        if (gridError) gridError.style.display = 'none';
+        
+        const result = await authManager.submitGrid(selectedSquares);
+        
+        if (result.success) {
+          toast.success('Welcome to Vault!');
+          showApp();
+        } else {
+          if (gridError) {
+            gridError.textContent = result.error;
+            gridError.style.display = 'block';
+          }
+          selectedSquares = [];
+          updateGridUI();
+          // Shake animation
+          if (gridContainer) {
+            gridContainer.style.animation = 'shake 0.4s ease-out';
+            setTimeout(() => gridContainer.style.animation = '', 400);
+          }
+        }
+        
+        gridSubmit.disabled = false;
+        gridSubmit.textContent = 'Unlock Vault';
+      });
+    }
+    
+    if (loginForm) {
+      loginForm.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const username = document.getElementById('username').value.trim();
+        const password = document.getElementById('password').value;
+        
+        const btn = document.getElementById('login-btn');
+        if (btn) {
+          btn.disabled = true;
+          btn.textContent = 'Checking...';
+        }
+        if (loginError) loginError.style.display = 'none';
+        
+        const result = await authManager.login(username, password);
+        
+        if (result.success) {
+          if (loginStep) loginStep.classList.remove('active');
+          if (gridStep) gridStep.classList.add('active');
+          initGrid();
+        } else {
+          if (loginError) {
+            loginError.textContent = result.error;
+            loginError.style.display = 'block';
+          }
+        }
+        
+        if (btn) {
+          btn.disabled = false;
+          btn.textContent = 'Continue';
+        }
+      });
+    }
     
     async function checkAuth() {
       const token = localStorage.getItem('vault_token');
       if (!token) {
-        authGate.style.display = 'flex';
-        appEl.style.display = 'none';
+        if (authGate) authGate.style.display = 'flex';
+        if (appEl) appEl.style.display = 'none';
         return false;
       }
       
@@ -569,15 +595,37 @@
         }
       } catch {}
       
-      authGate.style.display = 'flex';
-      appEl.style.display = 'none';
+      if (authGate) authGate.style.display = 'flex';
+      if (appEl) appEl.style.display = 'none';
       return false;
     }
     
     function showApp() {
-      authGate.style.display = 'none';
-      appEl.style.display = 'flex';
+      if (authGate) authGate.style.display = 'none';
+      if (appEl) appEl.style.display = 'flex';
+      // Hide onboarding if still present
+      const obGate = document.getElementById('onboarding-gate');
+      if (obGate) obGate.remove();
       initApp();
+    }
+
+    function showAuthGate() {
+      if (authGate) authGate.style.display = 'flex';
+      if (appEl) appEl.style.display = 'none';
+      const obGate = document.getElementById('onboarding-gate');
+      if (obGate) obGate.remove();
+      if (loginStep) {
+        loginStep.classList.add('active');
+        gridStep.classList.remove('active');
+      }
+    }
+
+    function showOnboarding() {
+      if (authGate) authGate.style.display = 'none';
+      if (appEl) appEl.style.display = 'none';
+      if (onboardingHost) {
+        onboardingManager.render(onboardingHost);
+      }
     }
     
     async function initApp() {
@@ -606,13 +654,14 @@
         console.warn('Failed to load library:', err.message);
         if (err.message.includes('Cannot connect')) {
           toast.error(err.message);
-          document.getElementById('connection-status').style.display = 'block';
+          const connStatus = document.getElementById('connection-status');
+          if (connStatus) connStatus.style.display = 'block';
         }
       }
       
       // Mobile menu
       const mobileBtn = document.getElementById('mobile-menu-btn');
-      if (window.innerWidth <= 1024) {
+      if (mobileBtn && window.innerWidth <= 1024) {
         mobileBtn.style.display = 'flex';
         mobileBtn.addEventListener('click', () => {
           window.dispatchEvent(new CustomEvent('vault:toggle-sidebar'));
@@ -620,17 +669,26 @@
       }
       
       // Header actions
-      document.getElementById('search-trigger').addEventListener('click', () => {
-        window.dispatchEvent(new CustomEvent('vault:open-search'));
-      });
+      const searchTrigger = document.getElementById('search-trigger');
+      if (searchTrigger) {
+        searchTrigger.addEventListener('click', () => {
+          window.dispatchEvent(new CustomEvent('vault:open-search'));
+        });
+      }
       
-      document.getElementById('theme-toggle').addEventListener('click', () => {
-        themeManager.toggleTheme();
-      });
+      const themeToggle = document.getElementById('theme-toggle');
+      if (themeToggle) {
+        themeToggle.addEventListener('click', () => {
+          themeManager.toggleTheme();
+        });
+      }
       
-      document.getElementById('shortcuts-btn').addEventListener('click', () => {
-        window.dispatchEvent(new CustomEvent('vault:show-shortcuts'));
-      });
+      const shortcutsBtn = document.getElementById('shortcuts-btn');
+      if (shortcutsBtn) {
+        shortcutsBtn.addEventListener('click', () => {
+          window.dispatchEvent(new CustomEvent('vault:show-shortcuts'));
+        });
+      }
       
       // Logout
       window.addEventListener('vault:logout', async () => {
@@ -639,31 +697,54 @@
       
       // Auth required
       window.addEventListener('vault:auth-required', () => {
-        authGate.style.display = 'flex';
-        appEl.style.display = 'none';
-        loginStep.classList.add('active');
-        gridStep.classList.remove('active');
+        showAuthGate();
+      });
+
+      // Onboarding events
+      window.addEventListener('vault:onboarding-complete', (e) => {
+        console.log('Onboarding complete', e.detail);
+        // If we got token, go straight to app, else check auth
+        if (e.detail && e.detail.token) {
+          showApp();
+        } else {
+          checkAuth();
+        }
+      });
+
+      window.addEventListener('vault:onboarding-complete-no-token', () => {
+        showAuthGate();
+        toast.info('Setup complete — please login with your new credentials');
+      });
+
+      window.addEventListener('vault:onboarding-skipped', () => {
+        showAuthGate();
       });
       
       // Connection status
       window.addEventListener('vault:online', () => {
-        document.getElementById('connection-status').style.display = 'none';
+        const connStatus = document.getElementById('connection-status');
+        if (connStatus) connStatus.style.display = 'none';
         toast.success('Back online');
       });
       window.addEventListener('vault:offline', () => {
-        document.getElementById('connection-status').style.display = 'block';
+        const connStatus = document.getElementById('connection-status');
+        if (connStatus) connStatus.style.display = 'block';
       });
-      document.getElementById('retry-connection').addEventListener('click', async () => {
-        try {
-          await api.health();
-          document.getElementById('connection-status').style.display = 'none';
-          toast.success('Server connected');
-          const data = await api.getLibrary({ limit: 1000 });
-          store.setLibrary(data.items || []);
-        } catch (err) {
-          toast.error('Still cannot connect to server');
-        }
-      });
+      const retryBtn = document.getElementById('retry-connection');
+      if (retryBtn) {
+        retryBtn.addEventListener('click', async () => {
+          try {
+            await api.health();
+            const connStatus = document.getElementById('connection-status');
+            if (connStatus) connStatus.style.display = 'none';
+            toast.success('Server connected');
+            const data = await api.getLibrary({ limit: 1000 });
+            store.setLibrary(data.items || []);
+          } catch (err) {
+            toast.error('Still cannot connect to server');
+          }
+        });
+      }
       
       // Init players
       const { initAudioPlayer } = await import('./js/components/audioPlayer.js');
@@ -765,11 +846,72 @@
     `;
     document.head.appendChild(style);
     
-    // Start
-    checkAuth();
+    // Start — check onboarding first, then auth
+    async function start() {
+      // Show loading state? Hide both initially
+      if (authGate) authGate.style.display = 'none';
+      if (appEl) appEl.style.display = 'none';
+
+      // Try to determine if setup is needed
+      try {
+        const status = await api.getSetupStatus();
+        if (status.needsSetup) {
+          console.log('Setup required, showing onboarding wizard');
+          showOnboarding();
+          // Listen for onboarding complete even before initApp
+          window.addEventListener('vault:onboarding-complete', (e) => {
+            console.log('Onboarding complete event', e.detail);
+            if (e.detail && e.detail.token) {
+              showApp();
+            } else {
+              checkAuth();
+            }
+          });
+          window.addEventListener('vault:onboarding-complete-no-token', () => {
+            showAuthGate();
+          });
+          window.addEventListener('vault:onboarding-skipped', () => {
+            showAuthGate();
+          });
+          return;
+        }
+      } catch (err) {
+        console.warn('Could not check setup status:', err.message);
+        // If no token and server unreachable, show onboarding in connection mode to help user
+        const token = localStorage.getItem('vault_token');
+        if (!token) {
+          // Check if we should show onboarding as fallback for first-time users
+          // Only if api base url is default localhost and we failed — show onboarding
+          const isLocalhost = getApiBaseUrl().includes('localhost') || getApiBaseUrl().includes('127.0.0.1');
+          if (isLocalhost) {
+            console.log('No token and server unreachable — showing onboarding for connection help');
+            showOnboarding();
+            window.addEventListener('vault:onboarding-complete', (e) => {
+              if (e.detail && e.detail.token) showApp();
+              else checkAuth();
+            });
+            window.addEventListener('vault:onboarding-complete-no-token', () => showAuthGate());
+            window.addEventListener('vault:onboarding-skipped', () => showAuthGate());
+            return;
+          }
+        }
+      }
+
+      // Normal flow — check auth
+      await checkAuth();
+
+      // Setup onboarding listeners for later (if user manually triggers via settings?)
+      window.addEventListener('vault:onboarding-complete', (e) => {
+        if (e.detail && e.detail.token) showApp();
+      });
+      window.addEventListener('vault:onboarding-complete-no-token', () => showAuthGate());
+      window.addEventListener('vault:onboarding-skipped', () => showAuthGate());
+    }
+
+    start();
     
     // Expose for debugging
-    window.Vault = { store, api, router, authManager, themeManager, toast };
+    window.Vault = { store, api, router, authManager, themeManager, toast, onboardingManager };
   </script>
 </body>
 </html>
