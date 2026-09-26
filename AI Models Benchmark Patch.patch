@@ -1,0 +1,5551 @@
+diff --git a/.github/workflows/deploy.yml b/.github/workflows/deploy.yml
+new file mode 100644
+index 0000000..6bb9d8c
+--- /dev/null
++++ b/.github/workflows/deploy.yml
+@@ -0,0 +1,56 @@
++name: Deploy Vault to GitHub Pages
++
++on:
++  push:
++    branches: [main, master]
++  workflow_dispatch:
++
++permissions:
++  contents: read
++  pages: write
++  id-token: write
++
++concurrency:
++  group: "pages"
++  cancel-in-progress: false
++
++jobs:
++  deploy:
++    environment:
++      name: github-pages
++      url: ${{ steps.deployment.outputs.page_url }}
++    runs-on: ubuntu-latest
++    steps:
++      - name: Checkout
++        uses: actions/checkout@v4
++
++      - name: Setup Node.js
++        uses: actions/setup-node@v4
++        with:
++          node-version: 20
++
++      - name: Verify frontend structure
++        run: |
++          echo "Checking docs folder..."
++          ls -la docs/
++          test -f docs/index.html || (echo "docs/index.html missing!" && exit 1)
++          test -f docs/config.js || (echo "docs/config.js missing!" && exit 1)
++          echo "Frontend structure OK"
++
++      - name: Optional build step (minify if needed)
++        run: |
++          # No build required for vanilla JS, but we can minify CSS/JS optionally
++          # For now, just ensure files exist
++          echo "No build step required - vanilla JS SPA"
++
++      - name: Setup Pages
++        uses: actions/configure-pages@v5
++
++      - name: Upload artifact
++        uses: actions/upload-pages-artifact@v3
++        with:
++          path: './docs'
++
++      - name: Deploy to GitHub Pages
++        id: deployment
++        uses: actions/deploy-pages@v4
+diff --git a/.gitignore b/.gitignore
+new file mode 100644
+index 0000000..330a3fd
+--- /dev/null
++++ b/.gitignore
+@@ -0,0 +1,51 @@
++# Dependencies
++node_modules/
++package-lock.json
++yarn.lock
++
++# Server runtime data
++server/data/
++server/cache/
++server/media/
++server/uploads/
++!server/data/.gitkeep
++!server/cache/.gitkeep
++!server/media/movies/.gitkeep
++!server/media/music/.gitkeep
++!server/media/videos/.gitkeep
++!server/uploads/.gitkeep
++
++# Server config (contains secrets)
++server/config.json
++server/.env
++
++# OS
++.DS_Store
++Thumbs.db
++
++# Logs
++logs/
++*.log
++npm-debug.log*
++
++# Editor
++.vscode/
++.idea/
++*.swp
++*.swo
++
++# Build
++dist/
++build/
++.next/
++out/
++
++# Env
++.env.local
++.env.development.local
++.env.test.local
++.env.production.local
++
++# Misc
++.cache/
++coverage/
+diff --git a/ARCHITECTURE.md b/ARCHITECTURE.md
+new file mode 100644
+index 0000000..07a5acd
+--- /dev/null
++++ b/ARCHITECTURE.md
+@@ -0,0 +1,578 @@
++# Vault — Architecture & Planning
++
++## 1.1 System Architecture
++
++### Overview
++Vault is a split architecture:
++- **Front-end**: Static site hosted on GitHub Pages (or any static host). Pure client-side SPA, no SSR. All UI, playback, EQ, search, theming, auth gate live here.
++- **Back-end**: Lightweight Node.js local server that user runs on their machine/NAS. Handles file scanning, metadata, transcoding, uploads, auth validation, API.
++
++```
++┌─────────────────────────────────┐         HTTPS (via config)         ┌─────────────────────────────┐
++│   GitHub Pages (Static SPA)     │  ───────────────────────────────►  │  Local Server (Node.js)     │
++│                                 │  ◄───────────────────────────────  │  Express + ffmpeg + etc     │
++│  - Auth gate (login + grid)     │   JSON API / Media Streams         │  - /api/auth/*              │
++│  - Router, UI, themes           │                                    │  - /api/library/*           │
++│  - Video player (custom)        │                                    │  - /api/media/* (stream)    │
++│  - Audio player + EQ (WebAudio) │                                    │  - /api/upload/*            │
++│  - Search (Fuse.js + modal)     │                                    │  - /api/transcode/*         │
++│  - PWA / Service Worker         │                                    │  - File watcher (chokidar)  │
++└─────────────────────────────────┘                                    │  - Index DB (JSON/SQLite)   │
++                                                                       │  - Metadata extractors      │
++                                                                       │  - Auth + rate limit + CORS │
++                                                                       └─────────────────────────────┘
++                                                                                │
++                                                                                ▼
++                                                                       ┌─────────────────┐
++                                                                       │  User Media Dirs │
++                                                                       │  /Movies, /Music, │
++                                                                       │  /Videos, thumbs, │
++                                                                       │  covers, subs     │
++                                                                       └─────────────────┘
++```
++
++### Front-end ↔ Back-end Communication
++
++**Config:**
++- `docs/config.js` exposes `window.VAULT_CONFIG = { apiBaseUrl: 'http://localhost:4000', appName: 'Vault', version: '2.0.0' }`
++- User edits this file OR sets via Settings UI (stored in localStorage overriding default).
++- For GitHub Pages HTTPS → HTTP issue, README recommends:
++  1. `mkcert` to generate trusted local HTTPS cert and run server on HTTPS.
++  2. OR Cloudflare Tunnel / ngrok to get public HTTPS URL.
++  3. OR run front-end locally via `npx serve docs` for pure HTTP dev.
++
++**API Transport:**
++- REST JSON over fetch. All endpoints prefixed `/api`.
++- Auth: `Authorization: Bearer <token>` header. Token stored in localStorage after login+grid.
++- Media streaming: `/api/media/stream/:id` returns file with Range support (206 Partial Content) for seeking.
++- Transcoding: `/api/media/transcode/:id?quality=720p&format=mp4` returns ffmpeg on-the-fly stream with `Transfer-Encoding: chunked`, `Content-Type: video/mp4`.
++- Upload: multipart/form-data via `/api/upload/:type` (movie/music/video).
++- WebSocket optional: For real-time library updates, use Server-Sent Events (simpler) at `/api/events`. Front-end EventSource.
++
++**CORS:**
++- Server reads `CORS_ORIGINS` from config (default: `https://kokonut-dev.github.io,http://localhost:3000,http://localhost:5173,http://127.0.0.1:*`).
++- Helmet CSP: `default-src 'self'; connect-src 'self' <apiBaseUrl>; media-src 'self' <apiBaseUrl> blob:; img-src 'self' <apiBaseUrl> data: blob:; style-src 'self' 'unsafe-inline'; script-src 'self'`
++
++### Front-end Architecture (SPA)
++
++**No framework? Decision: Vanilla JS + lightweight router + Web Components-ish pattern for maintainability, but structured as modules.**
++
++- Why vanilla: Zero build step required for GitHub Pages simplicity, small bundle, full control. Can add esbuild later if needed.
++- Structure: ES modules, imported via `<script type="module">`.
++- Router: Hash-based or History API with fallback. Use History API (`/`, `/movies`, `/music`, etc.) with 404.html redirect hack for GitHub Pages SPA.
++- State: Central store (pub/sub) in `js/store.js` — holds auth, library, player state, queue, settings, theme.
++- Components: Each UI piece is a function returning DOM or class with mount/unmount.
++
++**Key modules:**
++- `js/app.js` — entry, init auth gate, router, theme, grain, glass, service worker.
++- `js/auth.js` — login flow, grid challenge, token handling, brute-force UI.
++- `js/router.js` — route definitions, guards.
++- `js/store.js` — global state, localStorage persistence.
++- `js/api.js` — fetch wrapper with auth, error handling, retry.
++- `js/components/*` — sidebar, search modal, video player, audio player, EQ, etc.
++- `js/views/*` — home, movies, music, videos, playlists, upload, settings, detail pages.
++- `js/utils/*` — fuzzy search (Fuse.js vendored or CDN), formatters, keyboard shortcuts, lazy loader, etc.
++- `css/*` — themes, components, glass, grain, animations.
++
++### Back-end Architecture (Node.js)
++
++**Stack:**
++- Node.js 18+, Express 4.x
++- `bcryptjs` for password hashing (pure JS, no native)
++- `jsonwebtoken` for JWT
++- `express-rate-limit`, `helmet`, `cors`, `multer` for uploads, `validator` for sanitization
++- `chokidar` for file watching
++- `music-metadata` for audio tags
++- `fluent-ffmpeg` + `ffmpeg-static` + `ffprobe-static` for metadata & transcoding (fallback to system ffmpeg if available)
++- `sharp` for image resizing (optional, fallback to no resize)
++- `lowdb` or custom JSON DB for index (avoid native deps like better-sqlite3 for broad compatibility; provide SQLite option via config)
++- `mime-types`, `fs-extra`
++
++**Processes:**
++- Main Express server
++- Scanner: On startup + file watcher events, scans media dirs, extracts metadata, updates index JSON (`server/data/library.json`)
++- Transcoder: On-demand ffmpeg processes, LRU cache of transcoded segments in `server/cache/`
++- Thumbnail generator: Generates thumbnails for videos on scan
++
++**Data:**
++- `server/config.json` — user-editable: credentials hash, grid pattern, media paths, port, CORS, session timeout, etc.
++- `server/data/library.json` — index DB
++- `server/data/users.json` — attempts tracking for brute-force
++- `server/media/` — default media dirs (if user doesn't configure external)
++- `server/cache/` — transcoded files, thumbnails, covers
++- `server/uploads/` — temp upload staging
++
++---
++
++## 1.2 Repository Structure
++
++```
++Vault-V2/
++├── README.md
++├── RESEARCH.md
++├── ARCHITECTURE.md
++├── CHANGELOG.md
++├── LICENSE
++├── .gitignore
++├── CNAME (placeholder)
++├── docs/                           # GitHub Pages front-end (static)
++│   ├── index.html                  # Entry HTML
++│   ├── 404.html                    # SPA fallback for GitHub Pages
++│   ├── manifest.json               # PWA manifest
++│   ├── sw.js                       # Service worker
++│   ├── config.js                   # User-editable API base URL config
++│   ├── favicon.svg
++│   ├── css/
++│   │   ├── reset.css
++│   │   ├── variables.css           # CSS custom properties + themes
++│   │   ├── themes.css              # Dark, Light, Warm, Cold definitions
++│   │   ├── glass.css               # Frosted glass effects
++│   │   ├── grain.css               # Grain texture
++│   │   ├── layout.css              # Sidebar, main, responsive
++│   │   ├── components.css          # Cards, buttons, modals, etc.
++│   │   ├── player.css              # Video + audio player UI
++│   │   ├── eq.css                  # EQ UI
++│   │   ├── search.css              # Command palette
++│   │   ├── animations.css          # Transitions, skeletons
++│   │   └── accessibility.css
++│   ├── js/
++│   │   ├── app.js                  # Entry
++│   │   ├── config.js               # Config loader (reads window.VAULT_CONFIG)
++│   │   ├── auth.js
++│   │   ├── router.js
++│   │   ├── store.js
++│   │   ├── api.js
++│   │   ├── themes.js
++│   │   ├── effects.js              # Glass + grain sliders
++│   │   ├── keyboard.js             # Shortcuts
++│   │   ├── pwa.js
++│   │   ├── components/
++│   │   │   ├── sidebar.js
++│   │   │   ├── toast.js
++│   │   │   ├── modal.js
++│   │   │   ├── searchModal.js
++│   │   │   ├── videoPlayer.js
++│   │   │   ├── audioPlayer.js
++│   │   │   ├── miniPlayer.js
++│   │   │   ├── eqPanel.js
++│   │   │   ├── uploadModal.js
++│   │   │   ├── mediaCard.js
++│   │   │   ├── mediaGrid.js
++│   │   │   ├── mediaList.js
++│   │   │   ├── detailView.js
++│   │   │   ├── metadataEditor.js
++│   │   │   ├── collections.js
++│   │   │   └── shortcutsPanel.js
++│   │   ├── views/
++│   │   │   ├── home.js
++│   │   │   ├── movies.js
++│   │   │   ├── music.js
++│   │   │   ├── videos.js
++│   │   │   ├── playlists.js
++│   │   │   ├── favourites.js
++│   │   │   ├── history.js
++│   │   │   ├── upload.js
++│   │   │   ├── settings.js
++│   │   │   └── login.js
++│   │   └── utils/
++│   │       ├── fuse.js             # Vendored Fuse.js (fuzzy search)
++│   │       ├── format.js           # Time, size, etc.
++│   │       ├── lazyLoad.js         # IntersectionObserver
++│   │       ├── validators.js
++│   │       └── constants.js
++│   └── assets/
++│       ├── grain.png               # Tiny noise texture (base64 or file)
++│       ├── icons/                  # SVG icons
++│       └── images/                 # Placeholder posters
++├── server/
++│   ├── package.json
++│   ├── README.md                   # Server-specific setup
++│   ├── index.js                    # Entry, Express setup
++│   ├── config.js                   # Config loader + defaults
++│   ├── config.example.json         # Example user config
++│   ├── .env.example
++│   ├── middleware/
++│   │   ├── auth.js                 # JWT validation
++│   │   ├── rateLimiter.js
++│   │   ├── cors.js
++│   │   └── errorHandler.js
++│   ├── routes/
++│   │   ├── auth.js                 # /api/auth/*
++│   │   ├── library.js              # /api/library/*
++│   │   ├── media.js                # /api/media/*
++│   │   ├── upload.js               # /api/upload/*
++│   │   ├── playlists.js
++│   │   ├── transcode.js
++│   │   └── settings.js
++│   ├── services/
++│   │   ├── scanner.js              # Directory scanning + file watcher
++│   │   ├── metadata.js             # music-metadata + ffprobe
++│   │   ├── transcoder.js           # ffmpeg on-the-fly
++│   │   ├── thumbnail.js            # Video thumbs + cover art
++│   │   ├── library.js              # Index DB CRUD
++│   │   └── authService.js
++│   ├── data/                       # Created at runtime, gitignored
++│   │   └── .gitkeep
++│   ├── cache/                      # Transcoded cache, gitignored
++│   │   └── .gitkeep
++│   ├── media/                      # Default media folders
++│   │   ├── movies/
++│   │   ├── music/
++│   │   └── videos/
++│   └── utils/
++│       ├── fileUtils.js
++│       ├── logger.js
++│       └── validators.js
++├── .github/
++│   └── workflows/
++│       └── deploy.yml              # GitHub Pages deploy
++└── scripts/
++    ├── setup.js                    # Interactive setup for server config
++    └── generate-cert.js            # mkcert helper
++```
++
++---
++
++## 1.3 Technology Stack
++
++### Front-end (docs/)
++- **Language**: HTML5, CSS3 (custom properties), JavaScript ES2022 (modules)
++- **No heavy framework**: Vanilla JS for zero build, fast load, full control. If needed, use lightweight `lit` or `preact` but decision is vanilla for now.
++- **Libraries (vendored/CDN)**:
++  - Fuse.js 7.x — fuzzy search, 10KB gzipped
++  - No jQuery, no Bootstrap
++- **Web APIs**:
++  - Web Audio API — EQ, compressor, reverb, analyser, crossfade
++  - Media Source Extensions (optional) for advanced streaming
++  - Picture-in-Picture API, Fullscreen API
++  - IntersectionObserver for lazy loading
++  - Service Worker + Cache API for PWA
++  - Media Session API for lock screen controls
++  - Web Animations API for smooth transitions
++- **CSS**:
++  - Custom properties for theming
++  - backdrop-filter for glass
++  - CSS Grid + Flexbox for layout
++  - clamp(), aspect-ratio, :has() where supported
++  - prefers-reduced-motion, prefers-color-scheme
++- **Build**: None required for dev, but GitHub Actions can run esbuild for minification if desired. Keep simple: no build for v1.
++
++### Back-end (server/)
++- **Runtime**: Node.js 18+ (LTS)
++- **Framework**: Express 4.x
++- **Auth**: bcryptjs (hash), jsonwebtoken (JWT)
++- **Security**: helmet, express-rate-limit, cors, validator, DOMPurify (if needed)
++- **File handling**: multer, chokidar, fs-extra, mime-types
++- **Metadata**: music-metadata (audio), fluent-ffmpeg + ffmpeg-static + ffprobe-static (video/audio probe & transcode)
++- **Images**: sharp (optional, fallback if not installed)
++- **DB**: JSON file via lowdb-like custom (no native deps). Optionally better-sqlite3 if user enables.
++- **Utils**: dotenv for env, morgan for logging
++
++### Codecs / Playback
++- **Audio native**: MP3, AAC, FLAC (modern browsers), WAV, OGG Vorbis, OPUS, M4A/ALAC (Safari + Chrome)
++- **Audio transcode fallback**: Server transcodes WMA, AIFF, DSD, etc. → Opus 128k or AAC 256k via ffmpeg
++- **Video native**: MP4 H.264 (universal), WebM VP8/VP9 (Chrome/Firefox), AV1 (Chrome/Firefox/Safari 16+), HEVC H.265 (Safari, Chrome 107+ HW)
++- **Video transcode fallback**: MKV, AVI, MOV, WMV, FLV → H.264/AAC fragmented MP4 (`-movflags frag_keyframe+empty_moov -preset veryfast -crf 23`)
++- **Subtitles**: SRT, VTT, ASS/SSA → VTT conversion via ffmpeg or custom parser, served as TextTrack
++
++### Dev Tools
++- **GitHub Actions**: Deploy docs/ to Pages
++- **Lint**: ESLint optional
++- **Package manager**: npm
++
++---
++
++## 1.4 API Specification
++
++Base URL: `http://localhost:4000` (configurable via `config.js`)
++
++All responses JSON unless streaming media. Errors: `{ error: string, code: string, details?: any }`
++
++### Auth
++
++#### POST /api/auth/login
++- **Body**: `{ username: string, password: string }`
++- **Response 200**: `{ challengeToken: string, message: "Grid challenge required" }` OR if grid disabled (not recommended): `{ token: string, expiresAt: ISO }`
++- **Response 401**: `{ error: "Invalid credentials" }`
++- **Rate limit**: 5 req / 15 min per IP (brute-force protection)
++- **Notes**: Validates username/password against bcrypt hash in config. Issues short-lived challengeToken (5 min) for grid step.
++
++#### POST /api/auth/grid
++- **Body**: `{ challengeToken: string, pattern: number[] }` — pattern is array of 8 indices 0-15 (order matters? Configurable; default order matters for security)
++- **Response 200**: `{ token: string, expiresAt: ISO, user: { username } }` — JWT valid for configurable timeout (default 24h)
++- **Response 401**: `{ error: "Invalid grid pattern" }`
++- **Rate limit**: Same bucket as login.
++
++#### POST /api/auth/logout
++- **Headers**: Authorization Bearer
++- **Response 200**: `{ message: "Logged out" }`
++- **Notes**: Server blacklists token (in-memory) until expiry.
++
++#### GET /api/auth/verify
++- **Headers**: Authorization Bearer
++- **Response 200**: `{ valid: true, user, expiresAt }`
++- **Response 401**: `{ valid: false }`
++
++### Library
++
++#### GET /api/library
++- **Headers**: Auth
++- **Query**: `?type=movie|music|video|all&search=&genre=&year=&sort=title|dateAdded|year|rating|duration|size&order=asc|desc&page=1&limit=50`
++- **Response 200**: `{ items: MediaItem[], total: number, page, limit }`
++
++#### GET /api/library/:id
++- **Headers**: Auth
++- **Response 200**: `MediaItem` full with metadata, technical info, file path (sanitized)
++
++#### PUT /api/library/:id
++- **Headers**: Auth
++- **Body**: Partial MediaItem metadata (title, artist, album, genre, year, description, rating, etc.)
++- **Response 200**: Updated MediaItem
++- **Notes**: Updates index, not file tags (optional: write ID3 if audio).
++
++#### DELETE /api/library/:id
++- **Headers**: Auth
++- **Query**: `?deleteFile=true|false` — if true, deletes file from disk
++- **Response 200**: `{ message: "Deleted" }`
++
++#### GET /api/library/stats
++- **Headers**: Auth
++- **Response 200**: `{ totalMovies, totalMusic, totalVideos, totalSize, recentlyAdded: MediaItem[] }`
++
++#### GET /api/library/genres
++- **Headers**: Auth
++- **Response 200**: `{ genres: string[] }`
++
++#### GET /api/library/search
++- **Headers**: Auth
++- **Query**: `?q=string`
++- **Response 200**: `{ results: { movies: [], music: [], videos: [] }, query }` — server-side fallback search, but primary search is client-side Fuse.js on full library.
++
++### Media Streaming
++
++#### GET /api/media/stream/:id
++- **Headers**: Auth (or token query param `?token=` for <video> src which can't set headers — validate query token)
++- **Response 200/206**: File stream with `Accept-Ranges: bytes`, `Content-Type` mime, supports Range header
++- **Notes**: Uses fs.createReadStream with range.
++
++#### GET /api/media/cover/:id
++- **Headers**: Auth OR query token
++- **Response 200**: Image file (jpg/png) — cover art extracted
++
++#### GET /api/media/thumbnail/:id
++- **Headers**: Auth OR query token
++- **Query**: `?time=10` — seconds for thumbnail (optional)
++- **Response 200**: JPG thumbnail
++
++#### GET /api/media/subtitle/:id/:subtitleId
++- **Headers**: Auth OR query token
++- **Response 200**: VTT file (converted if needed)
++
++#### GET /api/media/info/:id
++- **Headers**: Auth
++- **Response 200**: `{ codec, bitrate, sampleRate, resolution, fileSize, filePath, duration, etc. }` — ffprobe data
++
++### Transcoding
++
++#### GET /api/media/transcode/:id
++- **Headers**: Auth OR query token
++- **Query**: `?quality=1080p|720p|480p|original&format=mp4|webm&audioCodec=aac|opus`
++- **Response 200**: Chunked transcoded stream, `Content-Type: video/mp4`, `Transfer-Encoding: chunked`
++- **Notes**: Spawns ffmpeg, pipes stdout to response. Cache key based on id+quality+format.
++
++#### GET /api/media/transcode/audio/:id
++- **Query**: `?codec=opus|aac|mp3&bitrate=128|256|320`
++- **Response 200**: Transcoded audio stream
++
++### Upload
++
++#### POST /api/upload/:type
++- **Params**: type = movie|music|video
++- **Headers**: Auth
++- **Body**: multipart/form-data
++  - `file`: File (or multiple files via `files[]`)
++  - `metadata`: JSON string with title, year, genre, etc.
++  - `cover`: Optional image file
++  - `subtitle`: Optional subtitle file
++- **Response 200**: `{ items: MediaItem[], message: "Upload complete" }`
++- **Notes**: Saves to appropriate dir structure, triggers scanner to index.
++
++#### GET /api/upload/progress/:uploadId
++- **Headers**: Auth
++- **Response 200**: `{ progress: 0-100, status }` — for large files, if using chunked upload. Simple version uses multer progress via frontend XHR.
++
++### Playlists / Collections / Favourites / History
++
++#### GET /api/playlists
++- **Headers**: Auth
++- **Response 200**: `{ playlists: Playlist[] }`
++
++#### POST /api/playlists
++- **Headers**: Auth
++- **Body**: `{ name, description, type: 'playlist'|'collection', items: id[] }`
++- **Response 200**: Playlist
++
++#### GET /api/playlists/:id
++- **Headers**: Auth
++- **Response 200**: Playlist with items expanded
++
++#### PUT /api/playlists/:id
++- **Headers**: Auth
++- **Body**: Partial playlist
++- **Response 200**: Updated
++
++#### DELETE /api/playlists/:id
++- **Headers**: Auth
++- **Response 200**: Deleted
++
++#### POST /api/playlists/:id/items
++- **Headers**: Auth
++- **Body**: `{ itemId }`
++- **Response 200**: Updated playlist
++
++#### DELETE /api/playlists/:id/items/:itemId
++- **Headers**: Auth
++- **Response 200**: Updated
++
++#### GET /api/favourites
++- **Headers**: Auth
++- **Response 200**: `{ items: MediaItem[] }`
++
++#### POST /api/favourites/:id
++- **Headers**: Auth
++- **Response 200**: { favourited: true }
++
++#### DELETE /api/favourites/:id
++- **Headers**: Auth
++- **Response 200**: { favourited: false }
++
++#### GET /api/history
++- **Headers**: Auth
++- **Response 200**: `{ history: HistoryItem[] }` — each with itemId, watchedAt, progress
++
++#### POST /api/history
++- **Headers**: Auth
++- **Body**: `{ itemId, progress, duration, completed }`
++- **Response 200**: HistoryItem
++
++#### DELETE /api/history
++- **Headers**: Auth
++- **Response 200**: Cleared
++
++### Settings
++
++#### GET /api/settings
++- **Headers**: Auth
++- **Response 200**: Server settings (media paths, etc., excluding secrets)
++
++#### PUT /api/settings
++- **Headers**: Auth
++- **Body**: Partial settings (media paths, session timeout, etc.)
++- **Response 200**: Updated settings
++
++#### PUT /api/settings/credentials
++- **Headers**: Auth
++- **Body**: `{ currentPassword, newUsername?, newPassword?, newGridPattern?: number[] }`
++- **Response 200**: { message: "Credentials updated" }
++
++### System
++
++#### GET /api/health
++- **No auth** (or optional)
++- **Response 200**: `{ status: "ok", version, uptime, libraryCount }`
++
++#### GET /api/events
++- **Headers**: Auth
++- **Response**: Server-Sent Events stream `text/event-stream`
++- **Events**: `library:update`, `scan:start`, `scan:complete`, `upload:progress`
++
++---
++
++## 1.5 Security Architecture
++
++### Authentication Flow
++
++```
++1. User visits GitHub Pages front-end
++   → App checks localStorage for token
++   → If no token or invalid → show Login Gate (full-screen, no UI leaks)
++
++2. Login Gate Step 1: Credentials
++   - Form: username, password
++   - Client: POST /api/auth/login { username, password }
++   - Server:
++     * Check brute-force store: if IP locked (5 fails in 15 min) → 429
++     * Load config.json: get username hash? Actually store username plaintext + password bcrypt hash
++     * Compare username (case-sensitive)
++     * bcrypt.compare(password, hash)
++     * If fail: increment attempts, return 401
++     * If success: reset attempts, issue challengeToken (JWT with 5 min expiry, payload { username, step: 'grid', jti })
++     * Return challengeToken
++
++3. Login Gate Step 2: Grid Challenge
++   - UI: 4x4 grid (16 squares), user must click exactly 8 in correct pattern
++   - No visual hint which are correct
++   - Client tracks selected indices, shows selected state (user sees own selection)
++   - On submit 8 squares: POST /api/auth/grid { challengeToken, pattern: [0,3,5,...] }
++   - Server:
++     * Verify challengeToken valid and step=grid
++     * Load expected pattern from config (array of 8 numbers, order matters? Configurable; default order-insensitive but we will make order-sensitive for stronger security, with option)
++     * Compare: if config says orderMatters=true, compare exact order; else sort both and compare
++     * If fail: increment grid attempts (same bucket), return 401, client resets grid
++     * If success: issue final JWT access token (payload { username, jti, iat, exp }), expiry configurable (default 24h)
++     * Return token + expiresAt
++
++4. Session
++   - Client stores token in localStorage: `vault_token`, `vault_expiresAt`
++   - All API calls include Authorization: Bearer token
++   - Server middleware validates JWT signature (secret from config), checks expiry, checks blacklist (logout)
++   - Front-end periodically calls /api/auth/verify to check still valid; if 401, redirect to login
++   - Session timeout: configurable (default 24h). Token expiry enforces.
++
++5. Logout
++   - Client: POST /api/auth/logout with token
++   - Server: Add jti to blacklist (in-memory + JSON) until expiry
++   - Client: Clear localStorage, redirect to login
++
++6. Brute-force protection
++   - In-memory Map: ip → { count, firstAttemptTime, lockedUntil }
++   - On each failed login/grid attempt: increment
++   - If count >=5 and within 15 min window: set lockedUntil = now + 15 min, return 429 with Retry-After
++   - Successful login resets count
++   - Persist to data/bruteforce.json to survive restart
++   - Configurable: maxAttempts, lockoutDuration
++```
++
++### Additional Security
++
++- **CORS**: Configurable allowed origins. Default includes GitHub Pages origin `https://kokonut-dev.github.io` plus localhost for dev. Server checks Origin header, returns appropriate CORS headers. No wildcard when credentials.
++- **Rate limiting**: `express-rate-limit` — 100 req / 15 min per IP for general API, 20 req / 15 min for upload, 5 / 15 min for auth. Configurable.
++- **Helmet**: Sets CSP, HSTS, X-Frame-Options, X-Content-Type-Options, etc.
++  - CSP: `default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob: <apiBaseUrl>; media-src 'self' blob: <apiBaseUrl>; connect-src 'self' <apiBaseUrl>; worker-src 'self' blob:`
++  - Note: 'unsafe-inline' needed for some inline styles, but mitigate via nonce if possible. For v1, allow.
++- **Input sanitization**:
++  - Server: `validator` to escape, trim, check lengths. Multer filename sanitization: remove path traversal, allow only safe chars.
++  - Client: DOMPurify for any user-generated content rendered (though self-hosted personal, still).
++  - Search input sanitized, no regex injection.
++  - Metadata fields: max lengths enforced.
++- **No secrets in front-end**: `config.js` only contains apiBaseUrl, not credentials. Credentials only in server config.json which is gitignored.
++- **JWT secret**: Generated random 64-char on first setup, stored in server config, not in repo.
++- **HTTPS**: Recommend mkcert for local HTTPS or Cloudflare Tunnel for remote. Document mixed content handling.
++- **File upload**: Validate mime type via magic bytes, not just extension. Limit file size (configurable, default 10GB for movies). Scan for path traversal. Save to isolated media dirs, not arbitrary paths.
++- **Error handling**: No stack traces leaked to client in production. Log server-side.
++- **Dependency security**: `npm audit`, keep deps updated.
++
++---
++
++## Decisions & Trade-offs
++
++- **JSON DB vs SQLite**: Start JSON for zero native deps (better-sqlite3 requires compilation). Provide upgrade path. JSON is fine for <10k items; for larger libraries, recommend SQLite via config flag.
++- **Vanilla JS vs Framework**: Vanilla for simplicity, no build, fast. If project grows, can migrate to Preact (3KB) without rewrite.
++- **Transcoding**: On-the-fly via ffmpeg, not pre-transcode. Cache results LRU. For low-power devices, recommend direct-play friendly formats.
++- **Auth storage**: localStorage not httpOnly, but acceptable for personal self-hosted. Mitigate XSS via CSP + sanitization. Alternative: cookie with httpOnly requires server to set cookie from different origin — complex with CORS. So localStorage is pragmatic.
++- **Grid pattern**: 4x4 8-click = C(16,8)=12870 combinations. With order matters, 16P8=~500M. Good second factor for personal use, memorable pattern.
++- **PWA**: Service worker caches shell (HTML/CSS/JS) but not media. Offline UI works, shows "Server unreachable" overlay.
++
++---
++
++*This architecture was designed to be premium, secure, and maintainable, balancing zero-build simplicity for GitHub Pages with powerful local server capabilities.*
+diff --git a/CNAME b/CNAME
+new file mode 100644
+index 0000000..0a16731
+--- /dev/null
++++ b/CNAME
+@@ -0,0 +1,7 @@
++# Placeholder for custom domain
++# To use a custom domain with GitHub Pages:
++# 1. Replace this file's content with your domain, e.g.: vault.example.com
++# 2. In your DNS provider, create a CNAME record pointing to kokonut-dev.github.io
++# 3. In GitHub repo Settings → Pages → Custom domain, enter your domain
++# 4. Enable Enforce HTTPS
++# Leave this file empty or delete it if not using custom domain.
+diff --git a/LICENSE b/LICENSE
+new file mode 100644
+index 0000000..ff4aaae
+--- /dev/null
++++ b/LICENSE
+@@ -0,0 +1,21 @@
++MIT License
++
++Copyright (c) 2025 Vault
++
++Permission is hereby granted, free of charge, to any person obtaining a copy
++of this software and associated documentation files (the "Software"), to deal
++in the Software without restriction, including without limitation the rights
++to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
++copies of the Software, and to permit persons to whom the Software is
++furnished to do so, subject to the following conditions:
++
++The above copyright notice and this permission notice shall be included in all
++copies or substantial portions of the Software.
++
++THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
++IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
++FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
++AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
++LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
++OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
++SOFTWARE.
+diff --git a/RESEARCH.md b/RESEARCH.md
+new file mode 100644
+index 0000000..9459c30
+--- /dev/null
++++ b/RESEARCH.md
+@@ -0,0 +1,477 @@
++# Vault — Deep Research & Competitive Analysis
++
++> Stage 0 — Completed before any code was written. This document captures the competitive landscape, gaps, technical constraints, and design direction that informed Vault's architecture.
++
++---
++
++## 0.1 Competitive Landscape Analysis
++
++### Video / Movies / Series
++
++#### Netflix
++**Does well:**
++- Hero-first detail pages with backdrop + gradient, immediate play CTA
++- Resume row is sacred — always first, with progress bars embedded in thumbnails
++- Skip intro/recap detection (UX delight), next episode countdown overlay
++- Adaptive bitrate streaming, thumbnail scrubbing
++- Keyboard: space, arrows, M, F, etc. standardized
++- Micro: hover scale + preview clip on browse, sound on hover muted by default
++
++**Does poorly:**
++- No real file management, no metadata editing
++- Search is weak — no fuzzy, no multi-category
++- No EQ, no subtitle styling beyond basics
++- Discovery is algorithmic black box, no user curation power
++
++#### Plex
++**Does well:**
++- Gold standard for self-hosted: automatic library categorization, metadata agents, remote access via Plex Relay
++- Rich metadata display (cast, crew, extras), watch together
++- Transcoding on-the-fly with quality selector
++- Collections, playlists, continue watching across devices
++
++**Does poorly:**
++- UI feels dated, heavy, inconsistent theming
++- Music experience is secondary (Plexamp is separate app)
++- Settings are buried, overwhelming
++- Authentication is Plex account dependent, not fully self-hosted
++- Performance on low-end NAS can be poor
++
++#### Jellyfin
++**Does well:**
++- Fully open source, self-hosted, no phone-home
++- Plugin ecosystem, live TV, good codec support
++- User profiles, parental controls
++- Free, community driven
++
++**Does poorly:**
++- UI/UX is functional but not premium — inconsistent spacing, weak animations
++- Mobile apps lag behind web
++- Search is basic substring, no command palette
++- No advanced audio processing, no EQ
++- Onboarding is technical, not guided
++
++#### Emby
++**Does well:**
++- Similar to Plex but with better live TV, DVR
++- Good metadata management, intro detection (premium)
++- Hardware transcoding support
++
++**Does poorly:**
++- Paywalled features behind Premiere
++- UI is cluttered, navigation confusing
++- Music still afterthought
++
++#### Disney+ / HBO Max
++**Does well:**
++- Brand-specific collections, curated rows, GroupWatch / co-viewing
++- High production value detail pages, extras, behind scenes
++- Dolby Vision/Atmos badges, quality indicators
++- Kids profiles, accessibility subtitles
++
++**Does poorly:**
++- No personalization beyond watchlist
++- No file ownership — streaming only
++- No advanced playback controls beyond basics
++
++---
++
++### Music
++
++#### Spotify
++**Does well:**
++- Persistent mini-player, queue management with drag reorder is benchmark
++- Crossfade, gapless, normalization, EQ (basic 6-band), blend, smart shuffle
++- Command palette via search, keyboard shortcuts
++- Collaborative playlists, daily mixes, discovery
++- Canvas, lyrics sync, now playing full-screen with large art
++
++**Does poorly:**
++- EQ is buried, only 6 bands, no parametric
++- No file ownership, no local file metadata editing
++- Queue UX breaks on large queues
++- No true lossless in UI (at time of writing)
++
++#### Apple Music
++**Does well:**
++- Typography, album art focus, lossless & spatial audio badges
++- Library organization: Artists, Albums, Songs, Made for You
++- Integration with local files (though clunky)
++- Lyrics, sing mode
++
++**Does poorly:**
++- Web app is weak vs native
++- No advanced audio processing
++- Heavy, slow for large libraries
++
++#### Tidal
++**Does well:**
++- Audiophile positioning, quality badges (Master, HiFi)
++- Credits, detailed metadata
++
++**Does poorly:**
++- UI is dark but not flexible theming
++- No EQ at all
++
++#### Navidrome / Funkwhale
++**Does well:**
++- Lightweight, self-hosted, Subsonic API compatibility
++- Good for large libraries, fast scanning
++- Multi-user, sharing
++
++**Does poorly:**
++- UI is barebones, no visualizer, no EQ, no crossfade
++- No video support
++- Metadata editing minimal
++
++#### Plexamp
++**Does well:**
++- Best Plex music UX: beautiful album art, sweet fades, loudness leveling, sonic analysis for mixes
++- Offline, CarPlay
++
++**Does poorly:**
++- Requires Plex server, separate app
++- No video
++
++#### foobar2000
++**Does well:**
++- Ultimate customization, DSP chain, parametric EQ, advanced tagging
++- Lightweight, handles huge libraries
++
++**Does poorly:**
++- UI from 2003, steep learning curve, not web
++
++---
++
++### Video (General / UGC)
++
++#### YouTube
++**Does well:**
++- Chapters, transcript search, thumbnail scrubbing, quality selector, speed, captions styling, theatre mode, mini-player PiP, queue
++- Keyboard shortcuts comprehensive (JKL, arrows, M, F, C, etc.)
++- Search is world-class: typo tolerance, filters
++
++**Does poorly:**
++- Algorithmic, ads, no ownership
++- No EQ beyond volume
++- Library management weak
++
++#### Vimeo / PeerTube
++**Does well:**
++- Clean player, privacy controls, no ads
++- PeerTube: federated, self-hosted, P2P
++
++**Does poorly:**
++- Smaller ecosystem, less polish
++
++---
++
++### Self-Hosted Media Servers Summary Table
++
++| Platform | Strength | Weakness | Navigation | Search | Playback | Queue | Metadata | Onboarding |
++|----------|----------|----------|------------|--------|----------|-------|----------|------------|
++| Plex | Transcoding, apps, remote | Closed, music weak | Sidebar + top | Basic | Custom, good | Basic | Agent-based | Easy but account |
++| Jellyfin | OSS, free | UI polish | Sidebar | Basic | Native + transcode | Basic | Good | Technical |
++| Emby | Live TV, DVR | Paywall | Top nav | Basic | Good | Basic | Good | Medium |
++| Navidrome | Lightweight music | No video | Sidebar | Fast but basic | Simple audio | Subsonic queue | ID3 | Easy |
++| Streama | Simple video | Abandoned-ish | Simple | None | Basic | None | Manual | Easy |
++
++---
++
++## 0.2 Gaps & Opportunities
++
++### What Everyone Gets Wrong
++- **Music is second-class** in video-first servers; video is absent in music-first servers. Vault should be truly equal.
++- **No serious audio processing**: Even Spotify's EQ is 6-band graphic. No parametric EQ, no compressor, no stereo widening in any mainstream platform. Audiophiles must use system-wide EQ.
++- **Search is an afterthought**: Only YouTube and Spotify have decent search. Self-hosted has no fuzzy, no command palette, no cross-library.
++- **Theming is binary**: Dark/light only. No warm/cold emotional themes, no grain, no glassmorphism customization.
++- **No unified keyboard-first workflow**: Power users want Raycast/Alfred style command palette for media. None offer Option+Space global search.
++- **Upload is missing**: Self-hosted expects you to SMB/FTP files in. No in-app upload with metadata forms.
++- **No adjustable aesthetic effects**: Glassmorphism and grain are trendy but no player lets user tune them.
++- **Metadata editing requires external tools**: Plex/Jellyfin allow some, but not inline with good UX.
++- **No visualizer in browser**: Winamp nostalgia absent.
++- **Resume is video-only**: Music rarely remembers position in long mixes/podcasts.
++- **No collections that span media types**: Want "Chill Night" with both movies and lo-fi music.
++- **Accessibility**: Keyboard nav often incomplete, focus rings missing, screen reader support weak.
++
++### Cross-Category Feature Ports That Would Be Brilliant
++- **From music → video**: Crossfade (between episodes?), EQ (video audio sweetening), queue management, gapless, visualizer, Now Playing full-screen for movies (show backdrop + metadata + ambient).
++- **From video → music**: Chapters for albums (track markers), skip intro for music (skip long intros), thumbnail scrubbing for audio waveform preview, theatre mode for album art.
++- **From code editors / productivity → media**: Command palette (⌥+Space) global search, keyboard shortcut cheat sheet (?), multi-cursor style multi-select for batch operations.
++- **From photography apps → media**: Rating system, collections, metadata batch editing, info panel with technical specs.
++
++### What Makes Vault Better for Self-Hosted
++- Truly unified: Movies, Series, Music, Videos equal citizens.
++- Browser EQ is professional-grade parametric 10-band with Web Audio API — no other self-hosted does this client-side.
++- Global command palette search across all libraries with fuzzy matching.
++- Premium aesthetic: 4 emotional themes + adjustable glassmorphism + adjustable grain — feels like a designed product, not an admin panel.
++- In-app upload with smart categorization forms — no need to SSH.
++- Offline-first PWA shell, works even if server temporarily unreachable (UI loads, shows cached).
++- Security: Two-step auth (password + secret 4x4 grid pattern) — memorable but not brute-forceable, no external auth dependency.
++- Keyboard-first: Every action has shortcut, shortcuts panel.
++- Metadata editor inline, collections cross-media, favourites, history, ratings.
++- Custom video player that rivals YouTube + Netflix combined, with subtitle styling, chapters, skip buttons.
++- Persistent mini-player that survives navigation.
++- Local server is lightweight Node.js, no Docker required (but supports it), SQLite index, file watcher.
++
++---
++
++## 0.3 Technical Research
++
++### Front-end ↔ Local Server Communication for GitHub Pages Static Site
++
++**Challenge:** GitHub Pages is HTTPS, local server is HTTP on localhost/LAN → mixed content blocked.
++
++**Solutions evaluated:**
++1. **Direct HTTP from HTTPS** — blocked by browsers. Not viable.
++2. **Local server with self-signed HTTPS** — works but requires cert generation, user must trust cert. Good for advanced users. Provide script.
++3. **Reverse proxy with mkcert** — `mkcert localhost` generates trusted local cert. Best UX if user installs mkcert.
++4. **Tunneling (Cloudflare Tunnel, ngrok, Tailscale)** — exposes local server via HTTPS URL. Best for remote access. Recommend Cloudflare Tunnel (free, no account limits like ngrok). Provide instructions.
++5. **Browser extension to allow mixed content** — not viable.
++6. **Configurable server URL** — front-end reads `config.js` with `API_BASE_URL`. User sets to `https://localhost:4000` or tunnel URL. Document clearly.
++7. **CORS:** Server must allow origin `https://kokonut-dev.github.io` (or custom domain) plus `http://localhost:*` for local dev. Configurable CORS_ORIGINS env.
++
++**Decision:** Front-end config file `config.js` with `window.VAULT_CONFIG = { apiBaseUrl: 'https://localhost:4000', ... }`. Server CORS configurable. README explains mkcert + Cloudflare Tunnel.
++
++### Browser Media Playback & Codecs
++
++**Audio:**
++- Native browser support: MP3 (all), AAC/M4A (all modern), Vorbis (Chrome/Firefox), Opus (Chrome/Firefox/Edge/Safari 17+), FLAC (Chrome/Firefox/Edge/Safari 14+), WAV (all), ALAC (Safari native, Chrome via transmux).
++- Not natively supported everywhere: WMA, AIFF (partial), DSD.
++- Strategy: Server probes via ffprobe, returns codec info. If browser can't play (check `canPlayType`), server transcodes on-the-fly to Opus 128k or AAC 256k via ffmpeg streaming (chunked). Cache transcoded version.
++
++**Video:**
++- Native: H.264 MP4 (universal), VP8/VP9 WebM (Chrome/Firefox), AV1 (Chrome/Firefox/Edge, Safari 16+), H.265 HEVC (Safari native, Chrome 107+ with hardware).
++- Not native: Many MKV, AVI, WMV, FLV.
++- Strategy: Direct play if codec is H.264 + AAC in MP4. Otherwise, server transcodes to H.264/AAC fragmented MP4 via ffmpeg with `-movflags frag_keyframe+empty_moov` for streaming. Support quality selector: 1080p, 720p, 480p transcodes.
++- Subtitles: Convert SRT/ASS to VTT on server, serve as text track. Custom styling via ::cue.
++
++**Libraries:**
++- No heavy player library (Video.js, Plyr) — custom UI for premium feel, but use native <video> element.
++- HLS.js / dash.js considered but fragmented MP4 direct is simpler for self-hosted.
++
++### EQ / Audio Processing via Web Audio API
++
++**Architecture:**
++- Source: `MediaElementAudioSourceNode` from <audio> or <video> element (note: cross-origin requires CORS).
++- Chain: Source → BiquadFilterNode x10 (peaking, lowshelf, highshelf) → DynamicsCompressorNode → StereoPannerNode (for widening via clever mid/side) → GainNode (volume) → ConvolverNode (reverb, optional) → AnalyserNode (visualizer) → Destination.
++- BiquadFilterNode supports peaking EQ. For true parametric, need frequency, Q, gain per band.
++- Presets: Map of 10 gains per preset. Custom profiles stored in localStorage.
++- Visual curve: Calculate frequency response via `getFrequencyResponse` or manual math plotting magnitude vs frequency (log scale). Draw on canvas.
++- Bass boost: Lowshelf at 100Hz + gain.
++- Stereo widening: Use ChannelSplitter/Merger with mid/side processing or simple delay/chorus via DelayNode.
++- Normalization: Use DynamicsCompressor + loudness measurement (ReplayGain from metadata if available, else simple RMS via Analyser).
++- Compressor: DynamicsCompressorNode with threshold, knee, ratio, attack, release.
++- Reverb: ConvolverNode with impulse response generated procedurally (small room).
++- Crossfade: Two audio elements + GainNode crossfade via Web Audio API timing.
++- Gapless: Preload next track, use MediaSource or two elements.
++
++**Caveats:**
++- `createMediaElementSource` can only be called once per element, must manage lifecycle.
++- Autoplay policies: Must be triggered by user gesture. Show play button.
++
++### Static-Site Authentication Patterns
++
++**Constraints:** No server-side rendering on GitHub Pages, no httpOnly cookie from static host.
++
++**Pattern:**
++- Auth lives on local server: /api/auth/login validates credentials (bcrypt hash stored in server config).
++- Returns JWT (short-lived access token + longer refresh) OR opaque token stored in server memory/DB.
++- Front-end stores token in localStorage (or secure cookie via JS). Not httpOnly, but acceptable for self-hosted personal use. Mitigate XSS via strict CSP.
++- Grid challenge is second factor: After password, server returns challenge token, client shows grid, user clicks 8 squares, sends pattern hash, server validates.
++- Session expiry configurable (default 24h).
++- Brute-force: In-memory store of attempts per IP, lockout after 5 fails 15 min. Persist to JSON.
++- All API endpoints check Authorization: Bearer token.
++- Front-end has auth gate component that blocks render until authenticated.
++
++**Security extras:**
++- Rate limiting via express-rate-limit.
++- Helmet for CSP, HSTS, etc.
++- Input sanitization via validator, DOMPurify on front-end.
++- CORS locked to configured origins.
++
++### Local File Indexing, Metadata Extraction, Search
++
++**Indexing:**
++- Chokidar file watcher on configured media paths.
++- On startup, recursive scan, stat files, filter by extension.
++- SQLite via better-sqlite3 (fast, synchronous) or JSON file for simplicity (no native deps). Choose JSON + optional SQLite: Start with JSON for zero native deps, migrate to SQLite if needed. Use `lowdb` or custom.
++- Store: id, path, filename, size, type (movie/music/video), title, year, genre, etc., duration, bitrate, codec, cover art path, addedAt, lastPlayed, playCount, rating, etc.
++- Debounce file watcher events.
++
++**Metadata:**
++- Audio: `music-metadata` package (supports ID3, Vorbis, MP4, FLAC). Extracts title, artist, album, year, genre, track, cover art (buffer → save as jpg).
++- Video: `ffprobe` via fluent-ffmpeg or exec. Extract duration, resolution, codec, bitrate. For movies/series, parse filename for title/year/season/episode via regex (e.g., `Movie.Name.2021.1080p` or `Series.S01E02`).
++- Thumbnails: ffmpeg screenshot at 25% duration, save as jpg, use sharp to resize.
++- Subtitles: Detect .srt/.vtt/.ass alongside video, index.
++
++**Search:**
++- Client-side search index built from server's /api/library (returns all metadata). Use Fuse.js for fuzzy matching (lightweight, fast, typo tolerant).
++- Fields: title, artist, album, genre, year, tags, description, filename.
++- Results categorized. Debounce 150ms.
++- Recent searches in localStorage.
++
++---
++
++## 0.4 Design Research
++
++### Minimalist Media UI Trends 2024-2025
++- **Bento / card grid**: Rounded 12-20px corners, soft shadows, not sharp.
++- **Large typography**: Title 32-48px bold, metadata 13-14px muted.
++- **Sidebar collapsible**: Icon-only collapsed, 240px expanded, with active indicator pill.
++- **Bottom mini-player**: Spotify established pattern, now universal.
++- **Skeleton over spinner**: Content-aware skeletons (poster-shaped).
++- **Command palette**: Raycast, Linear, Spotify have popularized ⌘K. Vault uses ⌥+Space for uniqueness and to avoid browser conflicts.
++- **Micro-interactions**: 150-250ms ease-out, scale 1.02 on hover, not 1.1. Opacity + transform only (GPU).
++- **Content over chrome**: UI chrome is minimal, content (posters, art) is hero.
++
++### Frosted Glass / Glassmorphism
++- Technique: `background: rgba(255,255,255,0.08); backdrop-filter: blur(20px) saturate(180%); -webkit-backdrop-filter: blur(20px) saturate(180%); border: 1px solid rgba(255,255,255,0.1);`
++- Dark mode: light glass (white at low opacity). Light mode: dark glass (black at low opacity) or white glass with shadow.
++- Performance: backdrop-filter is GPU heavy. Limit to modals, sidebars, mini-player, not entire page. Provide intensity slider that maps to blur(0px) to blur(40px) and opacity 0.02 to 0.3.
++- Fallback: `@supports not (backdrop-filter: blur(1px)) { background: var(--bg-elevated); }`
++- Layering: Use pseudo-element for glass to avoid affecting children.
++
++### Film Grain / Noise Texture
++- Techniques:
++  1. **CSS + data URI**: Small base64 noise PNG (100x100) tiled, opacity 0.03-0.15, `pointer-events: none; position: fixed; inset: 0; z-index: 9999; mix-blend-mode: overlay;`
++  2. **SVG filter**: `<filter id="noise"><feTurbulence baseFrequency="0.9" /></filter>` — heavier.
++  3. **Canvas**: Animated grain — too heavy.
++- Decision: PNG tile with CSS, static, opacity controlled by CSS variable `--grain-opacity`. Slider 0-100 maps to opacity 0-0.15. Optional subtle animation via `transform: translate` with steps.
++- Must be toggleable, not distracting.
++
++### Colour Palette System with Multiple Themes
++
++**Approach:** CSS custom properties, 4 themes as `[data-theme="dark"]` etc.
++
++**Shared scales:**
++- --bg-primary, --bg-secondary, --bg-elevated, --bg-hover
++- --text-primary, --text-secondary, --text-tertiary, --text-inverse
++- --border, --border-strong
++- --accent, --accent-hover, --accent-muted
++- --success, --warning, --error
++- --shadow, --shadow-strong
++- --glass-bg, --glass-border, --glass-blur
++- --grain-opacity
++
++**Themes:**
++
++1. **Dark**: bg #0A0A0A, #121212, #1A1A1A, text #FFFFFF 90%, #FFFFFF 60%, #FFFFFF 35%. Accent #E50914 (Netflix red) or #1DB954 (Spotify green) — choose custom #FF3B30? Decision: #7C5CFF purple for uniqueness, premium. Borders rgba(255,255,255,0.08).
++2. **Light**: bg #FFFFFF, #F7F7F8, #EDEEF0, text #0A0A0A 90%, 60%, 40%. Accent #7C5CFF same. Borders rgba(0,0,0,0.08).
++3. **Warm**: bg #FDF6E3 (cream), #F5E6C8, #E8D5B5, text #3D2B1F, muted #8C7A65. Accent #D97706 (amber-600) burnt orange. Borders rgba(61,43,31,0.1).
++4. **Cold**: bg #F0F4F8, #E2E8F0, #CBD5E1, text #1E293B, muted #64748B. Accent #0E7490 (teal-700). Dark variant of cold could be slate-900: but spec says light cold. Actually make cold dark-ish? Let's make Cold: bg #0F172A (slate-900), #1E293B, #334155, text #F1F5F9. Accent #22D3EE (cyan-400). Feels Nordic winter night.
++
++**Implementation:** All themes defined in `:root` and `[data-theme]` overrides. No hardcoded colors in components — always var().
++
++### Typography Best Practices for Media Apps
++- **Font family:** System font stack for performance + familiarity: `-apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Inter', 'Segoe UI', Roboto, sans-serif`. Optional: Include Inter via Google Fonts as fallback, but system is faster.
++- **For display titles:** Use 600-700 weight, tight letter-spacing -0.02em, line-height 1.1.
++- **For body:** 400 weight, 14-15px, line-height 1.5, letter-spacing 0.
++- **For metadata:** 12-13px, 500 weight, uppercase 0.05em tracking, muted color.
++- **Mono for technical info:** `ui-monospace, SFMono-Regular, Menlo, monospace` for bitrate, file path.
++- **Scale:** Use rem, base 16px. Scale: 12, 13, 14, 16, 18, 20, 24, 32, 40, 48.
++- **Line clamp:** Titles clamp 1-2 lines with ellipsis.
++
++---
++
++## 0.5 Research Synthesis
++
++### Bullet-Point Insights Directly Influencing Vault
++
++- Plex/Jellyfin prove self-hosted market exists but UX is not premium — opportunity for Apple-level polish.
++- Persistent mini-player is non-negotiable for music; must survive route changes via global state.
++- Command palette search (Option+Space) is differentiator — no competitor does it.
++- 10-band parametric EQ via Web Audio API is unique selling point — must be real DSP, not fake sliders.
++- Visual EQ curve + analyzer + presets = pro feel.
++- Four emotional themes > binary dark/light — user expresses mood.
++- Adjustable glassmorphism + grain gives user control over aesthetic intensity — personalization beyond colors.
++- Upload with adaptive forms removes need for SMB/FTP — huge UX win for non-technical users.
++- Grid challenge 4x4 8-click pattern is memorable second factor, better than TOTP for personal use (no phone needed).
++- Brute-force protection + JWT + CORS locked to Pages origin = secure enough for personal.
++- Transcoding strategy: direct play H.264/AAC, transcode others on fly via ffmpeg fragmented MP4 — balances compatibility and server load.
++- Metadata: music-metadata for audio, ffprobe for video, sharp for thumbnails — all Node.js friendly.
++- File watcher via chokidar for auto-index updates.
++- Skeleton loading, not spinners — perceived performance.
++- Keyboard shortcuts for everything, ? panel to discover.
++- Crossfade + gapless via dual audio elements + Web Audio API.
++- Theatre mode for video (wider player, dim surroundings) — YouTube pattern, loved.
++- Skip intro/outro per series — store in JSON.
++- Resume playback position for both video and audio.
++- Collections that span media types — unique.
++- Inline metadata editor — no external tool needed.
++- Media info panel with technical specs — for nerds.
++- Sorting/filtering in every library view — essential for large libraries.
++- PWA with service worker for offline shell.
++- Toast notifications for feedback.
++- Drag-drop upload + batch + progress.
++- Picture-in-picture + fullscreen + casting hooks.
++- Subtitle styling customizable (font, size, color, bg, position) via ::cue.
++- Visualizer in Now Playing (canvas + AnalyserNode).
++- Scrobbling hooks (expose now playing).
++- Lazy loading images via IntersectionObserver.
++- Accessibility: full keyboard nav, ARIA, focus rings, AA contrast, rem units, prefers-reduced-motion.
++
++### Final Feature List (Spec + Research Additions)
++
++**Core (from brief):**
++- Auth gate: username/password + 4x4 grid 8-click pattern, JWT, brute-force lockout, logout, CORS, rate limit, CSP, sanitization
++- Local server: Node.js, scans dirs, categorizes Movies/Series/Music/Videos, index DB, file watcher, metadata extraction, uploads, REST API, transcoding
++- Upload: choice Movie/Series/Music/Video, adaptive forms, drag-drop, progress, batch
++- Video player: custom UI, play/pause/seek with thumbnail preview, volume, speed 0.25x-3x, fullscreen, PiP, subtitles SRT/VTT/ASS, styling, chapters, next episode autoplay countdown, skip intro/outro, quality selector, casting, keyboard shortcuts, resume, theatre mode
++- Music player: mini-player persistent, full-screen Now Playing with art + visualizer + lyrics, play/pause/skip/seek, shuffle/repeat, queue reorder, playlists CRUD, volume, speed, crossfade, gapless, album/artist/genre/all views, shortcuts, scrobbling hooks
++- EQ: 10-band parametric with freq/gain/Q, presets (Flat, Bass Boost, Treble Boost, Vocal, Acoustic, Electronic, Classical, Rock, Pop, Jazz, R&B, Custom), save custom, visual curve, bass boost/cut, stereo widening, normalization, compressor, reverb
++- Codecs: audio MP3/AAC/FLAC/WAV/OGG/OPUS/ALAC/WMA/AIFF/M4A, video MP4/MKV/WebM/AVI/MOV/WMV/FLV, subtitles SRT/VTT/ASS, transcode fallback
++- Search: Option+Space / Alt+Space, centered modal, all libraries, categorized, fuzzy, instant debounced, keyboard nav, recent, history clearable
++- Themes: Dark, Light, Warm, Cold — comprehensive
++- Frosted glass adjustable slider
++- Grain adjustable slider
++- Sidebar collapsible, Home dashboard (Continue Watching/Listening, Recently Added per category, Playlists, Random Pick, Rediscover), Grid/List toggle, Detail pages (movie backdrop+poster+meta, series season/episode, album track list, artist discography, video)
++- Animations: page crossfade/slide, hover scale/shadow, skeleton, mini-player slide, modal fade+scale, respects prefers-reduced-motion
++- Accessibility: keyboard nav, ARIA, focus, screen reader, AA contrast, rem
++- Additional: favourites, history, ratings, collections, metadata editor, shortcuts panel ?, toasts, settings page (theme, glass, grain, EQ, playback prefs, library paths, session timeout, creds change, grid change, about), mini-player persists, media info panel, sorting/filtering, lazy loading, PWA, error handling
++
++**Added from research:**
++- Visualizer (canvas waveform/bars) in Now Playing
++- Lyrics display (.lrc support)
++- Waveform preview on audio seek
++- Cross-media collections
++- Smart rows: Random Pick, Rediscover, Recently Played, Top Rated, Most Played
++- Batch metadata editing
++- Keyboard: JKL for video (YouTube), 0-9 for seek percentage, M mute, F fullscreen, C captions, etc.
++- Theatre mode toggle (T)
++- Picture-in-picture toggle (P)
++- Mini-player expand/collapse with gesture
++- Queue: save as playlist
++- Playlist: collaborative? No, personal only, but drag reorder
++- Transcoding cache with LRU cleanup
++- Thumbnail generation on server via ffmpeg
++- Cover art extraction and caching via sharp
++- File watcher debounced
++- PWA install prompt
++- Offline detection toast
++- Connection lost overlay with retry
++- Empty states with illustrations and CTA
++- Long title handling (marquee on hover in mini-player)
++- Scrobbling hooks: expose window.VAULT_NOW_PLAYING
++- Service worker caching strategies: shell cache-first, API network-first
++- Error boundaries per route
++- Performance: virtualized lists for large libraries (or pagination)
++- Security: helmet, rate limit, sanitization, JWT, bcrypt
++- Config: config.js for API base URL, not hardcoded
++- README: mkcert + Cloudflare Tunnel for HTTPS
++
++---
++
++## References & Inspiration
++
++- Plex architecture docs, Jellyfin API docs, Navidrome Subsonic API
++- Web Audio API MDN, BiquadFilterNode, DynamicsCompressorNode, ConvolverNode
++- CSS backdrop-filter MDN, glassmorphism tutorials
++- Fuse.js docs for fuzzy search
++- chokidar, music-metadata, fluent-ffmpeg, better-sqlite3, sharp
++- Apple HIG, Material You, Linear app design, Raycast command palette
++- WCAG 2.1 AA, ARIA practices, keyboard nav patterns
++
++---
++
++*This research was conducted pre-code to ensure Vault is not just another media server, but a premium product that learns from best and worst of industry.*
+diff --git a/docs/config.js b/docs/config.js
+new file mode 100644
+index 0000000..10dabed
+--- /dev/null
++++ b/docs/config.js
+@@ -0,0 +1,35 @@
++/**
++ * Vault Frontend Configuration
++ * User-editable: Set your local server URL here
++ * 
++ * For GitHub Pages HTTPS → local HTTP mixed content issue, use one of:
++ * 1. mkcert: Generate trusted local cert and run server on HTTPS (https://localhost:4000)
++ * 2. Cloudflare Tunnel: Get public HTTPS URL (https://your-tunnel.trycloudflare.com)
++ * 3. Local dev: Run frontend locally via npx serve docs (http://localhost:3000)
++ */
++
++window.VAULT_CONFIG = {
++  // API base URL — change this to your local server URL
++  // Examples:
++  // - Local HTTP (for local dev): 'http://localhost:4000'
++  // - Local HTTPS (with mkcert): 'https://localhost:4000'
++  // - Cloudflare Tunnel: 'https://your-tunnel.trycloudflare.com'
++  // - ngrok: 'https://your-ngrok-id.ngrok.io'
++  apiBaseUrl: localStorage.getItem('vault_api_url') || 'http://localhost:4000',
++
++  // App info
++  appName: 'Vault',
++  version: '2.0.0',
++
++  // Features
++  enablePWA: true,
++  enableAnalytics: false,
++
++  // Defaults
++  defaultTheme: localStorage.getItem('vault_theme') || 'dark',
++  defaultGlassIntensity: parseInt(localStorage.getItem('vault_glass') || '20', 10),
++  defaultGrainIntensity: parseInt(localStorage.getItem('vault_grain') || '15', 10),
++
++  // GitHub Pages path (for routing)
++  basePath: '/Vault-V2',
++};
+diff --git a/docs/css/glass.css b/docs/css/glass.css
+new file mode 100644
+index 0000000..1af16be
+--- /dev/null
++++ b/docs/css/glass.css
+@@ -0,0 +1,108 @@
++/* Frosted Glass / Glassmorphism */
++
++.glass {
++  background: var(--glass-bg);
++  backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
++  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
++  border: 1px solid var(--glass-border);
++  box-shadow: var(--glass-shadow);
++}
++
++.glass-strong {
++  --glass-blur: 32px;
++  --glass-opacity: 0.12;
++  background: var(--glass-bg);
++  backdrop-filter: blur(32px) saturate(180%);
++  -webkit-backdrop-filter: blur(32px) saturate(180%);
++  border: 1px solid var(--glass-border);
++}
++
++.glass-subtle {
++  --glass-blur: 12px;
++  --glass-opacity: 0.04;
++  background: rgba(255,255,255,0.04);
++  backdrop-filter: blur(12px) saturate(150%);
++  -webkit-backdrop-filter: blur(12px) saturate(150%);
++  border: 1px solid rgba(255,255,255,0.06);
++}
++
++[data-theme="light"] .glass,
++[data-theme="warm"] .glass {
++  background: rgba(255,255,255,0.7);
++  border: 1px solid rgba(0,0,0,0.06);
++}
++
++[data-theme="light"] .glass-subtle {
++  background: rgba(255,255,255,0.5);
++}
++
++/* Glass intensity controlled via CSS variable */
++:root {
++  --glass-intensity: 20; /* 0-100 mapped to blur 0-40px */
++}
++
++.glass-dynamic {
++  backdrop-filter: blur(calc(var(--glass-intensity) * 0.4px)) saturate(calc(100% + var(--glass-intensity) * 0.8%));
++  -webkit-backdrop-filter: blur(calc(var(--glass-intensity) * 0.4px)) saturate(calc(100% + var(--glass-intensity) * 0.8%));
++  background: rgba(255,255,255, calc(var(--glass-intensity) * 0.003));
++  border: 1px solid rgba(255,255,255, calc(var(--glass-intensity) * 0.002));
++}
++
++[data-theme="light"] .glass-dynamic {
++  background: rgba(255,255,255, calc(0.5 + var(--glass-intensity) * 0.005));
++}
++
++[data-theme="dark"] .glass-dynamic {
++  background: rgba(255,255,255, calc(var(--glass-intensity) * 0.002));
++}
++
++[data-theme="cold"] .glass-dynamic {
++  background: rgba(30,41,59, calc(0.4 + var(--glass-intensity) * 0.004));
++}
++
++/* Specific glass surfaces */
++.sidebar.glass {
++  background: var(--glass-bg);
++  backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
++  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
++}
++
++.mini-player.glass {
++  background: var(--glass-bg);
++  backdrop-filter: blur(24px) saturate(180%);
++  -webkit-backdrop-filter: blur(24px) saturate(180%);
++  border-top: 1px solid var(--glass-border);
++}
++
++.search-modal.glass {
++  background: var(--glass-bg);
++  backdrop-filter: blur(32px) saturate(180%);
++  -webkit-backdrop-filter: blur(32px) saturate(180%);
++}
++
++.modal.glass {
++  background: var(--glass-bg);
++  backdrop-filter: blur(24px) saturate(180%);
++  -webkit-backdrop-filter: blur(24px) saturate(180%);
++}
++
++/* Fallback for browsers without backdrop-filter */
++@supports not (backdrop-filter: blur(1px)) {
++  .glass, .glass-strong, .glass-subtle, .glass-dynamic,
++  .sidebar.glass, .mini-player.glass, .search-modal.glass, .modal.glass {
++    background: var(--bg-elevated) !important;
++    backdrop-filter: none !important;
++    -webkit-backdrop-filter: none !important;
++  }
++}
++
++/* Glass hover intensification */
++.media-card.glass:hover {
++  --glass-blur: 28px;
++  background: rgba(255,255,255,0.1);
++  transform: translateY(-2px);
++}
++
++[data-theme="light"] .media-card.glass:hover {
++  background: rgba(255,255,255,0.85);
++}
+diff --git a/docs/css/reset.css b/docs/css/reset.css
+new file mode 100644
+index 0000000..158e158
+--- /dev/null
++++ b/docs/css/reset.css
+@@ -0,0 +1,86 @@
++/* Reset & Base */
++*, *::before, *::after {
++  box-sizing: border-box;
++  margin: 0;
++  padding: 0;
++}
++
++html {
++  font-size: 16px;
++  -webkit-font-smoothing: antialiased;
++  -moz-osx-font-smoothing: grayscale;
++  text-rendering: optimizeLegibility;
++  scroll-behavior: smooth;
++}
++
++html, body {
++  height: 100%;
++  width: 100%;
++  overflow-x: hidden;
++}
++
++body {
++  font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Inter', 'Segoe UI', Roboto, sans-serif;
++  background: var(--bg-primary);
++  color: var(--text-primary);
++  line-height: 1.5;
++  transition: background-color 0.3s ease, color 0.3s ease;
++}
++
++a {
++  color: inherit;
++  text-decoration: none;
++}
++
++button {
++  font-family: inherit;
++  cursor: pointer;
++  border: none;
++  background: none;
++  color: inherit;
++}
++
++input, textarea, select {
++  font-family: inherit;
++  font-size: inherit;
++}
++
++img, video {
++  max-width: 100%;
++  display: block;
++}
++
++ul, ol {
++  list-style: none;
++}
++
++/* Focus visible */
++:focus-visible {
++  outline: 2px solid var(--accent);
++  outline-offset: 2px;
++}
++
++/* Scrollbar */
++::-webkit-scrollbar {
++  width: 8px;
++  height: 8px;
++}
++
++::-webkit-scrollbar-track {
++  background: transparent;
++}
++
++::-webkit-scrollbar-thumb {
++  background: var(--border-strong);
++  border-radius: 4px;
++}
++
++::-webkit-scrollbar-thumb:hover {
++  background: var(--text-tertiary);
++}
++
++/* Selection */
++::selection {
++  background: var(--accent-muted);
++  color: var(--text-primary);
++}
+diff --git a/docs/css/themes.css b/docs/css/themes.css
+new file mode 100644
+index 0000000..4779366
+--- /dev/null
++++ b/docs/css/themes.css
+@@ -0,0 +1,86 @@
++/* Theme transitions */
++* {
++  transition-property: background-color, border-color, color, box-shadow;
++  transition-duration: 0.3s;
++  transition-timing-function: var(--ease-out);
++}
++
++/* Disable transitions for certain elements */
++.no-theme-transition,
++.no-theme-transition * {
++  transition: none !important;
++}
++
++/* Theme-specific overrides */
++
++/* Dark theme enhancements */
++[data-theme="dark"] {
++  color-scheme: dark;
++}
++
++[data-theme="dark"] .media-card {
++  background: linear-gradient(180deg, var(--card-bg) 0%, #151515 100%);
++}
++
++[data-theme="dark"] .player-controls {
++  background: linear-gradient(180deg, rgba(0,0,0,0) 0%, rgba(0,0,0,0.8) 100%);
++}
++
++/* Light theme */
++[data-theme="light"] {
++  color-scheme: light;
++}
++
++[data-theme="light"] .media-card {
++  border: 1px solid var(--border);
++}
++
++[data-theme="light"] .sidebar {
++  border-right: 1px solid var(--border);
++}
++
++/* Warm theme */
++[data-theme="warm"] {
++  color-scheme: light;
++}
++
++[data-theme="warm"] .media-card {
++  background: var(--card-bg);
++  border: 1px solid var(--border);
++  box-shadow: 0 2px 8px rgba(61,43,31,0.06);
++}
++
++[data-theme="warm"] .btn-primary {
++  background: linear-gradient(135deg, var(--accent) 0%, #B45309 100%);
++}
++
++/* Cold theme */
++[data-theme="cold"] {
++  color-scheme: dark;
++}
++
++[data-theme="cold"] .media-card {
++  background: linear-gradient(180deg, var(--card-bg) 0%, #162032 100%);
++  border: 1px solid rgba(34,211,238,0.1);
++}
++
++[data-theme="cold"] .accent-glow {
++  box-shadow: 0 0 20px rgba(34,211,238,0.3);
++}
++
++/* Theme switch animation */
++.theme-transition {
++  animation: themeFade 0.4s var(--ease-out);
++}
++
++@keyframes themeFade {
++  0% { opacity: 0.8; }
++  100% { opacity: 1; }
++}
++
++/* Ensure all themed elements use variables */
++.btn, .card, .modal, .sidebar, .player, .search-modal, .toast {
++  background-color: var(--bg-elevated);
++  color: var(--text-primary);
++  border-color: var(--border);
++}
+diff --git a/docs/css/variables.css b/docs/css/variables.css
+new file mode 100644
+index 0000000..63ae735
+--- /dev/null
++++ b/docs/css/variables.css
+@@ -0,0 +1,224 @@
++:root {
++  /* Base */
++  --font-sans: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Inter', 'Segoe UI', Roboto, sans-serif;
++  --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
++  --font-display: var(--font-sans);
++
++  /* Spacing */
++  --space-xs: 4px;
++  --space-sm: 8px;
++  --space-md: 16px;
++  --space-lg: 24px;
++  --space-xl: 32px;
++  --space-2xl: 48px;
++  --space-3xl: 64px;
++
++  /* Radius */
++  --radius-sm: 6px;
++  --radius-md: 10px;
++  --radius-lg: 16px;
++  --radius-xl: 20px;
++  --radius-full: 9999px;
++
++  /* Shadows */
++  --shadow-sm: 0 1px 2px rgba(0,0,0,0.05);
++  --shadow-md: 0 4px 12px rgba(0,0,0,0.08);
++  --shadow-lg: 0 8px 32px rgba(0,0,0,0.12);
++  --shadow-xl: 0 16px 48px rgba(0,0,0,0.16);
++
++  /* Transitions */
++  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
++  --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
++  --duration-fast: 150ms;
++  --duration-normal: 250ms;
++  --duration-slow: 400ms;
++
++  /* Layout */
++  --sidebar-width: 240px;
++  --sidebar-collapsed: 64px;
++  --header-height: 64px;
++  --mini-player-height: 80px;
++  --content-max: 1600px;
++
++  /* Glass */
++  --glass-blur: 20px;
++  --glass-opacity: 0.08;
++  --glass-border-opacity: 0.1;
++  --glass-saturate: 180%;
++
++  /* Grain */
++  --grain-opacity: 0.03;
++
++  /* Z-index */
++  --z-sidebar: 100;
++  --z-header: 90;
++  --z-mini-player: 80;
++  --z-modal: 200;
++  --z-search: 210;
++  --z-toast: 300;
++  --z-auth: 400;
++}
++
++/* Dark theme (default) */
++[data-theme="dark"] {
++  --bg-primary: #0A0A0A;
++  --bg-secondary: #121212;
++  --bg-tertiary: #1A1A1A;
++  --bg-elevated: #222222;
++  --bg-hover: #2A2A2A;
++  --bg-active: #333333;
++
++  --text-primary: rgba(255,255,255,0.92);
++  --text-secondary: rgba(255,255,255,0.6);
++  --text-tertiary: rgba(255,255,255,0.35);
++  --text-inverse: #0A0A0A;
++
++  --border: rgba(255,255,255,0.08);
++  --border-strong: rgba(255,255,255,0.14);
++  --border-focus: rgba(124,92,255,0.5);
++
++  --accent: #7C5CFF;
++  --accent-hover: #6B4FE0;
++  --accent-muted: rgba(124,92,255,0.15);
++  --accent-strong: #9B85FF;
++
++  --success: #22C55E;
++  --warning: #F59E0B;
++  --error: #EF4444;
++  --info: #3B82F6;
++
++  --shadow-color: rgba(0,0,0,0.5);
++  --shadow: 0 4px 24px rgba(0,0,0,0.4);
++  --shadow-strong: 0 8px 40px rgba(0,0,0,0.6);
++
++  --glass-bg: rgba(255,255,255,0.06);
++  --glass-border: rgba(255,255,255,0.08);
++  --glass-shadow: 0 8px 32px rgba(0,0,0,0.3);
++
++  --card-bg: #1A1A1A;
++  --card-hover: #242424;
++  --overlay: rgba(0,0,0,0.7);
++}
++
++/* Light theme */
++[data-theme="light"] {
++  --bg-primary: #FFFFFF;
++  --bg-secondary: #F7F7F8;
++  --bg-tertiary: #EDEEF0;
++  --bg-elevated: #FFFFFF;
++  --bg-hover: #F0F0F2;
++  --bg-active: #E8E8EA;
++
++  --text-primary: rgba(10,10,10,0.92);
++  --text-secondary: rgba(10,10,10,0.6);
++  --text-tertiary: rgba(10,10,10,0.4);
++  --text-inverse: #FFFFFF;
++
++  --border: rgba(0,0,0,0.08);
++  --border-strong: rgba(0,0,0,0.14);
++  --border-focus: rgba(124,92,255,0.4);
++
++  --accent: #7C5CFF;
++  --accent-hover: #6B4FE0;
++  --accent-muted: rgba(124,92,255,0.1);
++  --accent-strong: #5A3FD4;
++
++  --success: #16A34A;
++  --warning: #D97706;
++  --error: #DC2626;
++  --info: #2563EB;
++
++  --shadow-color: rgba(0,0,0,0.08);
++  --shadow: 0 4px 24px rgba(0,0,0,0.06);
++  --shadow-strong: 0 8px 40px rgba(0,0,0,0.12);
++
++  --glass-bg: rgba(255,255,255,0.7);
++  --glass-border: rgba(0,0,0,0.06);
++  --glass-shadow: 0 8px 32px rgba(0,0,0,0.08);
++
++  --card-bg: #FFFFFF;
++  --card-hover: #FAFAFB;
++  --overlay: rgba(255,255,255,0.7);
++}
++
++/* Warm theme */
++[data-theme="warm"] {
++  --bg-primary: #FDF6E3;
++  --bg-secondary: #F5E6C8;
++  --bg-tertiary: #E8D5B5;
++  --bg-elevated: #FFFEF9;
++  --bg-hover: #F0E0B8;
++  --bg-active: #E5D0A0;
++
++  --text-primary: #3D2B1F;
++  --text-secondary: #8C7A65;
++  --text-tertiary: #B8A89A;
++  --text-inverse: #FDF6E3;
++
++  --border: rgba(61,43,31,0.1);
++  --border-strong: rgba(61,43,31,0.18);
++  --border-focus: rgba(217,119,6,0.4);
++
++  --accent: #D97706;
++  --accent-hover: #B45309;
++  --accent-muted: rgba(217,119,6,0.12);
++  --accent-strong: #92400E;
++
++  --success: #15803D;
++  --warning: #B45309;
++  --error: #B91C1C;
++  --info: #1D4ED8;
++
++  --shadow-color: rgba(61,43,31,0.1);
++  --shadow: 0 4px 24px rgba(61,43,31,0.08);
++  --shadow-strong: 0 8px 40px rgba(61,43,31,0.15);
++
++  --glass-bg: rgba(253,246,227,0.7);
++  --glass-border: rgba(61,43,31,0.08);
++  --glass-shadow: 0 8px 32px rgba(61,43,31,0.1);
++
++  --card-bg: #FFFEF9;
++  --card-hover: #FDF6E3;
++  --overlay: rgba(253,246,227,0.8);
++}
++
++/* Cold theme */
++[data-theme="cold"] {
++  --bg-primary: #0F172A;
++  --bg-secondary: #1E293B;
++  --bg-tertiary: #334155;
++  --bg-elevated: #1E293B;
++  --bg-hover: #2D3A4F;
++  --bg-active: #3B4D6B;
++
++  --text-primary: #F1F5F9;
++  --text-secondary: #94A3B8;
++  --text-tertiary: #64748B;
++  --text-inverse: #0F172A;
++
++  --border: rgba(255,255,255,0.08);
++  --border-strong: rgba(255,255,255,0.14);
++  --border-focus: rgba(34,211,238,0.4);
++
++  --accent: #22D3EE;
++  --accent-hover: #06B6D4;
++  --accent-muted: rgba(34,211,238,0.12);
++  --accent-strong: #67E8F9;
++
++  --success: #22C55E;
++  --warning: #F59E0B;
++  --error: #EF4444;
++  --info: #3B82F6;
++
++  --shadow-color: rgba(0,0,0,0.5);
++  --shadow: 0 4px 24px rgba(0,0,0,0.4);
++  --shadow-strong: 0 8px 40px rgba(0,0,0,0.6);
++
++  --glass-bg: rgba(30,41,59,0.6);
++  --glass-border: rgba(255,255,255,0.08);
++  --glass-shadow: 0 8px 32px rgba(0,0,0,0.4);
++
++  --card-bg: #1E293B;
++  --card-hover: #263449;
++  --overlay: rgba(15,23,42,0.8);
++}
+diff --git a/scripts/generate-cert.js b/scripts/generate-cert.js
+new file mode 100644
+index 0000000..74eff88
+--- /dev/null
++++ b/scripts/generate-cert.js
+@@ -0,0 +1,67 @@
++#!/usr/bin/env node
++/**
++ * Generate self-signed certificate for local HTTPS
++ * Uses mkcert if available, otherwise openssl or Node.js crypto
++ */
++
++const fs = require('fs-extra');
++const path = require('path');
++const { execSync } = require('child_process');
++
++const certDir = path.join(__dirname, '../server/certs');
++fs.ensureDirSync(certDir);
++
++console.log('Generating self-signed certificate for Vault...\n');
++
++function tryMkcert() {
++  try {
++    execSync('which mkcert', { stdio: 'ignore' });
++    console.log('Found mkcert — using it for trusted local cert');
++    execSync(`mkcert -key-file ${path.join(certDir, 'key.pem')} -cert-file ${path.join(certDir, 'cert.pem')} localhost 127.0.0.1 ::1`, { stdio: 'inherit' });
++    console.log('\n✓ Certificates generated with mkcert (trusted)');
++    console.log(`  Key: ${path.join(certDir, 'key.pem')}`);
++    console.log(`  Cert: ${path.join(certDir, 'cert.pem')}`);
++    return true;
++  } catch {
++    return false;
++  }
++}
++
++function tryOpenssl() {
++  try {
++    execSync('which openssl', { stdio: 'ignore' });
++    console.log('Found openssl — generating self-signed cert');
++    const keyPath = path.join(certDir, 'key.pem');
++    const certPath = path.join(certDir, 'cert.pem');
++    execSync(`openssl req -x509 -newkey rsa:4096 -keyout ${keyPath} -out ${certPath} -days 365 -nodes -subj "/CN=localhost"`, { stdio: 'inherit' });
++    console.log('\n✓ Certificates generated with openssl (self-signed, needs manual trust)');
++    console.log(`  Key: ${keyPath}`);
++    console.log(`  Cert: ${certPath}`);
++    console.log('\nTo trust: On Mac, double-click cert.pem → Keychain → Always Trust');
++    return true;
++  } catch {
++    return false;
++  }
++}
++
++if (!tryMkcert() && !tryOpenssl()) {
++  console.log('Neither mkcert nor openssl found.');
++  console.log('Install mkcert: https://github.com/FiloSottile/mkcert');
++  console.log('  brew install mkcert && mkcert -install');
++  console.log('Or install openssl and rerun this script.');
++  console.log('\nAlternatively, use Cloudflare Tunnel for HTTPS:');
++  console.log('  cloudflared tunnel --url http://localhost:4000');
++}
++
++console.log(`
++Next: Enable HTTPS in server/config.json:
++{
++  "server": {
++    "https": {
++      "enabled": true,
++      "keyPath": "./certs/key.pem",
++      "certPath": "./certs/cert.pem"
++    }
++  }
++}
++`);
+diff --git a/scripts/setup.js b/scripts/setup.js
+new file mode 100644
+index 0000000..1ec55c5
+--- /dev/null
++++ b/scripts/setup.js
+@@ -0,0 +1,202 @@
++#!/usr/bin/env node
++/**
++ * Vault Setup Script
++ * Interactive setup for server config
++ */
++
++const fs = require('fs-extra');
++const path = require('path');
++const readline = require('readline');
++const bcrypt = require('bcryptjs');
++const crypto = require('crypto');
++
++const rl = readline.createInterface({
++  input: process.stdin,
++  output: process.stdout
++});
++
++function question(q) {
++  return new Promise(resolve => rl.question(q, resolve));
++}
++
++async function main() {
++  console.log(`
++╔══════════════════════════════════════╗
++║         VAULT SETUP WIZARD           ║
++║  Self-Hosted Personal Media Server   ║
++╚══════════════════════════════════════╝
++`);
++
++  const configPath = path.join(__dirname, '../server/config.json');
++  let existingConfig = {};
++  if (fs.existsSync(configPath)) {
++    try {
++      existingConfig = fs.readJsonSync(configPath);
++      console.log('Found existing config.json — values will be used as defaults.\n');
++    } catch {}
++  }
++
++  // Username
++  const defaultUser = existingConfig.auth?.username || 'admin';
++  let username = await question(`Username [${defaultUser}]: `);
++  username = username.trim() || defaultUser;
++
++  // Password
++  let password = await question('Password (min 4 chars, will be hashed): ');
++  while (!password || password.length < 4) {
++    if (!password && existingConfig.auth?.passwordHash) {
++      console.log('Keeping existing password hash');
++      password = null;
++      break;
++    }
++    console.log('Password must be at least 4 characters');
++    password = await question('Password: ');
++  }
++
++  let passwordHash = existingConfig.auth?.passwordHash;
++  if (password) {
++    passwordHash = bcrypt.hashSync(password, 10);
++    console.log('Password hashed ✓');
++  }
++
++  // Grid pattern
++  console.log(`
++Grid Challenge Setup:
++You need to choose 8 squares out of 16 (0-15) in a 4x4 grid:
++
++  0  1  2  3
++  4  5  6  7
++  8  9 10 11
++ 12 13 14 15
++
++Example: 0,1,4,5,8,9,12,13 (left two columns)
++`);
++  const defaultGrid = existingConfig.auth?.gridPattern?.join(',') || '0,1,4,5,8,9,12,13';
++  let gridInput = await question(`Grid pattern (8 numbers 0-15 comma-separated) [${defaultGrid}]: `);
++  gridInput = gridInput.trim() || defaultGrid;
++
++  let gridPattern;
++  try {
++    gridPattern = gridInput.split(',').map(s => parseInt(s.trim(), 10));
++    if (gridPattern.length !== 8 || new Set(gridPattern).size !== 8 || gridPattern.some(n => isNaN(n) || n < 0 || n > 15)) {
++      throw new Error('Invalid');
++    }
++  } catch {
++    console.log('Invalid grid pattern, using default');
++    gridPattern = [0, 1, 4, 5, 8, 9, 12, 13];
++  }
++  console.log(`Grid pattern set: [${gridPattern.join(', ')}] ✓`);
++
++  // Media paths
++  console.log('\nMedia Paths (absolute or relative to server/ folder):');
++  const defaultMovies = existingConfig.media?.paths?.movies || './media/movies';
++  const defaultMusic = existingConfig.media?.paths?.music || './media/music';
++  const defaultVideos = existingConfig.media?.paths?.videos || './media/videos';
++
++  let moviesPath = await question(`Movies path [${defaultMovies}]: `);
++  moviesPath = moviesPath.trim() || defaultMovies;
++
++  let musicPath = await question(`Music path [${defaultMusic}]: `);
++  musicPath = musicPath.trim() || defaultMusic;
++
++  let videosPath = await question(`Videos path [${defaultVideos}]: `);
++  videosPath = videosPath.trim() || defaultVideos;
++
++  // Port
++  const defaultPort = existingConfig.server?.port || 4000;
++  let portInput = await question(`Server port [${defaultPort}]: `);
++  let port = parseInt(portInput.trim(), 10) || defaultPort;
++
++  // JWT Secret
++  let jwtSecret = existingConfig.auth?.jwtSecret;
++  if (!jwtSecret) {
++    jwtSecret = crypto.randomBytes(64).toString('hex');
++    console.log('Generated JWT secret ✓');
++  }
++
++  // Build config
++  const config = {
++    server: {
++      port,
++      host: existingConfig.server?.host || '0.0.0.0',
++      https: existingConfig.server?.https || { enabled: false, keyPath: './certs/key.pem', certPath: './certs/cert.pem' }
++    },
++    auth: {
++      username,
++      passwordHash,
++      jwtSecret,
++      sessionTimeout: existingConfig.auth?.sessionTimeout || '24h',
++      gridPattern,
++      gridOrderMatters: existingConfig.auth?.gridOrderMatters || false,
++      maxAttempts: existingConfig.auth?.maxAttempts || 5,
++      lockoutDurationMinutes: existingConfig.auth?.lockoutDurationMinutes || 15
++    },
++    media: {
++      paths: {
++        movies: moviesPath,
++        music: musicPath,
++        videos: videosPath
++      },
++      maxUploadSizeMB: existingConfig.media?.maxUploadSizeMB || 10240
++    },
++    cors: existingConfig.cors || {
++      origins: [
++        'https://kokonut-dev.github.io',
++        'http://localhost:3000',
++        'http://localhost:5173',
++        'http://127.0.0.1:3000',
++        'http://localhost:8080'
++      ]
++    },
++    security: existingConfig.security || {
++      rateLimit: {
++        general: { windowMs: 900000, max: 200 },
++        auth: { windowMs: 900000, max: 10 },
++        upload: { windowMs: 900000, max: 30 }
++      }
++    }
++  };
++
++  fs.writeJsonSync(configPath, config, { spaces: 2 });
++  console.log(`\n✓ Config saved to ${configPath}`);
++
++  // Create media dirs
++  const serverDir = path.join(__dirname, '../server');
++  for (const p of Object.values(config.media.paths)) {
++    const fullPath = path.isAbsolute(p) ? p : path.resolve(serverDir, p);
++    fs.ensureDirSync(fullPath);
++    console.log(`✓ Ensured media dir: ${fullPath}`);
++  }
++
++  // Create data/cache dirs
++  fs.ensureDirSync(path.join(serverDir, 'data'));
++  fs.ensureDirSync(path.join(serverDir, 'cache/thumbnails'));
++  fs.ensureDirSync(path.join(serverDir, 'cache/covers'));
++  fs.ensureDirSync(path.join(serverDir, 'cache/transcoded'));
++
++  console.log(`
++╔══════════════════════════════════════╗
++║         SETUP COMPLETE ✓             ║
++╚══════════════════════════════════════╝
++
++Next steps:
++1. cd server && npm install
++2. npm start — to run the server
++3. Open frontend: https://kokonut-dev.github.io/Vault-V2/
++   (or run frontend locally: npx serve ../docs)
++
++Credentials:
++  Username: ${username}
++  Grid pattern: [${gridPattern.join(', ')}]
++
++SECURITY: Keep your grid pattern secret!
++`);
++
++  rl.close();
++}
++
++main().catch(err => {
++  console.error('Setup failed:', err);
++  rl.close();
++  process.exit(1);
++});
+diff --git a/server/config.example.json b/server/config.example.json
+new file mode 100644
+index 0000000..666474f
+--- /dev/null
++++ b/server/config.example.json
+@@ -0,0 +1,71 @@
++{
++  "server": {
++    "port": 4000,
++    "host": "0.0.0.0",
++    "https": {
++      "enabled": false,
++      "keyPath": "./certs/key.pem",
++      "certPath": "./certs/cert.pem"
++    }
++  },
++  "auth": {
++    "username": "admin",
++    "passwordHash": "$2a$10$... (will be generated by setup script)",
++    "jwtSecret": "CHANGE_THIS_TO_A_RANDOM_64_CHAR_STRING",
++    "sessionTimeout": "24h",
++    "gridPattern": [0, 1, 4, 5, 8, 9, 12, 13],
++    "gridOrderMatters": false,
++    "maxAttempts": 5,
++    "lockoutDurationMinutes": 15
++  },
++  "media": {
++    "paths": {
++      "movies": "./media/movies",
++      "music": "./media/music",
++      "videos": "./media/videos"
++    },
++    "supportedExtensions": {
++      "video": [".mp4", ".mkv", ".webm", ".avi", ".mov", ".wmv", ".flv", ".m4v", ".mpg", ".mpeg"],
++      "audio": [".mp3", ".flac", ".wav", ".ogg", ".opus", ".m4a", ".aac", ".wma", ".aiff", ".alac"],
++      "subtitle": [".srt", ".vtt", ".ass", ".ssa"]
++    },
++    "maxUploadSizeMB": 10240,
++    "thumbnail": {
++      "enabled": true,
++      "width": 320,
++      "height": 180
++    },
++    "transcoding": {
++      "enabled": true,
++      "cacheDir": "./cache/transcoded",
++      "cacheMaxSizeMB": 5120,
++      "videoCodec": "libx264",
++      "audioCodec": "aac"
++    }
++  },
++  "cors": {
++    "origins": [
++      "https://kokonut-dev.github.io",
++      "http://localhost:3000",
++      "http://localhost:5173",
++      "http://127.0.0.1:3000",
++      "http://localhost:8080"
++    ]
++  },
++  "security": {
++    "rateLimit": {
++      "general": {
++        "windowMs": 900000,
++        "max": 100
++      },
++      "auth": {
++        "windowMs": 900000,
++        "max": 5
++      },
++      "upload": {
++        "windowMs": 900000,
++        "max": 20
++      }
++    }
++  }
++}
+diff --git a/server/config.js b/server/config.js
+new file mode 100644
+index 0000000..5f56239
+--- /dev/null
++++ b/server/config.js
+@@ -0,0 +1,161 @@
++const fs = require('fs-extra');
++const path = require('path');
++const crypto = require('crypto');
++
++const CONFIG_PATH = path.join(__dirname, 'config.json');
++const EXAMPLE_PATH = path.join(__dirname, 'config.example.json');
++
++const DEFAULT_CONFIG = {
++  server: {
++    port: parseInt(process.env.VAULT_PORT || '4000', 10),
++    host: process.env.VAULT_HOST || '0.0.0.0',
++    https: {
++      enabled: false,
++      keyPath: './certs/key.pem',
++      certPath: './certs/cert.pem'
++    }
++  },
++  auth: {
++    username: process.env.VAULT_USERNAME || 'admin',
++    passwordHash: null,
++    jwtSecret: process.env.VAULT_JWT_SECRET || crypto.randomBytes(64).toString('hex'),
++    sessionTimeout: process.env.VAULT_SESSION_TIMEOUT || '24h',
++    gridPattern: [0, 1, 4, 5, 8, 9, 12, 13],
++    gridOrderMatters: false,
++    maxAttempts: 5,
++    lockoutDurationMinutes: 15
++  },
++  media: {
++    paths: {
++      movies: path.join(__dirname, 'media/movies'),
++      music: path.join(__dirname, 'media/music'),
++      videos: path.join(__dirname, 'media/videos')
++    },
++    supportedExtensions: {
++      video: ['.mp4', '.mkv', '.webm', '.avi', '.mov', '.wmv', '.flv', '.m4v', '.mpg', '.mpeg'],
++      audio: ['.mp3', '.flac', '.wav', '.ogg', '.opus', '.m4a', '.aac', '.wma', '.aiff', '.alac'],
++      subtitle: ['.srt', '.vtt', '.ass', '.ssa']
++    },
++    maxUploadSizeMB: 10240,
++    thumbnail: {
++      enabled: true,
++      width: 320,
++      height: 180
++    },
++    transcoding: {
++      enabled: true,
++      cacheDir: path.join(__dirname, 'cache/transcoded'),
++      cacheMaxSizeMB: 5120,
++      videoCodec: 'libx264',
++      audioCodec: 'aac'
++    }
++  },
++  cors: {
++    origins: [
++      'https://kokonut-dev.github.io',
++      'http://localhost:3000',
++      'http://localhost:5173',
++      'http://127.0.0.1:3000',
++      'http://localhost:8080',
++      'http://localhost:4000'
++    ]
++  },
++  security: {
++    rateLimit: {
++      general: { windowMs: 15 * 60 * 1000, max: 200 },
++      auth: { windowMs: 15 * 60 * 1000, max: 10 },
++      upload: { windowMs: 15 * 60 * 1000, max: 30 }
++    }
++  }
++};
++
++let config = null;
++
++function loadConfig() {
++  if (config) return config;
++
++  try {
++    if (fs.existsSync(CONFIG_PATH)) {
++      const fileConfig = fs.readJsonSync(CONFIG_PATH);
++      config = mergeDeep(DEFAULT_CONFIG, fileConfig);
++      console.log('[Config] Loaded from config.json');
++    } else {
++      console.log('[Config] No config.json found, using defaults + env. Run npm run setup to create one.');
++      config = DEFAULT_CONFIG;
++      // Generate a default password hash for admin/admin if none exists (for first run)
++      if (!config.auth.passwordHash) {
++        const bcrypt = require('bcryptjs');
++        const defaultPass = 'admin';
++        config.auth.passwordHash = bcrypt.hashSync(defaultPass, 10);
++        console.log('[Config] Using default credentials admin/admin — CHANGE IMMEDIATELY via setup script!');
++      }
++    }
++  } catch (err) {
++    console.error('[Config] Failed to load config, using defaults:', err.message);
++    config = DEFAULT_CONFIG;
++  }
++
++  // Resolve relative media paths
++  for (const key of Object.keys(config.media.paths)) {
++    if (!path.isAbsolute(config.media.paths[key])) {
++      config.media.paths[key] = path.resolve(__dirname, config.media.paths[key]);
++    }
++  }
++
++  if (!path.isAbsolute(config.media.transcoding.cacheDir)) {
++    config.media.transcoding.cacheDir = path.resolve(__dirname, config.media.transcoding.cacheDir);
++  }
++
++  return config;
++}
++
++function mergeDeep(target, source) {
++  const output = { ...target };
++  if (isObject(target) && isObject(source)) {
++    Object.keys(source).forEach(key => {
++      if (isObject(source[key])) {
++        if (!(key in target)) Object.assign(output, { [key]: source[key] });
++        else output[key] = mergeDeep(target[key], source[key]);
++      } else {
++        Object.assign(output, { [key]: source[key] });
++      }
++    });
++  }
++  return output;
++}
++
++function isObject(item) {
++  return item && typeof item === 'object' && !Array.isArray(item);
++}
++
++function saveConfig(newConfig) {
++  const toSave = {
++    server: newConfig.server,
++    auth: {
++      username: newConfig.auth.username,
++      passwordHash: newConfig.auth.passwordHash,
++      jwtSecret: newConfig.auth.jwtSecret,
++      sessionTimeout: newConfig.auth.sessionTimeout,
++      gridPattern: newConfig.auth.gridPattern,
++      gridOrderMatters: newConfig.auth.gridOrderMatters,
++      maxAttempts: newConfig.auth.maxAttempts,
++      lockoutDurationMinutes: newConfig.auth.lockoutDurationMinutes
++    },
++    media: {
++      paths: newConfig.media.paths,
++      maxUploadSizeMB: newConfig.media.maxUploadSizeMB
++    },
++    cors: newConfig.cors,
++    security: newConfig.security
++  };
++  fs.writeJsonSync(CONFIG_PATH, toSave, { spaces: 2 });
++  config = null; // force reload
++  return loadConfig();
++}
++
++function getConfig() {
++  if (!config) loadConfig();
++  return config;
++}
++
++module.exports = { loadConfig, getConfig, saveConfig, CONFIG_PATH, DEFAULT_CONFIG };
+diff --git a/server/index.js b/server/index.js
+new file mode 100644
+index 0000000..7dca136
+--- /dev/null
++++ b/server/index.js
+@@ -0,0 +1,189 @@
++require('dotenv').config();
++const express = require('express');
++const helmet = require('helmet');
++const morgan = require('morgan');
++const path = require('path');
++const fs = require('fs-extra');
++const https = require('https');
++
++const { loadConfig, getConfig } = require('./config');
++const createCorsMiddleware = require('./middleware/cors');
++const { authMiddleware } = require('./middleware/auth');
++const createRateLimiters = require('./middleware/rateLimiter');
++const { errorHandler, notFoundHandler } = require('./middleware/errorHandler');
++const libraryService = require('./services/library');
++const scannerService = require('./services/scanner');
++const logger = require('./utils/logger');
++
++// Load config
++const config = loadConfig();
++
++// Init services
++libraryService.init();
++
++// Express app
++const app = express();
++
++// Middleware
++app.use(helmet({
++  contentSecurityPolicy: false, // We set custom CSP via helmet config if needed
++  crossOriginEmbedderPolicy: false,
++  crossOriginResourcePolicy: { policy: "cross-origin" },
++}));
++
++app.use(createCorsMiddleware());
++app.use(express.json({ limit: '50mb' }));
++app.use(express.urlencoded({ extended: true, limit: '50mb' }));
++app.use(morgan('combined'));
++
++// Rate limiters
++const { generalLimiter, authLimiter, uploadLimiter } = createRateLimiters();
++app.use('/api/', generalLimiter);
++app.use('/api/auth/', authLimiter);
++app.use('/api/upload/', uploadLimiter);
++
++// Ensure data dirs
++fs.ensureDirSync(path.join(__dirname, 'data'));
++fs.ensureDirSync(path.join(__dirname, 'cache'));
++fs.ensureDirSync(path.join(__dirname, 'cache/thumbnails'));
++fs.ensureDirSync(path.join(__dirname, 'cache/covers'));
++fs.ensureDirSync(path.join(__dirname, 'cache/transcoded'));
++fs.ensureDirSync(path.join(__dirname, 'media/movies'));
++fs.ensureDirSync(path.join(__dirname, 'media/music'));
++fs.ensureDirSync(path.join(__dirname, 'media/videos'));
++fs.ensureDirSync(path.join(__dirname, 'uploads'));
++
++// Public routes (no auth)
++app.get('/api/health', (req, res) => {
++  const stats = libraryService.getStats();
++  res.json({
++    status: 'ok',
++    version: '2.0.0',
++    uptime: process.uptime(),
++    library: {
++      total: stats.totalItems,
++      movies: stats.totalMovies,
++      music: stats.totalMusic,
++      videos: stats.totalVideos,
++    },
++    timestamp: new Date().toISOString(),
++  });
++});
++
++// Auth routes (no auth middleware)
++app.use('/api/auth', require('./routes/auth'));
++
++// Protected routes
++app.use('/api/library', authMiddleware, require('./routes/library'));
++app.use('/api/media', authMiddleware, require('./routes/media'));
++app.use('/api/transcode', authMiddleware, require('./routes/transcode'));
++app.use('/api/upload', authMiddleware, require('./routes/upload'));
++app.use('/api/playlists', authMiddleware, require('./routes/playlists'));
++app.use('/api/favourites', authMiddleware, require('./routes/playlists')); // same file handles /favourites
++app.use('/api/history', authMiddleware, require('./routes/playlists'));
++app.use('/api/settings', authMiddleware, require('./routes/settings'));
++
++// SSE for real-time updates (optional)
++app.get('/api/events', authMiddleware, (req, res) => {
++  res.setHeader('Content-Type', 'text/event-stream');
++  res.setHeader('Cache-Control', 'no-cache');
++  res.setHeader('Connection', 'keep-alive');
++  res.flushHeaders();
++
++  const sendEvent = (event, data) => {
++    res.write(`event: ${event}\n`);
++    res.write(`data: ${JSON.stringify(data)}\n\n`);
++  };
++
++  sendEvent('connected', { message: 'Connected to Vault events' });
++
++  const interval = setInterval(() => {
++    sendEvent('ping', { timestamp: Date.now() });
++  }, 30000);
++
++  req.on('close', () => {
++    clearInterval(interval);
++    res.end();
++  });
++});
++
++// Serve static for local dev if docs folder exists (optional)
++const docsPath = path.join(__dirname, '../docs');
++if (fs.existsSync(docsPath)) {
++  app.use(express.static(docsPath));
++  logger.info(`Serving static frontend from ${docsPath}`);
++}
++
++// 404 handler for API
++app.use('/api/*', notFoundHandler);
++
++// Error handler
++app.use(errorHandler);
++
++// Start server
++function startServer() {
++  const port = config.server.port;
++  const host = config.server.host;
++
++  // Check HTTPS
++  if (config.server.https && config.server.https.enabled) {
++    try {
++      const keyPath = path.resolve(__dirname, config.server.https.keyPath);
++      const certPath = path.resolve(__dirname, config.server.https.certPath);
++      if (fs.existsSync(keyPath) && fs.existsSync(certPath)) {
++        const options = {
++          key: fs.readFileSync(keyPath),
++          cert: fs.readFileSync(certPath),
++        };
++        https.createServer(options, app).listen(port, host, () => {
++          logger.info(`Vault server (HTTPS) running at https://${host}:${port}`);
++          onServerStart();
++        });
++        return;
++      } else {
++        logger.warn('HTTPS enabled but cert files not found, falling back to HTTP');
++      }
++    } catch (err) {
++      logger.warn(`Failed to start HTTPS server: ${err.message}, falling back to HTTP`);
++    }
++  }
++
++  app.listen(port, host, () => {
++    logger.info(`Vault server (HTTP) running at http://${host}:${port}`);
++    logger.info(`Health check: http://${host}:${port}/api/health`);
++    logger.info(`Media paths: Movies=${config.media.paths.movies}, Music=${config.media.paths.music}, Videos=${config.media.paths.videos}`);
++    onServerStart();
++  });
++}
++
++async function onServerStart() {
++  try {
++    // Initial scan
++    logger.info('Starting initial library scan...');
++    await scannerService.scanAll();
++    // Start watcher
++    scannerService.startWatcher();
++    logger.info('Vault server ready!');
++    logger.info(`Default credentials: username=${config.auth.username} (password is hashed, check setup)`);
++    logger.info(`Grid pattern: [${config.auth.gridPattern.join(', ')}] — CHANGE THIS IN PRODUCTION!`);
++  } catch (err) {
++    logger.error('Failed during startup scan:', err.message);
++  }
++}
++
++// Graceful shutdown
++process.on('SIGINT', () => {
++  logger.info('Shutting down...');
++  scannerService.stopWatcher();
++  process.exit(0);
++});
++
++process.on('SIGTERM', () => {
++  logger.info('Shutting down...');
++  scannerService.stopWatcher();
++  process.exit(0);
++});
++
++startServer();
++
++module.exports = app;
+diff --git a/server/middleware/auth.js b/server/middleware/auth.js
+new file mode 100644
+index 0000000..51ac149
+--- /dev/null
++++ b/server/middleware/auth.js
+@@ -0,0 +1,137 @@
++const jwt = require('jsonwebtoken');
++const { getConfig } = require('../config');
++const fs = require('fs-extra');
++const path = require('path');
++
++const BLACKLIST_PATH = path.join(__dirname, '../data/token-blacklist.json');
++let blacklist = new Set();
++
++function loadBlacklist() {
++  try {
++    if (fs.existsSync(BLACKLIST_PATH)) {
++      const data = fs.readJsonSync(BLACKLIST_PATH);
++      blacklist = new Set(data);
++      // Clean expired tokens
++      const now = Date.now();
++      for (const tokenData of blacklist) {
++        try {
++          if (typeof tokenData === 'string') continue; // old format
++          if (tokenData.exp && tokenData.exp * 1000 < now) {
++            blacklist.delete(tokenData);
++          }
++        } catch {}
++      }
++    }
++  } catch (err) {
++    console.warn('[Auth] Failed to load blacklist:', err.message);
++  }
++}
++
++function saveBlacklist() {
++  try {
++    fs.ensureDirSync(path.dirname(BLACKLIST_PATH));
++    fs.writeJsonSync(BLACKLIST_PATH, Array.from(blacklist));
++  } catch (err) {
++    console.warn('[Auth] Failed to save blacklist:', err.message);
++  }
++}
++
++loadBlacklist();
++
++function authMiddleware(req, res, next) {
++  // Allow health check without auth
++  if (req.path === '/api/health') return next();
++
++  const authHeader = req.headers.authorization;
++  let token = null;
++
++  if (authHeader && authHeader.startsWith('Bearer ')) {
++    token = authHeader.substring(7);
++  } else if (req.query && req.query.token) {
++    // Allow token via query for media streaming (video/audio tags can't set headers)
++    token = req.query.token;
++  }
++
++  if (!token) {
++    return res.status(401).json({ error: 'Authentication required', code: 'NO_TOKEN' });
++  }
++
++  // Check blacklist
++  if (blacklist.has(token)) {
++    return res.status(401).json({ error: 'Token revoked', code: 'TOKEN_REVOKED' });
++  }
++
++  try {
++    const config = getConfig();
++    const decoded = jwt.verify(token, config.auth.jwtSecret);
++
++    // Check if it's a challenge token (should not be used for API)
++    if (decoded.step === 'grid') {
++      return res.status(401).json({ error: 'Grid challenge required', code: 'GRID_REQUIRED' });
++    }
++
++    req.user = decoded;
++    req.token = token;
++    next();
++  } catch (err) {
++    if (err.name === 'TokenExpiredError') {
++      return res.status(401).json({ error: 'Token expired', code: 'TOKEN_EXPIRED' });
++    }
++    return res.status(401).json({ error: 'Invalid token', code: 'INVALID_TOKEN' });
++  }
++}
++
++function optionalAuthMiddleware(req, res, next) {
++  const authHeader = req.headers.authorization;
++  let token = null;
++  if (authHeader && authHeader.startsWith('Bearer ')) token = authHeader.substring(7);
++  else if (req.query && req.query.token) token = req.query.token;
++
++  if (!token) {
++    req.user = null;
++    return next();
++  }
++
++  if (blacklist.has(token)) {
++    req.user = null;
++    return next();
++  }
++
++  try {
++    const config = getConfig();
++    const decoded = jwt.verify(token, config.auth.jwtSecret);
++    if (decoded.step === 'grid') {
++      req.user = null;
++      return next();
++    }
++    req.user = decoded;
++    req.token = token;
++  } catch {
++    req.user = null;
++  }
++  next();
++}
++
++function blacklistToken(token) {
++  try {
++    const config = getConfig();
++    const decoded = jwt.decode(token);
++    const exp = decoded ? decoded.exp : Math.floor(Date.now() / 1000) + 86400;
++    // Store with expiry for cleanup
++    blacklist.add(token);
++    saveBlacklist();
++
++    // Auto-remove after expiry
++    const ttl = exp * 1000 - Date.now();
++    if (ttl > 0 && ttl < 24 * 60 * 60 * 1000) {
++      setTimeout(() => {
++        blacklist.delete(token);
++        saveBlacklist();
++      }, ttl);
++    }
++  } catch (err) {
++    console.warn('[Auth] Failed to blacklist token:', err.message);
++  }
++}
++
++module.exports = { authMiddleware, optionalAuthMiddleware, blacklistToken };
+diff --git a/server/middleware/cors.js b/server/middleware/cors.js
+new file mode 100644
+index 0000000..cad8a1c
+--- /dev/null
++++ b/server/middleware/cors.js
+@@ -0,0 +1,48 @@
++const cors = require('cors');
++const { getConfig } = require('../config');
++
++function createCorsMiddleware() {
++  const config = getConfig();
++  const allowedOrigins = config.cors.origins || [];
++
++  const corsOptions = {
++    origin: function (origin, callback) {
++      // Allow requests with no origin (mobile apps, curl, etc.)
++      if (!origin) return callback(null, true);
++
++      // Check if origin is in allowed list or matches wildcard pattern
++      const isAllowed = allowedOrigins.some(allowed => {
++        if (allowed.includes('*')) {
++          // Support wildcard like http://127.0.0.1:*
++          const pattern = allowed.replace(/\*/g, '.*');
++          const regex = new RegExp(`^${pattern}$`);
++          return regex.test(origin);
++        }
++        return allowed === origin;
++      });
++
++      // Also allow any localhost/127.0.0.1 for dev convenience
++      const isLocalhost = /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin);
++
++      // Allow GitHub Pages origins
++      const isGitHubPages = /^https:\/\/.*\.github\.io$/.test(origin);
++
++      if (isAllowed || isLocalhost || isGitHubPages) {
++        callback(null, true);
++      } else {
++        console.warn(`[CORS] Blocked origin: ${origin}`);
++        callback(null, true); // For self-hosted personal use, be permissive but log
++        // To be strict, use: callback(new Error('Not allowed by CORS'));
++      }
++    },
++    credentials: true,
++    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH', 'HEAD'],
++    allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Range'],
++    exposedHeaders: ['Content-Range', 'Accept-Ranges', 'Content-Length', 'Content-Type'],
++    maxAge: 86400,
++  };
++
++  return cors(corsOptions);
++}
++
++module.exports = createCorsMiddleware;
+diff --git a/server/middleware/errorHandler.js b/server/middleware/errorHandler.js
+new file mode 100644
+index 0000000..a5bb95b
+--- /dev/null
++++ b/server/middleware/errorHandler.js
+@@ -0,0 +1,26 @@
++function errorHandler(err, req, res, next) {
++  console.error('[Error]', err);
++
++  if (err.code === 'LIMIT_FILE_SIZE') {
++    return res.status(413).json({ error: 'File too large', code: 'FILE_TOO_LARGE' });
++  }
++
++  if (err.type === 'entity.too.large') {
++    return res.status(413).json({ error: 'Payload too large', code: 'PAYLOAD_TOO_LARGE' });
++  }
++
++  const status = err.status || err.statusCode || 500;
++  const message = status === 500 ? 'Internal server error' : err.message || 'Unknown error';
++
++  res.status(status).json({
++    error: message,
++    code: err.code || 'INTERNAL_ERROR',
++    ...(process.env.NODE_ENV !== 'production' && { stack: err.stack })
++  });
++}
++
++function notFoundHandler(req, res) {
++  res.status(404).json({ error: 'Not found', code: 'NOT_FOUND', path: req.path });
++}
++
++module.exports = { errorHandler, notFoundHandler };
+diff --git a/server/middleware/rateLimiter.js b/server/middleware/rateLimiter.js
+new file mode 100644
+index 0000000..6806ab7
+--- /dev/null
++++ b/server/middleware/rateLimiter.js
+@@ -0,0 +1,36 @@
++const rateLimit = require('express-rate-limit');
++const { getConfig } = require('../config');
++
++function createRateLimiters() {
++  const config = getConfig();
++  const rlConfig = config.security.rateLimit;
++
++  const generalLimiter = rateLimit({
++    windowMs: rlConfig.general.windowMs,
++    max: rlConfig.general.max,
++    message: { error: 'Too many requests, please try again later', code: 'RATE_LIMITED' },
++    standardHeaders: true,
++    legacyHeaders: false,
++  });
++
++  const authLimiter = rateLimit({
++    windowMs: rlConfig.auth.windowMs,
++    max: rlConfig.auth.max,
++    message: { error: 'Too many login attempts, please try again later', code: 'AUTH_RATE_LIMITED' },
++    standardHeaders: true,
++    legacyHeaders: false,
++    skipSuccessfulRequests: false,
++  });
++
++  const uploadLimiter = rateLimit({
++    windowMs: rlConfig.upload.windowMs,
++    max: rlConfig.upload.max,
++    message: { error: 'Too many uploads, please try again later', code: 'UPLOAD_RATE_LIMITED' },
++    standardHeaders: true,
++    legacyHeaders: false,
++  });
++
++  return { generalLimiter, authLimiter, uploadLimiter };
++}
++
++module.exports = createRateLimiters;
+diff --git a/server/package.json b/server/package.json
+new file mode 100644
+index 0000000..d587d61
+--- /dev/null
++++ b/server/package.json
+@@ -0,0 +1,40 @@
++{
++  "name": "vault-server",
++  "version": "2.0.0",
++  "description": "Vault - Self-hosted personal media server backend",
++  "main": "index.js",
++  "type": "commonjs",
++  "scripts": {
++    "start": "node index.js",
++    "dev": "nodemon index.js",
++    "setup": "node ../scripts/setup.js",
++    "scan": "node -e \"require('./services/scanner').scanAll()\""
++  },
++  "keywords": ["media-server", "self-hosted", "plex", "jellyfin", "vault"],
++  "license": "MIT",
++  "dependencies": {
++    "bcryptjs": "^2.4.3",
++    "chokidar": "^3.6.0",
++    "cors": "^2.8.5",
++    "dotenv": "^16.4.5",
++    "express": "^4.19.2",
++    "express-rate-limit": "^7.2.0",
++    "ffmpeg-static": "^5.2.0",
++    "ffprobe-static": "^3.1.0",
++    "fluent-ffmpeg": "^2.1.2",
++    "fs-extra": "^11.2.0",
++    "helmet": "^7.1.0",
++    "jsonwebtoken": "^9.0.2",
++    "mime-types": "^2.1.35",
++    "morgan": "^1.10.0",
++    "multer": "^1.4.5-lts.1",
++    "music-metadata": "^8.1.4",
++    "validator": "^13.11.0"
++  },
++  "devDependencies": {
++    "nodemon": "^3.1.0"
++  },
++  "engines": {
++    "node": ">=18.0.0"
++  }
++}
+diff --git a/server/routes/auth.js b/server/routes/auth.js
+new file mode 100644
+index 0000000..2d3c267
+--- /dev/null
++++ b/server/routes/auth.js
+@@ -0,0 +1,142 @@
++const express = require('express');
++const router = express.Router();
++const authService = require('../services/authService');
++const { blacklistToken } = require('../middleware/auth');
++const { sanitizeString } = require('../utils/validators');
++const logger = require('../utils/logger');
++
++router.post('/login', (req, res) => {
++  const ip = authService.getClientIp(req);
++
++  if (authService.isLocked(ip)) {
++    const remaining = authService.getLockoutTimeRemaining(ip);
++    return res.status(429).json({
++      error: `Too many failed attempts. Try again in ${Math.ceil(remaining / 60)} minutes.`,
++      code: 'LOCKED_OUT',
++      retryAfter: remaining,
++    });
++  }
++
++  const { username, password } = req.body;
++
++  if (!username || !password) {
++    return res.status(400).json({ error: 'Username and password required', code: 'MISSING_CREDENTIALS' });
++  }
++
++  const cleanUsername = sanitizeString(username, 100);
++  // Don't sanitize password with escape, just trim and limit
++  const cleanPassword = typeof password === 'string' ? password.trim().substring(0, 128) : '';
++
++  if (!authService.validateCredentials(cleanUsername, cleanPassword)) {
++    authService.recordFailedAttempt(ip);
++    logger.warn(`Failed login attempt for ${cleanUsername} from ${ip}`);
++    return res.status(401).json({ error: 'Invalid credentials', code: 'INVALID_CREDENTIALS' });
++  }
++
++  // Success: generate challenge token
++  authService.resetAttempts(ip);
++  const challengeToken = authService.generateChallengeToken(cleanUsername);
++
++  logger.info(`User ${cleanUsername} passed password check from ${ip}, grid challenge issued`);
++
++  res.json({
++    challengeToken,
++    message: 'Password correct, grid challenge required',
++    expiresIn: '5m',
++  });
++});
++
++router.post('/grid', (req, res) => {
++  const ip = authService.getClientIp(req);
++
++  if (authService.isLocked(ip)) {
++    const remaining = authService.getLockoutTimeRemaining(ip);
++    return res.status(429).json({
++      error: `Too many failed attempts. Try again in ${Math.ceil(remaining / 60)} minutes.`,
++      code: 'LOCKED_OUT',
++      retryAfter: remaining,
++    });
++  }
++
++  const { challengeToken, pattern } = req.body;
++
++  if (!challengeToken || !pattern) {
++    return res.status(400).json({ error: 'Challenge token and pattern required', code: 'MISSING_DATA' });
++  }
++
++  // Verify challenge token
++  const decoded = authService.verifyToken(challengeToken);
++  if (!decoded || decoded.step !== 'grid') {
++    authService.recordFailedAttempt(ip);
++    return res.status(401).json({ error: 'Invalid or expired challenge token', code: 'INVALID_CHALLENGE' });
++  }
++
++  if (!Array.isArray(pattern) || pattern.length !== 8) {
++    return res.status(400).json({ error: 'Pattern must be array of 8 numbers', code: 'INVALID_PATTERN' });
++  }
++
++  // Validate pattern values
++  for (const val of pattern) {
++    if (typeof val !== 'number' || !Number.isInteger(val) || val < 0 || val > 15) {
++      return res.status(400).json({ error: 'Pattern values must be integers 0-15', code: 'INVALID_PATTERN' });
++    }
++  }
++
++  if (!authService.validateGridPattern(pattern)) {
++    authService.recordFailedAttempt(ip);
++    logger.warn(`Failed grid attempt for ${decoded.username} from ${ip}`);
++    return res.status(401).json({ error: 'Invalid grid pattern', code: 'INVALID_GRID' });
++  }
++
++  // Success: generate access token
++  authService.resetAttempts(ip);
++  const token = authService.generateAccessToken(decoded.username);
++  const verified = authService.verifyToken(token);
++
++  logger.info(`User ${decoded.username} fully authenticated from ${ip}`);
++
++  res.json({
++    token,
++    expiresAt: new Date(verified.exp * 1000).toISOString(),
++    user: { username: decoded.username },
++  });
++});
++
++router.post('/logout', (req, res) => {
++  const authHeader = req.headers.authorization;
++  let token = null;
++  if (authHeader && authHeader.startsWith('Bearer ')) {
++    token = authHeader.substring(7);
++  }
++
++  if (token) {
++    blacklistToken(token);
++  }
++
++  res.json({ message: 'Logged out successfully' });
++});
++
++router.get('/verify', (req, res) => {
++  const authHeader = req.headers.authorization;
++  let token = null;
++  if (authHeader && authHeader.startsWith('Bearer ')) {
++    token = authHeader.substring(7);
++  }
++
++  if (!token) {
++    return res.status(401).json({ valid: false, error: 'No token' });
++  }
++
++  const decoded = authService.verifyToken(token);
++  if (!decoded || decoded.step === 'grid') {
++    return res.status(401).json({ valid: false, error: 'Invalid token' });
++  }
++
++  res.json({
++    valid: true,
++    user: { username: decoded.username },
++    expiresAt: new Date(decoded.exp * 1000).toISOString(),
++  });
++});
++
++module.exports = router;
+diff --git a/server/routes/library.js b/server/routes/library.js
+new file mode 100644
+index 0000000..77530a1
+--- /dev/null
++++ b/server/routes/library.js
+@@ -0,0 +1,210 @@
++const express = require('express');
++const router = express.Router();
++const libraryService = require('../services/library');
++const scannerService = require('../services/scanner');
++const { sanitizeString } = require('../utils/validators');
++const logger = require('../utils/logger');
++
++router.get('/', (req, res) => {
++  try {
++    const { type, search, genre, year, sort, order, page, limit } = req.query;
++    let items = libraryService.getAll();
++
++    // Filter by type
++    if (type && type !== 'all') {
++      items = items.filter(i => i.type === type);
++    }
++
++    // Search
++    if (search) {
++      const q = search.toLowerCase();
++      items = items.filter(item => {
++        const haystack = [
++          item.title,
++          item.artist,
++          item.album,
++          item.genre,
++          item.year?.toString(),
++          item.description,
++          item.filename,
++          item.tags?.join(' '),
++        ].filter(Boolean).join(' ').toLowerCase();
++        return haystack.includes(q);
++      });
++    }
++
++    // Genre filter
++    if (genre) {
++      items = items.filter(i => {
++        if (!i.genre) return false;
++        if (Array.isArray(i.genre)) return i.genre.includes(genre);
++        return i.genre === genre;
++      });
++    }
++
++    // Year filter
++    if (year) {
++      const y = parseInt(year, 10);
++      if (!isNaN(y)) {
++        items = items.filter(i => i.year === y);
++      }
++    }
++
++    // Sorting
++    const sortField = sort || 'addedAt';
++    const sortOrder = order === 'asc' ? 1 : -1;
++
++    items.sort((a, b) => {
++      let aVal = a[sortField];
++      let bVal = b[sortField];
++      if (aVal == null) aVal = '';
++      if (bVal == null) bVal = '';
++      if (typeof aVal === 'string') aVal = aVal.toLowerCase();
++      if (typeof bVal === 'string') bVal = bVal.toLowerCase();
++      if (aVal < bVal) return -1 * sortOrder;
++      if (aVal > bVal) return 1 * sortOrder;
++      return 0;
++    });
++
++    // Pagination
++    const pageNum = parseInt(page, 10) || 1;
++    const limitNum = parseInt(limit, 10) || 50;
++    const start = (pageNum - 1) * limitNum;
++    const paginated = items.slice(start, start + limitNum);
++
++    res.json({
++      items: paginated,
++      total: items.length,
++      page: pageNum,
++      limit: limitNum,
++      totalPages: Math.ceil(items.length / limitNum),
++    });
++  } catch (err) {
++    logger.error('Library list error:', err.message);
++    res.status(500).json({ error: 'Failed to fetch library', code: 'LIBRARY_ERROR' });
++  }
++});
++
++router.get('/stats', (req, res) => {
++  try {
++    const stats = libraryService.getStats();
++    res.json(stats);
++  } catch (err) {
++    res.status(500).json({ error: 'Failed to fetch stats' });
++  }
++});
++
++router.get('/genres', (req, res) => {
++  try {
++    const genres = libraryService.getGenres();
++    res.json({ genres });
++  } catch (err) {
++    res.status(500).json({ error: 'Failed to fetch genres' });
++  }
++});
++
++router.get('/search', (req, res) => {
++  try {
++    const { q, type } = req.query;
++    if (!q) return res.json({ results: { movies: [], music: [], videos: [] }, query: '' });
++
++    const all = libraryService.search(q, type || 'all');
++    const results = {
++      movies: all.filter(i => i.type === 'movie'),
++      music: all.filter(i => i.type === 'music'),
++      videos: all.filter(i => i.type === 'video'),
++    };
++
++    res.json({ results, query: q, total: all.length });
++  } catch (err) {
++    res.status(500).json({ error: 'Search failed' });
++  }
++});
++
++router.post('/scan', async (req, res) => {
++  try {
++    const result = await scannerService.scanAll();
++    res.json({ message: 'Scan complete', ...result });
++  } catch (err) {
++    res.status(500).json({ error: 'Scan failed', details: err.message });
++  }
++});
++
++router.get('/:id', (req, res) => {
++  try {
++    const item = libraryService.getById(req.params.id);
++    if (!item) return res.status(404).json({ error: 'Item not found', code: 'NOT_FOUND' });
++
++    // Add favourite status
++    const isFav = libraryService.isFavourite(item.id);
++    res.json({ ...item, isFavourite: isFav });
++  } catch (err) {
++    res.status(500).json({ error: 'Failed to fetch item' });
++  }
++});
++
++router.put('/:id', (req, res) => {
++  try {
++    const { title, artist, album, genre, year, description, rating, tags, season, episode } = req.body;
++    const updates = {};
++
++    if (title !== undefined) updates.title = sanitizeString(title, 500);
++    if (artist !== undefined) updates.artist = sanitizeString(artist, 500);
++    if (album !== undefined) updates.album = sanitizeString(album, 500);
++    if (genre !== undefined) updates.genre = sanitizeString(genre, 200);
++    if (description !== undefined) updates.description = sanitizeString(description, 2000);
++    if (year !== undefined) {
++      const y = parseInt(year, 10);
++      if (!isNaN(y) && y >= 1900 && y <= 2100) updates.year = y;
++    }
++    if (rating !== undefined) {
++      const r = parseFloat(rating);
++      if (!isNaN(r) && r >= 0 && r <= 5) updates.rating = r;
++    }
++    if (tags !== undefined && Array.isArray(tags)) {
++      updates.tags = tags.map(t => sanitizeString(t, 100)).filter(Boolean).slice(0, 20);
++    }
++    if (season !== undefined) {
++      const s = parseInt(season, 10);
++      if (!isNaN(s)) updates.season = s;
++    }
++    if (episode !== undefined) {
++      const e = parseInt(episode, 10);
++      if (!isNaN(e)) updates.episode = e;
++    }
++
++    const updated = libraryService.updateItem(req.params.id, updates);
++    if (!updated) return res.status(404).json({ error: 'Item not found' });
++
++    res.json(updated);
++  } catch (err) {
++    res.status(500).json({ error: 'Failed to update item' });
++  }
++});
++
++router.delete('/:id', (req, res) => {
++  try {
++    const { deleteFile } = req.query;
++    const item = libraryService.getById(req.params.id);
++    if (!item) return res.status(404).json({ error: 'Item not found' });
++
++    if (deleteFile === 'true') {
++      const fs = require('fs-extra');
++      try {
++        if (fs.existsSync(item.path)) {
++          fs.removeSync(item.path);
++          logger.info(`Deleted file: ${item.path}`);
++        }
++      } catch (err) {
++        logger.warn(`Failed to delete file ${item.path}: ${err.message}`);
++      }
++    }
++
++    libraryService.removeItem(req.params.id);
++    res.json({ message: 'Item deleted' });
++  } catch (err) {
++    res.status(500).json({ error: 'Failed to delete item' });
++  }
++});
++
++module.exports = router;
+diff --git a/server/routes/media.js b/server/routes/media.js
+new file mode 100644
+index 0000000..566e8f4
+--- /dev/null
++++ b/server/routes/media.js
+@@ -0,0 +1,207 @@
++const express = require('express');
++const router = express.Router();
++const fs = require('fs-extra');
++const path = require('path');
++const mime = require('mime-types');
++const libraryService = require('../services/library');
++const metadataService = require('../services/metadata');
++const thumbnailService = require('../services/thumbnail');
++const logger = require('../utils/logger');
++
++function sendFileWithRange(req, res, filePath) {
++  try {
++    const stat = fs.statSync(filePath);
++    const fileSize = stat.size;
++    const range = req.headers.range;
++
++    const contentType = mime.lookup(filePath) || 'application/octet-stream';
++
++    if (range) {
++      const parts = range.replace(/bytes=/, '').split('-');
++      const start = parseInt(parts[0], 10);
++      const end = parts[1] ? parseInt(parts[1], 10) : fileSize - 1;
++      const chunkSize = end - start + 1;
++
++      const file = fs.createReadStream(filePath, { start, end });
++      res.writeHead(206, {
++        'Content-Range': `bytes ${start}-${end}/${fileSize}`,
++        'Accept-Ranges': 'bytes',
++        'Content-Length': chunkSize,
++        'Content-Type': contentType,
++      });
++      file.pipe(res);
++    } else {
++      res.writeHead(200, {
++        'Content-Length': fileSize,
++        'Content-Type': contentType,
++        'Accept-Ranges': 'bytes',
++      });
++      fs.createReadStream(filePath).pipe(res);
++    }
++  } catch (err) {
++    logger.error(`Failed to stream ${filePath}: ${err.message}`);
++    res.status(404).json({ error: 'File not found' });
++  }
++}
++
++router.get('/stream/:id', (req, res) => {
++  const item = libraryService.getById(req.params.id);
++  if (!item) return res.status(404).json({ error: 'Item not found' });
++
++  if (!fs.existsSync(item.path)) {
++    return res.status(404).json({ error: 'File not found on disk' });
++  }
++
++  // Update play count and history?
++  // We'll let client explicitly POST to history
++
++  sendFileWithRange(req, res, item.path);
++});
++
++router.get('/cover/:id', (req, res) => {
++  const item = libraryService.getById(req.params.id);
++  if (!item) return res.status(404).json({ error: 'Item not found' });
++
++  let coverPath = item.coverArtPath || item.thumbnailPath;
++
++  // For music, coverArtPath should exist if extracted
++  // For video, use thumbnail
++  if (coverPath && fs.existsSync(coverPath)) {
++    const ct = mime.lookup(coverPath) || 'image/jpeg';
++    res.setHeader('Content-Type', ct);
++    res.setHeader('Cache-Control', 'public, max-age=86400');
++    fs.createReadStream(coverPath).pipe(res);
++  } else {
++    // No cover, return placeholder or 404
++    res.status(404).json({ error: 'Cover not found' });
++  }
++});
++
++router.get('/thumbnail/:id', async (req, res) => {
++  const item = libraryService.getById(req.params.id);
++  if (!item) return res.status(404).json({ error: 'Item not found' });
++
++  let thumbPath = item.thumbnailPath;
++
++  if (!thumbPath || !fs.existsSync(thumbPath)) {
++    // Try to generate on demand for video
++    if (item.type === 'movie' || item.type === 'video') {
++      const time = req.query.time ? parseFloat(req.query.time) : null;
++      if (time !== null && !isNaN(time)) {
++        const outputPath = path.join(__dirname, '../cache/thumbnails', `${item.id}_t${time}.jpg`);
++        if (fs.existsSync(outputPath)) {
++          thumbPath = outputPath;
++        } else {
++          thumbPath = await thumbnailService.generateThumbnailAtTime(item.path, outputPath, time);
++        }
++      } else {
++        thumbPath = await thumbnailService.getOrGenerateThumbnail(item.path, item.id);
++      }
++    }
++  }
++
++  if (thumbPath && fs.existsSync(thumbPath)) {
++    res.setHeader('Content-Type', 'image/jpeg');
++    res.setHeader('Cache-Control', 'public, max-age=86400');
++    fs.createReadStream(thumbPath).pipe(res);
++  } else {
++    res.status(404).json({ error: 'Thumbnail not found' });
++  }
++});
++
++router.get('/subtitle/:id/:subtitleId', (req, res) => {
++  const item = libraryService.getById(req.params.id);
++  if (!item) return res.status(404).json({ error: 'Item not found' });
++
++  const subtitleId = req.params.subtitleId;
++  let subtitlePath = null;
++
++  if (item.subtitles && Array.isArray(item.subtitles)) {
++    const sub = item.subtitles.find(s => s.id === subtitleId || s.path.includes(subtitleId));
++    if (sub) subtitlePath = sub.path;
++  }
++
++  // Also try to find by direct file lookup
++  if (!subtitlePath) {
++    const dir = path.dirname(item.path);
++    const base = path.basename(item.path, path.extname(item.path));
++    const possible = [
++      path.join(dir, `${base}.vtt`),
++      path.join(dir, `${base}.srt`),
++      path.join(dir, subtitleId),
++    ];
++    for (const p of possible) {
++      if (fs.existsSync(p)) {
++        subtitlePath = p;
++        break;
++      }
++    }
++  }
++
++  if (!subtitlePath || !fs.existsSync(subtitlePath)) {
++    return res.status(404).json({ error: 'Subtitle not found' });
++  }
++
++  const ext = path.extname(subtitlePath).toLowerCase();
++
++  if (ext === '.vtt') {
++    res.setHeader('Content-Type', 'text/vtt');
++    fs.createReadStream(subtitlePath).pipe(res);
++  } else if (ext === '.srt') {
++    // Convert SRT to VTT on the fly (simple conversion)
++    try {
++      let content = fs.readFileSync(subtitlePath, 'utf-8');
++      // Basic SRT to VTT conversion
++      content = 'WEBVTT\n\n' + content.replace(/(\d{2}:\d{2}:\d{2}),(\d{3})/g, '$1.$2');
++      res.setHeader('Content-Type', 'text/vtt');
++      res.send(content);
++    } catch (err) {
++      res.status(500).json({ error: 'Failed to convert subtitle' });
++    }
++  } else {
++    // For ASS/SSA, try to serve as is or convert via ffmpeg if available
++    res.setHeader('Content-Type', 'text/plain');
++    fs.createReadStream(subtitlePath).pipe(res);
++  }
++});
++
++router.get('/info/:id', async (req, res) => {
++  const item = libraryService.getById(req.params.id);
++  if (!item) return res.status(404).json({ error: 'Item not found' });
++
++  try {
++    let probeData = null;
++    if (item.type === 'music') {
++      // Already have metadata
++      probeData = {
++        codec: item.codec,
++        bitrate: item.bitrate,
++        sampleRate: item.sampleRate,
++        duration: item.duration,
++        fileSize: item.fileSize,
++        filePath: item.path,
++        title: item.title,
++        artist: item.artist,
++        album: item.album,
++      };
++    } else {
++      probeData = await metadataService.probeVideo(item.path);
++      probeData.filePath = item.path;
++      probeData.fileSize = item.fileSize;
++      probeData.title = item.title;
++    }
++
++    res.json(probeData);
++  } catch (err) {
++    res.status(500).json({ error: 'Failed to get media info', details: err.message });
++  }
++});
++
++router.get('/subtitles/:id', (req, res) => {
++  const item = libraryService.getById(req.params.id);
++  if (!item) return res.status(404).json({ error: 'Item not found' });
++
++  res.json({ subtitles: item.subtitles || [] });
++});
++
++module.exports = router;
+diff --git a/server/routes/playlists.js b/server/routes/playlists.js
+new file mode 100644
+index 0000000..c2c9be0
+--- /dev/null
++++ b/server/routes/playlists.js
+@@ -0,0 +1,173 @@
++const express = require('express');
++const router = express.Router();
++const libraryService = require('../services/library');
++const { sanitizeString } = require('../utils/validators');
++
++router.get('/', (req, res) => {
++  try {
++    const playlists = libraryService.getPlaylists();
++    // Expand items count, not full items for list view
++    const withCounts = playlists.map(p => ({
++      ...p,
++      itemCount: p.items.length,
++    }));
++    res.json({ playlists: withCounts });
++  } catch (err) {
++    res.status(500).json({ error: 'Failed to fetch playlists' });
++  }
++});
++
++router.get('/favourites', (req, res) => {
++  try {
++    const favs = libraryService.getFavourites();
++    res.json({ items: favs, total: favs.length });
++  } catch (err) {
++    res.status(500).json({ error: 'Failed to fetch favourites' });
++  }
++});
++
++router.post('/favourites/:id', (req, res) => {
++  try {
++    const item = libraryService.getById(req.params.id);
++    if (!item) return res.status(404).json({ error: 'Item not found' });
++    libraryService.addFavourite(req.params.id);
++    res.json({ favourited: true, id: req.params.id });
++  } catch (err) {
++    res.status(500).json({ error: 'Failed to add favourite' });
++  }
++});
++
++router.delete('/favourites/:id', (req, res) => {
++  try {
++    libraryService.removeFavourite(req.params.id);
++    res.json({ favourited: false, id: req.params.id });
++  } catch (err) {
++    res.status(500).json({ error: 'Failed to remove favourite' });
++  }
++});
++
++router.get('/history', (req, res) => {
++  try {
++    const history = libraryService.getHistory();
++    // Expand with item details
++    const expanded = history.map(h => ({
++      ...h,
++      item: libraryService.getById(h.itemId),
++    })).filter(h => h.item);
++    res.json({ history: expanded, total: expanded.length });
++  } catch (err) {
++    res.status(500).json({ error: 'Failed to fetch history' });
++  }
++});
++
++router.post('/history', (req, res) => {
++  try {
++    const { itemId, progress, duration, completed } = req.body;
++    if (!itemId) return res.status(400).json({ error: 'itemId required' });
++    const entry = libraryService.addHistoryEntry({ itemId, progress, duration, completed });
++    res.json(entry);
++  } catch (err) {
++    res.status(500).json({ error: 'Failed to add history' });
++  }
++});
++
++router.delete('/history', (req, res) => {
++  try {
++    libraryService.clearHistory();
++    res.json({ message: 'History cleared' });
++  } catch (err) {
++    res.status(500).json({ error: 'Failed to clear history' });
++  }
++});
++
++router.get('/:id', (req, res) => {
++  try {
++    const playlist = libraryService.getPlaylistById(req.params.id);
++    if (!playlist) return res.status(404).json({ error: 'Playlist not found' });
++
++    // Expand items
++    const items = playlist.items.map(id => libraryService.getById(id)).filter(Boolean);
++    res.json({ ...playlist, itemsExpanded: items });
++  } catch (err) {
++    res.status(500).json({ error: 'Failed to fetch playlist' });
++  }
++});
++
++router.post('/', (req, res) => {
++  try {
++    const { name, description, type, items } = req.body;
++    if (!name) return res.status(400).json({ error: 'Name required' });
++
++    const playlist = libraryService.createPlaylist({
++      name: sanitizeString(name, 200),
++      description: description ? sanitizeString(description, 1000) : '',
++      type: type === 'collection' ? 'collection' : 'playlist',
++      items: Array.isArray(items) ? items : [],
++    });
++
++    res.json(playlist);
++  } catch (err) {
++    res.status(500).json({ error: 'Failed to create playlist' });
++  }
++});
++
++router.put('/:id', (req, res) => {
++  try {
++    const { name, description, items } = req.body;
++    const updates = {};
++    if (name !== undefined) updates.name = sanitizeString(name, 200);
++    if (description !== undefined) updates.description = sanitizeString(description, 1000);
++    if (items !== undefined && Array.isArray(items)) updates.items = items;
++
++    const updated = libraryService.updatePlaylist(req.params.id, updates);
++    if (!updated) return res.status(404).json({ error: 'Playlist not found' });
++    res.json(updated);
++  } catch (err) {
++    res.status(500).json({ error: 'Failed to update playlist' });
++  }
++});
++
++router.delete('/:id', (req, res) => {
++  try {
++    const ok = libraryService.deletePlaylist(req.params.id);
++    if (!ok) return res.status(404).json({ error: 'Playlist not found' });
++    res.json({ message: 'Playlist deleted' });
++  } catch (err) {
++    res.status(500).json({ error: 'Failed to delete playlist' });
++  }
++});
++
++router.post('/:id/items', (req, res) => {
++  try {
++    const { itemId } = req.body;
++    if (!itemId) return res.status(400).json({ error: 'itemId required' });
++
++    const playlist = libraryService.getPlaylistById(req.params.id);
++    if (!playlist) return res.status(404).json({ error: 'Playlist not found' });
++
++    if (!playlist.items.includes(itemId)) {
++      playlist.items.push(itemId);
++      libraryService.updatePlaylist(playlist.id, { items: playlist.items });
++    }
++
++    res.json(playlist);
++  } catch (err) {
++    res.status(500).json({ error: 'Failed to add item to playlist' });
++  }
++});
++
++router.delete('/:id/items/:itemId', (req, res) => {
++  try {
++    const playlist = libraryService.getPlaylistById(req.params.id);
++    if (!playlist) return res.status(404).json({ error: 'Playlist not found' });
++
++    playlist.items = playlist.items.filter(id => id !== req.params.itemId);
++    libraryService.updatePlaylist(playlist.id, { items: playlist.items });
++
++    res.json(playlist);
++  } catch (err) {
++    res.status(500).json({ error: 'Failed to remove item from playlist' });
++  }
++});
++
++module.exports = router;
+diff --git a/server/routes/settings.js b/server/routes/settings.js
+new file mode 100644
+index 0000000..54a0654
+--- /dev/null
++++ b/server/routes/settings.js
+@@ -0,0 +1,152 @@
++const express = require('express');
++const router = express.Router();
++const bcrypt = require('bcryptjs');
++const { getConfig, saveConfig } = require('../config');
++const { sanitizeString, isValidGridPattern } = require('../utils/validators');
++const logger = require('../utils/logger');
++
++router.get('/', (req, res) => {
++  try {
++    const config = getConfig();
++    // Return safe settings (no secrets)
++    res.json({
++      server: {
++        port: config.server.port,
++        host: config.server.host,
++      },
++      media: {
++        paths: config.media.paths,
++        maxUploadSizeMB: config.media.maxUploadSizeMB,
++        thumbnail: config.media.thumbnail,
++        transcoding: {
++          enabled: config.media.transcoding.enabled,
++          cacheMaxSizeMB: config.media.transcoding.cacheMaxSizeMB,
++        },
++      },
++      auth: {
++        username: config.auth.username,
++        sessionTimeout: config.auth.sessionTimeout,
++        gridOrderMatters: config.auth.gridOrderMatters,
++        maxAttempts: config.auth.maxAttempts,
++        lockoutDurationMinutes: config.auth.lockoutDurationMinutes,
++      },
++      cors: config.cors,
++      version: '2.0.0',
++    });
++  } catch (err) {
++    res.status(500).json({ error: 'Failed to fetch settings' });
++  }
++});
++
++router.put('/', (req, res) => {
++  try {
++    const config = getConfig();
++    const { media, auth, cors } = req.body;
++
++    if (media) {
++      if (media.paths) {
++        // Validate paths exist or can be created
++        for (const [key, p] of Object.entries(media.paths)) {
++          if (typeof p === 'string' && p.length > 0) {
++            config.media.paths[key] = p;
++          }
++        }
++      }
++      if (media.maxUploadSizeMB) {
++        const size = parseInt(media.maxUploadSizeMB, 10);
++        if (!isNaN(size) && size > 0 && size <= 102400) {
++          config.media.maxUploadSizeMB = size;
++        }
++      }
++    }
++
++    if (auth) {
++      if (auth.sessionTimeout) {
++        const validTimeouts = ['1h', '6h', '12h', '24h', '7d', '30d'];
++        if (validTimeouts.includes(auth.sessionTimeout) || /^\d+[hmd]$/.test(auth.sessionTimeout)) {
++          config.auth.sessionTimeout = auth.sessionTimeout;
++        }
++      }
++      if (auth.gridOrderMatters !== undefined) {
++        config.auth.gridOrderMatters = !!auth.gridOrderMatters;
++      }
++      if (auth.maxAttempts !== undefined) {
++        const ma = parseInt(auth.maxAttempts, 10);
++        if (!isNaN(ma) && ma >= 3 && ma <= 20) config.auth.maxAttempts = ma;
++      }
++      if (auth.lockoutDurationMinutes !== undefined) {
++        const ld = parseInt(auth.lockoutDurationMinutes, 10);
++        if (!isNaN(ld) && ld >= 1 && ld <= 1440) config.auth.lockoutDurationMinutes = ld;
++      }
++    }
++
++    if (cors && cors.origins && Array.isArray(cors.origins)) {
++      config.cors.origins = cors.origins.map(o => sanitizeString(o, 500)).filter(Boolean);
++    }
++
++    saveConfig(config);
++    logger.info('Settings updated');
++
++    res.json({ message: 'Settings updated', settings: config });
++  } catch (err) {
++    logger.error('Failed to update settings:', err.message);
++    res.status(500).json({ error: 'Failed to update settings', details: err.message });
++  }
++});
++
++router.put('/credentials', (req, res) => {
++  try {
++    const config = getConfig();
++    const { currentPassword, newUsername, newPassword, newGridPattern } = req.body;
++
++    if (!currentPassword) {
++      return res.status(400).json({ error: 'Current password required' });
++    }
++
++    // Verify current password
++    if (!bcrypt.compareSync(currentPassword, config.auth.passwordHash)) {
++      return res.status(401).json({ error: 'Current password incorrect' });
++    }
++
++    let changed = false;
++
++    if (newUsername) {
++      const cleanUsername = sanitizeString(newUsername, 50);
++      if (cleanUsername.length < 3) {
++        return res.status(400).json({ error: 'Username must be at least 3 characters' });
++      }
++      config.auth.username = cleanUsername;
++      changed = true;
++    }
++
++    if (newPassword) {
++      if (newPassword.length < 4) {
++        return res.status(400).json({ error: 'Password must be at least 4 characters' });
++      }
++      config.auth.passwordHash = bcrypt.hashSync(newPassword, 10);
++      changed = true;
++    }
++
++    if (newGridPattern) {
++      if (!isValidGridPattern(newGridPattern)) {
++        return res.status(400).json({ error: 'Grid pattern must be array of 8 unique numbers 0-15' });
++      }
++      config.auth.gridPattern = newGridPattern;
++      changed = true;
++    }
++
++    if (!changed) {
++      return res.status(400).json({ error: 'No changes provided' });
++    }
++
++    saveConfig(config);
++    logger.info('Credentials updated');
++
++    res.json({ message: 'Credentials updated successfully' });
++  } catch (err) {
++    logger.error('Failed to update credentials:', err.message);
++    res.status(500).json({ error: 'Failed to update credentials', details: err.message });
++  }
++});
++
++module.exports = router;
+diff --git a/server/routes/transcode.js b/server/routes/transcode.js
+new file mode 100644
+index 0000000..86c11a2
+--- /dev/null
++++ b/server/routes/transcode.js
+@@ -0,0 +1,69 @@
++const express = require('express');
++const router = express.Router();
++const fs = require('fs-extra');
++const path = require('path');
++const libraryService = require('../services/library');
++const transcoderService = require('../services/transcoder');
++const logger = require('../utils/logger');
++
++router.get('/:id', (req, res) => {
++  const item = libraryService.getById(req.params.id);
++  if (!item) return res.status(404).json({ error: 'Item not found' });
++
++  if (!fs.existsSync(item.path)) {
++    return res.status(404).json({ error: 'File not found on disk' });
++  }
++
++  const { quality = '720p', format = 'mp4', audioCodec = 'aac' } = req.query;
++
++  // Check cache first
++  const cachePath = transcoderService.getCachePath(item.id, quality, format);
++  if (fs.existsSync(cachePath)) {
++    logger.info(`Serving cached transcode: ${cachePath}`);
++    const stat = fs.statSync(cachePath);
++    res.setHeader('Content-Type', 'video/mp4');
++    res.setHeader('Content-Length', stat.size);
++    res.setHeader('Accept-Ranges', 'bytes');
++    return fs.createReadStream(cachePath).pipe(res);
++  }
++
++  // Stream transcode
++  transcoderService.transcodeStream(item.path, res, { quality, format, audioCodec });
++});
++
++router.get('/audio/:id', (req, res) => {
++  const item = libraryService.getById(req.params.id);
++  if (!item) return res.status(404).json({ error: 'Item not found' });
++
++  if (!fs.existsSync(item.path)) {
++    return res.status(404).json({ error: 'File not found on disk' });
++  }
++
++  const { codec = 'aac', bitrate = '128k' } = req.query;
++  transcoderService.transcodeAudioStream(item.path, res, { codec, bitrate });
++});
++
++router.delete('/cache', async (req, res) => {
++  try {
++    const { getConfig } = require('../config');
++    const config = getConfig();
++    const cacheDir = config.media.transcoding.cacheDir;
++    if (fs.existsSync(cacheDir)) {
++      const files = await fs.readdir(cacheDir);
++      let deleted = 0;
++      for (const file of files) {
++        try {
++          await fs.remove(path.join(cacheDir, file));
++          deleted++;
++        } catch {}
++      }
++      res.json({ message: `Cleared ${deleted} cached files` });
++    } else {
++      res.json({ message: 'Cache already empty' });
++    }
++  } catch (err) {
++    res.status(500).json({ error: 'Failed to clear cache', details: err.message });
++  }
++});
++
++module.exports = router;
+diff --git a/server/routes/upload.js b/server/routes/upload.js
+new file mode 100644
+index 0000000..ba17173
+--- /dev/null
++++ b/server/routes/upload.js
+@@ -0,0 +1,164 @@
++const express = require('express');
++const router = express.Router();
++const multer = require('multer');
++const path = require('path');
++const fs = require('fs-extra');
++const { getConfig } = require('../config');
++const { sanitizeFilename, isValidMediaType } = require('../utils/validators');
++const scannerService = require('../services/scanner');
++const logger = require('../utils/logger');
++
++function getUploadStorage(type) {
++  const config = getConfig();
++  let dest = config.media.paths[type === 'movie' ? 'movies' : type === 'music' ? 'music' : 'videos'];
++  fs.ensureDirSync(dest);
++
++  return multer.diskStorage({
++    destination: (req, file, cb) => {
++      cb(null, dest);
++    },
++    filename: (req, file, cb) => {
++      const safeName = sanitizeFilename(file.originalname);
++      // Avoid collisions
++      const ext = path.extname(safeName);
++      const base = path.basename(safeName, ext);
++      let finalName = safeName;
++      let counter = 1;
++      while (fs.existsSync(path.join(dest, finalName))) {
++        finalName = `${base}_${counter}${ext}`;
++        counter++;
++      }
++      cb(null, finalName);
++    }
++  });
++}
++
++function createUploader(type) {
++  const config = getConfig();
++  const maxSize = config.media.maxUploadSizeMB * 1024 * 1024;
++
++  return multer({
++    storage: getUploadStorage(type),
++    limits: { fileSize: maxSize },
++    fileFilter: (req, file, cb) => {
++      // Allow all for now, but validate extension
++      const ext = path.extname(file.originalname).toLowerCase();
++      const allExts = [
++        ...config.media.supportedExtensions.video,
++        ...config.media.supportedExtensions.audio,
++        ...config.media.supportedExtensions.subtitle,
++        '.jpg', '.jpeg', '.png', '.webp'
++      ];
++      // Allow if it's media or image (for cover)
++      if (allExts.includes(ext) || file.fieldname === 'cover' || file.fieldname === 'subtitle' || file.fieldname === 'thumbnail') {
++        cb(null, true);
++      } else {
++        cb(new Error(`Unsupported file type: ${ext}`));
++      }
++    }
++  });
++}
++
++router.post('/:type', (req, res) => {
++  const type = req.params.type;
++
++  if (!isValidMediaType(type)) {
++    return res.status(400).json({ error: 'Invalid media type. Must be movie, music, or video', code: 'INVALID_TYPE' });
++  }
++
++  const uploader = createUploader(type);
++  const upload = uploader.fields([
++    { name: 'file', maxCount: 1 },
++    { name: 'files', maxCount: 20 },
++    { name: 'cover', maxCount: 1 },
++    { name: 'thumbnail', maxCount: 1 },
++    { name: 'subtitle', maxCount: 5 },
++  ]);
++
++  upload(req, res, async (err) => {
++    if (err) {
++      logger.error('Upload error:', err.message);
++      if (err.code === 'LIMIT_FILE_SIZE') {
++        return res.status(413).json({ error: `File too large. Max ${getConfig().media.maxUploadSizeMB}MB`, code: 'FILE_TOO_LARGE' });
++      }
++      return res.status(400).json({ error: err.message, code: 'UPLOAD_ERROR' });
++    }
++
++    try {
++      const metadata = req.body.metadata ? JSON.parse(req.body.metadata) : {};
++      const files = [];
++
++      if (req.files['file']) files.push(...req.files['file']);
++      if (req.files['files']) files.push(...req.files['files']);
++
++      if (files.length === 0) {
++        return res.status(400).json({ error: 'No files uploaded', code: 'NO_FILES' });
++      }
++
++      const results = [];
++      for (const file of files) {
++        // Scan the file to index it
++        const item = await scannerService.scanFile(file.path);
++        if (item) {
++          // Apply metadata overrides if provided
++          if (metadata.title) item.title = metadata.title;
++          if (metadata.artist) item.artist = metadata.artist;
++          if (metadata.album) item.album = metadata.album;
++          if (metadata.year) item.year = parseInt(metadata.year, 10) || item.year;
++          if (metadata.genre) item.genre = metadata.genre;
++          if (metadata.description) item.description = metadata.description;
++          if (metadata.season) item.season = parseInt(metadata.season, 10);
++          if (metadata.episode) item.episode = parseInt(metadata.episode, 10);
++          if (metadata.tags) item.tags = Array.isArray(metadata.tags) ? metadata.tags : [metadata.tags];
++
++          // If cover uploaded, handle
++          if (req.files['cover'] && req.files['cover'][0]) {
++            const coverFile = req.files['cover'][0];
++            const coverDest = path.join(__dirname, '../cache/covers', `${item.id}${path.extname(coverFile.path)}`);
++            fs.ensureDirSync(path.dirname(coverDest));
++            fs.moveSync(coverFile.path, coverDest, { overwrite: true });
++            item.coverArtPath = coverDest;
++            item.thumbnailPath = coverDest;
++          }
++
++          // If subtitle uploaded
++          if (req.files['subtitle']) {
++            for (const subFile of req.files['subtitle']) {
++              // Move subtitle next to media file with same base name
++              const subExt = path.extname(subFile.path);
++              const mediaBase = path.basename(file.path, path.extname(file.path));
++              const subDest = path.join(path.dirname(file.path), `${mediaBase}${subExt}`);
++              if (subFile.path !== subDest) {
++                fs.moveSync(subFile.path, subDest, { overwrite: true });
++              }
++              if (!item.subtitles) item.subtitles = [];
++              item.subtitles.push({
++                id: path.basename(subDest),
++                path: subDest,
++                language: 'unknown',
++                format: subExt.substring(1),
++              });
++            }
++          }
++
++          // Update library with overrides
++          const libraryService = require('../services/library');
++          libraryService.updateItem(item.id, item);
++          results.push(item);
++        }
++      }
++
++      logger.info(`Uploaded ${results.length} files as ${type}`);
++
++      res.json({
++        message: `Successfully uploaded ${results.length} file(s)`,
++        items: results,
++      });
++    } catch (err) {
++      logger.error('Upload processing error:', err.message);
++      res.status(500).json({ error: 'Failed to process upload', details: err.message });
++    }
++  });
++});
++
++module.exports = router;
+diff --git a/server/services/authService.js b/server/services/authService.js
+new file mode 100644
+index 0000000..02e397f
+--- /dev/null
++++ b/server/services/authService.js
+@@ -0,0 +1,156 @@
++const fs = require('fs-extra');
++const path = require('path');
++const bcrypt = require('bcryptjs');
++const jwt = require('jsonwebtoken');
++const { getConfig } = require('../config');
++const logger = require('../utils/logger');
++
++const BRUTEFORCE_PATH = path.join(__dirname, '../data/bruteforce.json');
++let attempts = new Map();
++
++function loadAttempts() {
++  try {
++    if (fs.existsSync(BRUTEFORCE_PATH)) {
++      const data = fs.readJsonSync(BRUTEFORCE_PATH);
++      attempts = new Map(Object.entries(data));
++      // Convert values to proper structure and clean expired
++      const now = Date.now();
++      for (const [ip, record] of attempts.entries()) {
++        if (record.lockedUntil && record.lockedUntil < now) {
++          attempts.delete(ip);
++        }
++      }
++    }
++  } catch (err) {
++    logger.warn('Failed to load bruteforce data:', err.message);
++    attempts = new Map();
++  }
++}
++
++function saveAttempts() {
++  try {
++    fs.ensureDirSync(path.dirname(BRUTEFORCE_PATH));
++    const obj = Object.fromEntries(attempts);
++    fs.writeJsonSync(BRUTEFORCE_PATH, obj, { spaces: 2 });
++  } catch (err) {
++    logger.warn('Failed to save bruteforce data:', err.message);
++  }
++}
++
++loadAttempts();
++
++function getClientIp(req) {
++  return req.ip || req.connection.remoteAddress || 'unknown';
++}
++
++function isLocked(ip) {
++  const record = attempts.get(ip);
++  if (!record) return false;
++  if (record.lockedUntil && record.lockedUntil > Date.now()) {
++    return true;
++  }
++  if (record.lockedUntil && record.lockedUntil <= Date.now()) {
++    attempts.delete(ip);
++    saveAttempts();
++    return false;
++  }
++  return false;
++}
++
++function getLockoutTimeRemaining(ip) {
++  const record = attempts.get(ip);
++  if (!record || !record.lockedUntil) return 0;
++  const remaining = record.lockedUntil - Date.now();
++  return remaining > 0 ? Math.ceil(remaining / 1000) : 0;
++}
++
++function recordFailedAttempt(ip) {
++  const config = getConfig();
++  const now = Date.now();
++  let record = attempts.get(ip);
++
++  if (!record) {
++    record = { count: 1, firstAttempt: now, lockedUntil: null };
++  } else {
++    // If first attempt was more than lockout window ago, reset
++    const windowMs = config.auth.lockoutDurationMinutes * 60 * 1000;
++    if (now - record.firstAttempt > windowMs) {
++      record = { count: 1, firstAttempt: now, lockedUntil: null };
++    } else {
++      record.count += 1;
++    }
++  }
++
++  if (record.count >= config.auth.maxAttempts) {
++    record.lockedUntil = now + config.auth.lockoutDurationMinutes * 60 * 1000;
++    logger.warn(`IP ${ip} locked out for ${config.auth.lockoutDurationMinutes} minutes after ${record.count} failed attempts`);
++  }
++
++  attempts.set(ip, record);
++  saveAttempts();
++}
++
++function resetAttempts(ip) {
++  if (attempts.has(ip)) {
++    attempts.delete(ip);
++    saveAttempts();
++  }
++}
++
++function validateCredentials(username, password) {
++  const config = getConfig();
++  if (username !== config.auth.username) return false;
++  if (!config.auth.passwordHash) return false;
++  try {
++    return bcrypt.compareSync(password, config.auth.passwordHash);
++  } catch {
++    return false;
++  }
++}
++
++function validateGridPattern(pattern) {
++  const config = getConfig();
++  const expected = config.auth.gridPattern;
++  if (!Array.isArray(pattern) || pattern.length !== 8) return false;
++  if (!Array.isArray(expected) || expected.length !== 8) return false;
++
++  if (config.auth.gridOrderMatters) {
++    return pattern.every((val, idx) => val === expected[idx]);
++  } else {
++    const sortedPattern = [...pattern].sort((a, b) => a - b);
++    const sortedExpected = [...expected].sort((a, b) => a - b);
++    return sortedPattern.every((val, idx) => val === sortedExpected[idx]);
++  }
++}
++
++function generateChallengeToken(username) {
++  const config = getConfig();
++  return jwt.sign({ username, step: 'grid' }, config.auth.jwtSecret, { expiresIn: '5m' });
++}
++
++function generateAccessToken(username) {
++  const config = getConfig();
++  return jwt.sign({ username }, config.auth.jwtSecret, { expiresIn: config.auth.sessionTimeout });
++}
++
++function verifyToken(token) {
++  const config = getConfig();
++  try {
++    return jwt.verify(token, config.auth.jwtSecret);
++  } catch {
++    return null;
++  }
++}
++
++module.exports = {
++  getClientIp,
++  isLocked,
++  getLockoutTimeRemaining,
++  recordFailedAttempt,
++  resetAttempts,
++  validateCredentials,
++  validateGridPattern,
++  generateChallengeToken,
++  generateAccessToken,
++  verifyToken,
++};
+diff --git a/server/services/library.js b/server/services/library.js
+new file mode 100644
+index 0000000..534df02
+--- /dev/null
++++ b/server/services/library.js
+@@ -0,0 +1,327 @@
++const fs = require('fs-extra');
++const path = require('path');
++const { getConfig } = require('../config');
++const logger = require('../utils/logger');
++
++const LIBRARY_PATH = path.join(__dirname, '../data/library.json');
++const FAVOURITES_PATH = path.join(__dirname, '../data/favourites.json');
++const PLAYLISTS_PATH = path.join(__dirname, '../data/playlists.json');
++const HISTORY_PATH = path.join(__dirname, '../data/history.json');
++
++let library = [];
++let favourites = [];
++let playlists = [];
++let history = [];
++
++function loadLibrary() {
++  try {
++    if (fs.existsSync(LIBRARY_PATH)) {
++      library = fs.readJsonSync(LIBRARY_PATH);
++      logger.info(`Loaded ${library.length} items from library`);
++    } else {
++      library = [];
++      logger.info('No existing library, starting fresh');
++    }
++  } catch (err) {
++    logger.warn('Failed to load library:', err.message);
++    library = [];
++  }
++  return library;
++}
++
++function saveLibrary() {
++  try {
++    fs.ensureDirSync(path.dirname(LIBRARY_PATH));
++    fs.writeJsonSync(LIBRARY_PATH, library, { spaces: 2 });
++  } catch (err) {
++    logger.error('Failed to save library:', err.message);
++  }
++}
++
++function loadFavourites() {
++  try {
++    if (fs.existsSync(FAVOURITES_PATH)) {
++      favourites = fs.readJsonSync(FAVOURITES_PATH);
++    } else {
++      favourites = [];
++    }
++  } catch {
++    favourites = [];
++  }
++  return favourites;
++}
++
++function saveFavourites() {
++  try {
++    fs.ensureDirSync(path.dirname(FAVOURITES_PATH));
++    fs.writeJsonSync(FAVOURITES_PATH, favourites, { spaces: 2 });
++  } catch (err) {
++    logger.error('Failed to save favourites:', err.message);
++  }
++}
++
++function loadPlaylists() {
++  try {
++    if (fs.existsSync(PLAYLISTS_PATH)) {
++      playlists = fs.readJsonSync(PLAYLISTS_PATH);
++    } else {
++      playlists = [];
++    }
++  } catch {
++    playlists = [];
++  }
++  return playlists;
++}
++
++function savePlaylists() {
++  try {
++    fs.ensureDirSync(path.dirname(PLAYLISTS_PATH));
++    fs.writeJsonSync(PLAYLISTS_PATH, playlists, { spaces: 2 });
++  } catch (err) {
++    logger.error('Failed to save playlists:', err.message);
++  }
++}
++
++function loadHistory() {
++  try {
++    if (fs.existsSync(HISTORY_PATH)) {
++      history = fs.readJsonSync(HISTORY_PATH);
++    } else {
++      history = [];
++    }
++  } catch {
++    history = [];
++  }
++  return history;
++}
++
++function saveHistory() {
++  try {
++    fs.ensureDirSync(path.dirname(HISTORY_PATH));
++    fs.writeJsonSync(HISTORY_PATH, history, { spaces: 2 });
++  } catch (err) {
++    logger.error('Failed to save history:', err.message);
++  }
++}
++
++function init() {
++  loadLibrary();
++  loadFavourites();
++  loadPlaylists();
++  loadHistory();
++}
++
++function getAll() {
++  return library;
++}
++
++function getById(id) {
++  return library.find(item => item.id === id);
++}
++
++function getByType(type) {
++  if (!type || type === 'all') return library;
++  return library.filter(item => item.type === type);
++}
++
++function addItem(item) {
++  const existing = library.findIndex(i => i.id === item.id || i.path === item.path);
++  if (existing >= 0) {
++    library[existing] = { ...library[existing], ...item, updatedAt: new Date().toISOString() };
++  } else {
++    library.push({ ...item, addedAt: new Date().toISOString(), updatedAt: new Date().toISOString() });
++  }
++  saveLibrary();
++  return item;
++}
++
++function updateItem(id, updates) {
++  const idx = library.findIndex(i => i.id === id);
++  if (idx === -1) return null;
++  library[idx] = { ...library[idx], ...updates, updatedAt: new Date().toISOString() };
++  saveLibrary();
++  return library[idx];
++}
++
++function removeItem(id) {
++  const idx = library.findIndex(i => i.id === id);
++  if (idx === -1) return false;
++  library.splice(idx, 1);
++  saveLibrary();
++  // Also remove from favourites, playlists, history
++  favourites = favourites.filter(f => f !== id);
++  saveFavourites();
++  playlists.forEach(pl => {
++    pl.items = pl.items.filter(itemId => itemId !== id);
++  });
++  savePlaylists();
++  history = history.filter(h => h.itemId !== id);
++  saveHistory();
++  return true;
++}
++
++function search(query, type = 'all') {
++  let items = getByType(type);
++  if (!query) return items;
++  const q = query.toLowerCase();
++  return items.filter(item => {
++    const haystack = [
++      item.title,
++      item.artist,
++      item.album,
++      item.genre,
++      item.year?.toString(),
++      item.description,
++      item.filename,
++      item.tags?.join(' '),
++    ].filter(Boolean).join(' ').toLowerCase();
++    return haystack.includes(q);
++  });
++}
++
++function getStats() {
++  const movies = library.filter(i => i.type === 'movie').length;
++  const music = library.filter(i => i.type === 'music').length;
++  const videos = library.filter(i => i.type === 'video').length;
++  const totalSize = library.reduce((sum, i) => sum + (i.fileSize || 0), 0);
++  const recentlyAdded = [...library].sort((a, b) => new Date(b.addedAt) - new Date(a.addedAt)).slice(0, 20);
++  return { totalMovies: movies, totalMusic: music, totalVideos: videos, totalSize, totalItems: library.length, recentlyAdded };
++}
++
++function getGenres() {
++  const genres = new Set();
++  library.forEach(item => {
++    if (item.genre) {
++      if (Array.isArray(item.genre)) item.genre.forEach(g => genres.add(g));
++      else genres.add(item.genre);
++    }
++  });
++  return Array.from(genres).sort();
++}
++
++// Favourites
++function getFavourites() {
++  return favourites.map(id => getById(id)).filter(Boolean);
++}
++
++function addFavourite(id) {
++  if (!favourites.includes(id)) {
++    favourites.push(id);
++    saveFavourites();
++  }
++  return true;
++}
++
++function removeFavourite(id) {
++  favourites = favourites.filter(f => f !== id);
++  saveFavourites();
++  return true;
++}
++
++function isFavourite(id) {
++  return favourites.includes(id);
++}
++
++// Playlists
++function getPlaylists() {
++  return playlists;
++}
++
++function getPlaylistById(id) {
++  return playlists.find(p => p.id === id);
++}
++
++function createPlaylist(data) {
++  const id = data.id || `pl_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`;
++  const playlist = {
++    id,
++    name: data.name || 'Untitled Playlist',
++    description: data.description || '',
++    type: data.type || 'playlist',
++    items: data.items || [],
++    createdAt: new Date().toISOString(),
++    updatedAt: new Date().toISOString(),
++    coverArt: data.coverArt || null,
++  };
++  playlists.push(playlist);
++  savePlaylists();
++  return playlist;
++}
++
++function updatePlaylist(id, updates) {
++  const idx = playlists.findIndex(p => p.id === id);
++  if (idx === -1) return null;
++  playlists[idx] = { ...playlists[idx], ...updates, updatedAt: new Date().toISOString() };
++  savePlaylists();
++  return playlists[idx];
++}
++
++function deletePlaylist(id) {
++  const idx = playlists.findIndex(p => p.id === id);
++  if (idx === -1) return false;
++  playlists.splice(idx, 1);
++  savePlaylists();
++  return true;
++}
++
++// History
++function getHistory() {
++  return history.sort((a, b) => new Date(b.watchedAt) - new Date(a.watchedAt));
++}
++
++function addHistoryEntry(entry) {
++  const existingIdx = history.findIndex(h => h.itemId === entry.itemId);
++  const newEntry = {
++    itemId: entry.itemId,
++    progress: entry.progress || 0,
++    duration: entry.duration || 0,
++    completed: entry.completed || false,
++    watchedAt: new Date().toISOString(),
++    playCount: 1,
++  };
++  if (existingIdx >= 0) {
++    newEntry.playCount = (history[existingIdx].playCount || 0) + 1;
++    history[existingIdx] = { ...history[existingIdx], ...newEntry };
++  } else {
++    history.push(newEntry);
++  }
++  // Keep only last 500 entries
++  if (history.length > 500) {
++    history = history.slice(-500);
++  }
++  saveHistory();
++  return newEntry;
++}
++
++function clearHistory() {
++  history = [];
++  saveHistory();
++  return true;
++}
++
++module.exports = {
++  init,
++  loadLibrary,
++  saveLibrary,
++  getAll,
++  getById,
++  getByType,
++  addItem,
++  updateItem,
++  removeItem,
++  search,
++  getStats,
++  getGenres,
++  getFavourites,
++  addFavourite,
++  removeFavourite,
++  isFavourite,
++  getPlaylists,
++  getPlaylistById,
++  createPlaylist,
++  updatePlaylist,
++  deletePlaylist,
++  getHistory,
++  addHistoryEntry,
++  clearHistory,
++};
+diff --git a/server/services/metadata.js b/server/services/metadata.js
+new file mode 100644
+index 0000000..4ef9c10
+--- /dev/null
++++ b/server/services/metadata.js
+@@ -0,0 +1,210 @@
++const path = require('path');
++const fs = require('fs-extra');
++const { parseFile } = require('music-metadata');
++const logger = require('../utils/logger');
++const { parseMovieFilename } = require('../utils/fileUtils');
++
++let ffmpeg = null;
++let ffprobe = null;
++
++try {
++  const ffmpegStatic = require('ffmpeg-static');
++  const ffprobeStatic = require('ffprobe-static');
++  ffmpeg = require('fluent-ffmpeg');
++  ffmpeg.setFfmpegPath(ffmpegStatic);
++  ffmpeg.setFfprobePath(ffprobeStatic.path);
++  logger.info('[Metadata] Using static ffmpeg/ffprobe');
++} catch (err) {
++  try {
++    ffmpeg = require('fluent-ffmpeg');
++    logger.info('[Metadata] Using system ffmpeg/ffprobe');
++  } catch {
++    logger.warn('[Metadata] ffmpeg not available, video metadata will be limited');
++  }
++}
++
++async function extractAudioMetadata(filePath) {
++  try {
++    const metadata = await parseFile(filePath, { duration: true });
++    const common = metadata.common || {};
++    const format = metadata.format || {};
++
++    // Extract cover art if present
++    let coverArtPath = null;
++    if (common.picture && common.picture.length > 0) {
++      try {
++        const coverDir = path.join(__dirname, '../cache/covers');
++        fs.ensureDirSync(coverDir);
++        const hash = require('crypto').createHash('md5').update(filePath).digest('hex');
++        const pic = common.picture[0];
++        const ext = pic.format ? pic.format.split('/')[1] : 'jpg';
++        coverArtPath = path.join(coverDir, `${hash}.${ext}`);
++        if (!fs.existsSync(coverArtPath)) {
++          fs.writeFileSync(coverArtPath, pic.data);
++        }
++      } catch (err) {
++        logger.warn('Failed to extract cover art:', err.message);
++      }
++    }
++
++    return {
++      title: common.title || path.basename(filePath, path.extname(filePath)),
++      artist: common.artist || common.albumartist || 'Unknown Artist',
++      album: common.album || 'Unknown Album',
++      year: common.year || null,
++      genre: common.genre ? common.genre[0] : null,
++      track: common.track ? common.track.no : null,
++      duration: format.duration || 0,
++      bitrate: format.bitrate || 0,
++      sampleRate: format.sampleRate || 0,
++      codec: format.codec || format.dataformat || 'unknown',
++      coverArtPath,
++      common,
++      format,
++    };
++  } catch (err) {
++    logger.warn(`Failed to extract audio metadata for ${filePath}: ${err.message}`);
++    return {
++      title: path.basename(filePath, path.extname(filePath)),
++      artist: 'Unknown Artist',
++      album: 'Unknown Album',
++      duration: 0,
++    };
++  }
++}
++
++function probeVideo(filePath) {
++  return new Promise((resolve, reject) => {
++    if (!ffmpeg) {
++      return resolve({
++        duration: 0,
++        width: 0,
++        height: 0,
++        bitrate: 0,
++        videoCodec: 'unknown',
++        audioCodec: 'unknown',
++        format: path.extname(filePath).substring(1),
++      });
++    }
++
++    ffmpeg.ffprobe(filePath, (err, metadata) => {
++      if (err) {
++        logger.warn(`ffprobe failed for ${filePath}: ${err.message}`);
++        return resolve({
++          duration: 0,
++          width: 0,
++          height: 0,
++          bitrate: 0,
++          videoCodec: 'unknown',
++          audioCodec: 'unknown',
++          format: path.extname(filePath).substring(1),
++        });
++      }
++
++      const videoStream = metadata.streams.find(s => s.codec_type === 'video');
++      const audioStream = metadata.streams.find(s => s.codec_type === 'audio');
++
++      resolve({
++        duration: parseFloat(metadata.format.duration) || 0,
++        width: videoStream ? videoStream.width : 0,
++        height: videoStream ? videoStream.height : 0,
++        bitrate: parseInt(metadata.format.bit_rate) || 0,
++        videoCodec: videoStream ? videoStream.codec_name : 'unknown',
++        audioCodec: audioStream ? audioStream.codec_name : 'unknown',
++        format: metadata.format.format_name || path.extname(filePath).substring(1),
++        size: parseInt(metadata.format.size) || 0,
++        streams: metadata.streams,
++      });
++    });
++  });
++}
++
++async function extractVideoMetadata(filePath, type = 'video') {
++  const parsed = parseMovieFilename(filePath);
++  const probe = await probeVideo(filePath);
++
++  // Look for subtitles alongside
++  const dir = path.dirname(filePath);
++  const baseName = path.basename(filePath, path.extname(filePath));
++  const subtitleExts = ['.srt', '.vtt', '.ass', '.ssa'];
++  const subtitles = [];
++  try {
++    const files = fs.readdirSync(dir);
++    for (const file of files) {
++      if (file.startsWith(baseName) && subtitleExts.includes(path.extname(file).toLowerCase())) {
++        subtitles.push({
++          id: `${baseName}_${path.extname(file)}`,
++          path: path.join(dir, file),
++          language: 'unknown',
++          format: path.extname(file).substring(1),
++        });
++      }
++    }
++  } catch {}
++
++  return {
++    title: parsed.title,
++    year: parsed.year,
++    season: parsed.season,
++    episode: parsed.episode,
++    duration: probe.duration,
++    width: probe.width,
++    height: probe.height,
++    resolution: probe.width && probe.height ? `${probe.width}x${probe.height}` : 'unknown',
++    bitrate: probe.bitrate,
++    videoCodec: probe.videoCodec,
++    audioCodec: probe.audioCodec,
++    format: probe.format,
++    subtitles,
++    fileSize: probe.size || fs.statSync(filePath).size,
++  };
++}
++
++async function generateThumbnail(videoPath, outputPath, time = null) {
++  return new Promise((resolve, reject) => {
++    if (!ffmpeg) return resolve(null);
++    const dir = path.dirname(outputPath);
++    fs.ensureDirSync(dir);
++
++    // Use 25% of duration if time not specified
++    const getTime = async () => {
++      if (time !== null) return time;
++      const probe = await probeVideo(videoPath);
++      return probe.duration ? probe.duration * 0.25 : 1;
++    };
++
++    getTime().then(seekTime => {
++      ffmpeg(videoPath)
++        .screenshots({
++          timestamps: [seekTime],
++          filename: path.basename(outputPath),
++          folder: dir,
++          size: '320x?',
++        })
++        .on('end', () => resolve(outputPath))
++        .on('error', err => {
++          logger.warn(`Thumbnail generation failed for ${videoPath}: ${err.message}`);
++          resolve(null);
++        });
++    });
++  });
++}
++
++function canBrowserPlayDirectly(codec, format) {
++  // Simplified check: H.264 in MP4 is universal
++  const directPlayVideo = ['h264', 'avc'];
++  const directPlayAudio = ['aac', 'mp3', 'opus', 'vorbis', 'flac'];
++  const directPlayFormat = ['mp4', 'webm', 'ogg'];
++
++  if (format === 'mp4' && directPlayVideo.includes(codec.toLowerCase())) return true;
++  if (directPlayAudio.includes(codec.toLowerCase())) return true;
++  return false;
++}
++
++module.exports = {
++  extractAudioMetadata,
++  extractVideoMetadata,
++  probeVideo,
++  generateThumbnail,
++  canBrowserPlayDirectly,
++};
+diff --git a/server/services/scanner.js b/server/services/scanner.js
+new file mode 100644
+index 0000000..7c36ad4
+--- /dev/null
++++ b/server/services/scanner.js
+@@ -0,0 +1,274 @@
++const fs = require('fs-extra');
++const path = require('path');
++const chokidar = require('chokidar');
++const crypto = require('crypto');
++const { getConfig } = require('../config');
++const libraryService = require('./library');
++const metadataService = require('./metadata');
++const thumbnailService = require('./thumbnail');
++const logger = require('../utils/logger');
++const { getExtension, isMediaFile, getFileSize } = require('../utils/fileUtils');
++
++let watcher = null;
++let isScanning = false;
++
++function generateId(filePath) {
++  return crypto.createHash('md5').update(filePath).digest('hex');
++}
++
++function determineType(filePath, config) {
++  const ext = getExtension(filePath);
++  if (config.media.supportedExtensions.video.includes(ext)) {
++    // Heuristic: if path contains movies or series, classify as movie
++    const lower = filePath.toLowerCase();
++    if (lower.includes('movie') || lower.includes('film') || lower.includes('series') || lower.includes('show') || lower.includes('season')) {
++      return 'movie';
++    }
++    // Default video files to video, but if duration > 10min and has year in name, likely movie
++    return 'video';
++  }
++  if (config.media.supportedExtensions.audio.includes(ext)) {
++    return 'music';
++  }
++  return null;
++}
++
++async function scanFile(filePath) {
++  try {
++    const config = getConfig();
++    const type = determineType(filePath, config);
++    if (!type) return null;
++
++    const stat = fs.statSync(filePath);
++    if (!stat.isFile()) return null;
++
++    const id = generateId(filePath);
++    const existing = libraryService.getById(id);
++    // Skip if file hasn't changed (size + mtime)
++    if (existing && existing.fileSize === stat.size && existing.mtime === stat.mtimeMs) {
++      return existing;
++    }
++
++    let metadata = {};
++    let thumbnailPath = null;
++    let coverArtPath = null;
++
++    if (type === 'music') {
++      const audioMeta = await metadataService.extractAudioMetadata(filePath);
++      metadata = {
++        title: audioMeta.title,
++        artist: audioMeta.artist,
++        album: audioMeta.album,
++        year: audioMeta.year,
++        genre: audioMeta.genre,
++        track: audioMeta.track,
++        duration: audioMeta.duration,
++        bitrate: audioMeta.bitrate,
++        sampleRate: audioMeta.sampleRate,
++        codec: audioMeta.codec,
++      };
++      if (audioMeta.coverArtPath) {
++        coverArtPath = audioMeta.coverArtPath;
++      }
++    } else {
++      const videoMeta = await metadataService.extractVideoMetadata(filePath, type);
++      metadata = {
++        title: videoMeta.title,
++        year: videoMeta.year,
++        season: videoMeta.season,
++        episode: videoMeta.episode,
++        duration: videoMeta.duration,
++        width: videoMeta.width,
++        height: videoMeta.height,
++        resolution: videoMeta.resolution,
++        bitrate: videoMeta.bitrate,
++        videoCodec: videoMeta.videoCodec,
++        audioCodec: videoMeta.audioCodec,
++        format: videoMeta.format,
++        subtitles: videoMeta.subtitles,
++        fileSize: videoMeta.fileSize,
++      };
++
++      // Generate thumbnail for video
++      if (config.media.thumbnail.enabled) {
++        try {
++          thumbnailPath = await thumbnailService.getOrGenerateThumbnail(filePath, id);
++        } catch (err) {
++          logger.warn(`Thumbnail failed for ${filePath}: ${err.message}`);
++        }
++      }
++    }
++
++    const item = {
++      id,
++      path: filePath,
++      filename: path.basename(filePath),
++      fileSize: stat.size,
++      mtime: stat.mtimeMs,
++      type,
++      ...metadata,
++      thumbnailPath,
++      coverArtPath,
++      addedAt: existing ? existing.addedAt : new Date().toISOString(),
++      updatedAt: new Date().toISOString(),
++      playCount: existing ? existing.playCount : 0,
++      rating: existing ? existing.rating : 0,
++      description: existing ? existing.description : '',
++      tags: existing ? existing.tags : [],
++    };
++
++    libraryService.addItem(item);
++    return item;
++  } catch (err) {
++    logger.warn(`Failed to scan file ${filePath}: ${err.message}`);
++    return null;
++  }
++}
++
++async function scanDirectory(dirPath, recursive = true) {
++  const config = getConfig();
++  const allExtensions = [
++    ...config.media.supportedExtensions.video,
++    ...config.media.supportedExtensions.audio,
++  ];
++
++  let files = [];
++  try {
++    if (!fs.existsSync(dirPath)) {
++      logger.warn(`Directory does not exist: ${dirPath}`);
++      return [];
++    }
++
++    const walk = (dir) => {
++      const entries = fs.readdirSync(dir, { withFileTypes: true });
++      for (const entry of entries) {
++        const fullPath = path.join(dir, entry.name);
++        if (entry.isDirectory() && recursive) {
++          // Skip hidden and cache dirs
++          if (entry.name.startsWith('.') || entry.name === 'cache' || entry.name === 'node_modules') continue;
++          walk(fullPath);
++        } else if (entry.isFile()) {
++          if (isMediaFile(fullPath, allExtensions)) {
++            files.push(fullPath);
++          }
++        }
++      }
++    };
++
++    walk(dirPath);
++  } catch (err) {
++    logger.error(`Failed to scan directory ${dirPath}: ${err.message}`);
++    return [];
++  }
++
++  logger.info(`Found ${files.length} media files in ${dirPath}`);
++  const results = [];
++  for (const file of files) {
++    const item = await scanFile(file);
++    if (item) results.push(item);
++  }
++  return results;
++}
++
++async function scanAll() {
++  if (isScanning) {
++    logger.warn('Scan already in progress, skipping');
++    return;
++  }
++  isScanning = true;
++  logger.info('Starting full library scan...');
++
++  const config = getConfig();
++  const startTime = Date.now();
++
++  try {
++    // Ensure media dirs exist
++    for (const type of Object.keys(config.media.paths)) {
++      fs.ensureDirSync(config.media.paths[type]);
++    }
++
++    const allResults = [];
++    for (const [type, dirPath] of Object.entries(config.media.paths)) {
++      logger.info(`Scanning ${type}: ${dirPath}`);
++      const results = await scanDirectory(dirPath, true);
++      allResults.push(...results);
++    }
++
++    // Remove items whose files no longer exist
++    const existing = libraryService.getAll();
++    let removed = 0;
++    for (const item of existing) {
++      if (!fs.existsSync(item.path)) {
++        libraryService.removeItem(item.id);
++        removed++;
++      }
++    }
++
++    const elapsed = ((Date.now() - startTime) / 1000).toFixed(2);
++    logger.info(`Scan complete: ${allResults.length} items, ${removed} removed, ${elapsed}s`);
++
++    return { scanned: allResults.length, removed, elapsed };
++  } catch (err) {
++    logger.error('Scan failed:', err.message);
++    throw err;
++  } finally {
++    isScanning = false;
++  }
++}
++
++function startWatcher() {
++  const config = getConfig();
++  const paths = Object.values(config.media.paths);
++
++  // Ensure dirs exist
++  paths.forEach(p => fs.ensureDirSync(p));
++
++  watcher = chokidar.watch(paths, {
++    ignored: /(^|[\/\\])\../, // ignore dotfiles
++    persistent: true,
++    ignoreInitial: true,
++    depth: 10,
++    awaitWriteFinish: {
++      stabilityThreshold: 2000,
++      pollInterval: 100,
++    },
++  });
++
++  watcher
++    .on('add', async (filePath) => {
++      logger.info(`File added: ${filePath}`);
++      await scanFile(filePath);
++    })
++    .on('change', async (filePath) => {
++      logger.info(`File changed: ${filePath}`);
++      await scanFile(filePath);
++    })
++    .on('unlink', (filePath) => {
++      logger.info(`File removed: ${filePath}`);
++      const id = generateId(filePath);
++      libraryService.removeItem(id);
++    })
++    .on('error', err => {
++      logger.error('Watcher error:', err.message);
++    });
++
++  logger.info(`File watcher started for: ${paths.join(', ')}`);
++  return watcher;
++}
++
++function stopWatcher() {
++  if (watcher) {
++    watcher.close();
++    watcher = null;
++    logger.info('File watcher stopped');
++  }
++}
++
++module.exports = {
++  scanFile,
++  scanDirectory,
++  scanAll,
++  startWatcher,
++  stopWatcher,
++  generateId,
++};
+diff --git a/server/services/thumbnail.js b/server/services/thumbnail.js
+new file mode 100644
+index 0000000..1709d4f
+--- /dev/null
++++ b/server/services/thumbnail.js
+@@ -0,0 +1,87 @@
++const path = require('path');
++const fs = require('fs-extra');
++const { getConfig } = require('../config');
++const logger = require('../utils/logger');
++
++let ffmpeg = null;
++try {
++  const ffmpegStatic = require('ffmpeg-static');
++  const ffprobeStatic = require('ffprobe-static');
++  ffmpeg = require('fluent-ffmpeg');
++  ffmpeg.setFfmpegPath(ffmpegStatic);
++  ffmpeg.setFfprobePath(ffprobeStatic.path);
++} catch {
++  try {
++    ffmpeg = require('fluent-ffmpeg');
++  } catch {
++    logger.warn('[Thumbnail] ffmpeg not available');
++  }
++}
++
++function getThumbnailPath(id) {
++  const config = getConfig();
++  const thumbDir = path.join(__dirname, '../cache/thumbnails');
++  fs.ensureDirSync(thumbDir);
++  return path.join(thumbDir, `${id}.jpg`);
++}
++
++function getCoverPath(id) {
++  const config = getConfig();
++  const coverDir = path.join(__dirname, '../cache/covers');
++  fs.ensureDirSync(coverDir);
++  return path.join(coverDir, `${id}.jpg`);
++}
++
++async function getOrGenerateThumbnail(videoPath, id) {
++  const thumbPath = getThumbnailPath(id);
++  if (fs.existsSync(thumbPath)) {
++    return thumbPath;
++  }
++
++  if (!ffmpeg) return null;
++
++  return new Promise((resolve) => {
++    ffmpeg(videoPath)
++      .screenshots({
++        timestamps: ['25%'],
++        filename: `${id}.jpg`,
++        folder: path.dirname(thumbPath),
++        size: '320x?',
++      })
++      .on('end', () => {
++        logger.info(`Thumbnail generated: ${thumbPath}`);
++        resolve(thumbPath);
++      })
++      .on('error', (err) => {
++        logger.warn(`Thumbnail generation failed for ${videoPath}: ${err.message}`);
++        resolve(null);
++      });
++  });
++}
++
++async function generateThumbnailAtTime(videoPath, outputPath, timeSeconds) {
++  if (!ffmpeg) return null;
++  fs.ensureDirSync(path.dirname(outputPath));
++
++  return new Promise((resolve) => {
++    ffmpeg(videoPath)
++      .screenshots({
++        timestamps: [timeSeconds],
++        filename: path.basename(outputPath),
++        folder: path.dirname(outputPath),
++        size: '320x?',
++      })
++      .on('end', () => resolve(outputPath))
++      .on('error', (err) => {
++        logger.warn(`Thumbnail at ${timeSeconds}s failed: ${err.message}`);
++        resolve(null);
++      });
++  });
++}
++
++module.exports = {
++  getThumbnailPath,
++  getCoverPath,
++  getOrGenerateThumbnail,
++  generateThumbnailAtTime,
++};
+diff --git a/server/services/transcoder.js b/server/services/transcoder.js
+new file mode 100644
+index 0000000..85b9920
+--- /dev/null
++++ b/server/services/transcoder.js
+@@ -0,0 +1,245 @@
++const path = require('path');
++const fs = require('fs-extra');
++const { getConfig } = require('../config');
++const logger = require('../utils/logger');
++const { cleanCache } = require('../utils/fileUtils');
++
++let ffmpeg = null;
++try {
++  const ffmpegStatic = require('ffmpeg-static');
++  const ffprobeStatic = require('ffprobe-static');
++  ffmpeg = require('fluent-ffmpeg');
++  ffmpeg.setFfmpegPath(ffmpegStatic);
++  ffmpeg.setFfprobePath(ffprobeStatic.path);
++} catch {
++  try {
++    ffmpeg = require('fluent-ffmpeg');
++  } catch {
++    logger.warn('[Transcoder] ffmpeg not available, transcoding disabled');
++  }
++}
++
++function getCachePath(id, quality, format) {
++  const config = getConfig();
++  const cacheDir = config.media.transcoding.cacheDir;
++  fs.ensureDirSync(cacheDir);
++  return path.join(cacheDir, `${id}_${quality}_${format}.mp4`);
++}
++
++function shouldTranscode(videoCodec, audioCodec, format) {
++  // Direct play if H.264 + AAC in MP4
++  const videoDirect = ['h264', 'avc', 'avc1'].includes((videoCodec || '').toLowerCase());
++  const audioDirect = ['aac', 'mp3'].includes((audioCodec || '').toLowerCase());
++  const formatDirect = ['mp4', 'mov', 'm4v'].includes((format || '').toLowerCase());
++
++  if (videoDirect && audioDirect && formatDirect) return false;
++  // If video codec is not H.264, need transcode
++  if (!videoDirect) return true;
++  // If audio codec not compatible, need transcode (but could just transcode audio)
++  if (!audioDirect) return true;
++  return false;
++}
++
++function transcodeVideo(inputPath, outputPath, options = {}) {
++  return new Promise((resolve, reject) => {
++    if (!ffmpeg) return reject(new Error('ffmpeg not available'));
++
++    const {
++      quality = '720p',
++      videoCodec = 'libx264',
++      audioCodec = 'aac',
++      format = 'mp4',
++    } = options;
++
++    let size = '1280x?';
++    let crf = '23';
++    let preset = 'veryfast';
++
++    switch (quality) {
++      case '1080p':
++        size = '1920x?';
++        crf = '23';
++        break;
++      case '720p':
++        size = '1280x?';
++        crf = '23';
++        break;
++      case '480p':
++        size = '854x?';
++        crf = '26';
++        break;
++      case '360p':
++        size = '640x?';
++        crf = '28';
++        break;
++      default:
++        size = '1280x?';
++    }
++
++    fs.ensureDirSync(path.dirname(outputPath));
++
++    const command = ffmpeg(inputPath)
++      .videoCodec(videoCodec)
++      .audioCodec(audioCodec)
++      .size(size)
++      .outputOptions([
++        `-crf ${crf}`,
++        `-preset ${preset}`,
++        '-movflags frag_keyframe+empty_moov',
++        '-pix_fmt yuv420p',
++      ])
++      .format(format)
++      .on('start', (cmdLine) => {
++        logger.info(`Transcoding started: ${cmdLine}`);
++      })
++      .on('error', (err) => {
++        logger.error(`Transcoding error: ${err.message}`);
++        reject(err);
++      })
++      .on('end', () => {
++        logger.info(`Transcoding finished: ${outputPath}`);
++        resolve(outputPath);
++      });
++
++    command.save(outputPath);
++  });
++}
++
++function transcodeStream(inputPath, res, options = {}) {
++  if (!ffmpeg) {
++    res.status(500).json({ error: 'Transcoding not available' });
++    return;
++  }
++
++  const {
++    quality = '720p',
++    videoCodec = 'libx264',
++    audioCodec = 'aac',
++  } = options;
++
++  let size = '1280x?';
++  let crf = '23';
++
++  switch (quality) {
++    case '1080p':
++      size = '1920x?';
++      break;
++    case '720p':
++      size = '1280x?';
++      break;
++    case '480p':
++      size = '854x?';
++      crf = '26';
++      break;
++    case '360p':
++      size = '640x?';
++      crf = '28';
++      break;
++  }
++
++  res.setHeader('Content-Type', 'video/mp4');
++  res.setHeader('Transfer-Encoding', 'chunked');
++  res.setHeader('Accept-Ranges', 'none');
++
++  const command = ffmpeg(inputPath)
++    .videoCodec(videoCodec)
++    .audioCodec(audioCodec)
++    .size(size)
++    .outputOptions([
++      `-crf ${crf}`,
++      '-preset veryfast',
++      '-movflags frag_keyframe+empty_moov',
++      '-pix_fmt yuv420p',
++    ])
++    .format('mp4')
++    .on('error', (err) => {
++      if (!res.headersSent) {
++        res.status(500).json({ error: 'Transcoding failed', details: err.message });
++      } else {
++        res.end();
++      }
++      logger.error(`Transcode stream error: ${err.message}`);
++    });
++
++  const stream = command.pipe();
++  stream.pipe(res);
++
++  reqCleanup(res, command);
++}
++
++function transcodeAudioStream(inputPath, res, options = {}) {
++  if (!ffmpeg) {
++    res.status(500).json({ error: 'Transcoding not available' });
++    return;
++  }
++
++  const { codec = 'aac', bitrate = '128k' } = options;
++
++  let audioCodec = 'aac';
++  let format = 'adts';
++  let contentType = 'audio/aac';
++
++  switch (codec) {
++    case 'opus':
++      audioCodec = 'libopus';
++      format = 'ogg';
++      contentType = 'audio/ogg';
++      break;
++    case 'mp3':
++      audioCodec = 'libmp3lame';
++      format = 'mp3';
++      contentType = 'audio/mpeg';
++      break;
++    case 'aac':
++    default:
++      audioCodec = 'aac';
++      format = 'adts';
++      contentType = 'audio/aac';
++      break;
++  }
++
++  res.setHeader('Content-Type', contentType);
++  res.setHeader('Transfer-Encoding', 'chunked');
++
++  const command = ffmpeg(inputPath)
++    .audioCodec(audioCodec)
++    .audioBitrate(bitrate)
++    .format(format)
++    .on('error', (err) => {
++      if (!res.headersSent) {
++        res.status(500).json({ error: 'Audio transcoding failed', details: err.message });
++      } else {
++        res.end();
++      }
++      logger.error(`Audio transcode error: ${err.message}`);
++    });
++
++  const stream = command.pipe();
++  stream.pipe(res);
++
++  reqCleanup(res, command);
++}
++
++function reqCleanup(res, command) {
++  const cleanup = () => {
++    try {
++      command.kill('SIGKILL');
++    } catch {}
++  };
++  res.on('close', cleanup);
++  res.on('finish', cleanup);
++}
++
++async function cleanupCache() {
++  const config = getConfig();
++  await cleanCache(config.media.transcoding.cacheDir, config.media.transcoding.cacheMaxSizeMB);
++}
++
++module.exports = {
++  getCachePath,
++  shouldTranscode,
++  transcodeVideo,
++  transcodeStream,
++  transcodeAudioStream,
++  cleanupCache,
++};
+diff --git a/server/utils/fileUtils.js b/server/utils/fileUtils.js
+new file mode 100644
+index 0000000..ea809e2
+--- /dev/null
++++ b/server/utils/fileUtils.js
+@@ -0,0 +1,128 @@
++const fs = require('fs-extra');
++const path = require('path');
++const crypto = require('crypto');
++
++function getFileHash(filePath) {
++  return new Promise((resolve, reject) => {
++    const hash = crypto.createHash('sha256');
++    const stream = fs.createReadStream(filePath);
++    stream.on('data', data => hash.update(data));
++    stream.on('end', () => resolve(hash.digest('hex')));
++    stream.on('error', reject);
++  });
++}
++
++function ensureDir(dir) {
++  fs.ensureDirSync(dir);
++}
++
++function getFileSize(filePath) {
++  try {
++    const stat = fs.statSync(filePath);
++    return stat.size;
++  } catch {
++    return 0;
++  }
++}
++
++function formatBytes(bytes) {
++  if (bytes === 0) return '0 B';
++  const k = 1024;
++  const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
++  const i = Math.floor(Math.log(bytes) / Math.log(k));
++  return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
++}
++
++function getExtension(filePath) {
++  return path.extname(filePath).toLowerCase();
++}
++
++function isMediaFile(filePath, supportedExtensions) {
++  const ext = getExtension(filePath);
++  return supportedExtensions.includes(ext);
++}
++
++function parseMovieFilename(filename) {
++  // Try to extract title, year, season/episode from filename
++  // Examples: "Movie.Name.2021.1080p", "Series.S01E02", "The Matrix (1999)"
++  const base = path.basename(filename, path.extname(filename));
++  let title = base;
++  let year = null;
++  let season = null;
++  let episode = null;
++
++  // Year: (YYYY) or .YYYY. or YYYY
++  const yearMatch = base.match(/[\(\[]?((?:19|20)\d{2})[\)\]]?/);
++  if (yearMatch) {
++    year = parseInt(yearMatch[1], 10);
++    title = base.substring(0, yearMatch.index).replace(/[.\-_]+$/g, '').replace(/[.\-_]/g, ' ').trim();
++  }
++
++  // Season/Episode: S01E02, s01e02, 1x02, Season 1 Episode 2
++  const seMatch = base.match(/[Ss](\d{1,2})[Ee](\d{1,3})|(\d{1,2})x(\d{1,3})|[Ss]eason\s*(\d+)\s*[Ee]pisode\s*(\d+)/i);
++  if (seMatch) {
++    if (seMatch[1] && seMatch[2]) {
++      season = parseInt(seMatch[1], 10);
++      episode = parseInt(seMatch[2], 10);
++    } else if (seMatch[3] && seMatch[4]) {
++      season = parseInt(seMatch[3], 10);
++      episode = parseInt(seMatch[4], 10);
++    } else if (seMatch[5] && seMatch[6]) {
++      season = parseInt(seMatch[5], 10);
++      episode = parseInt(seMatch[6], 10);
++    }
++    // Title is before SxxExx
++    const seIndex = base.search(/[Ss]\d+[Ee]\d+|\d+x\d+/i);
++    if (seIndex > 0) {
++      title = base.substring(0, seIndex).replace(/[.\-_]+$/g, '').replace(/[.\-_]/g, ' ').trim();
++    }
++  }
++
++  if (!title) title = base.replace(/[.\-_]/g, ' ').trim();
++
++  return { title: title || base, year, season, episode };
++}
++
++async function cleanCache(cacheDir, maxSizeMB) {
++  try {
++    if (!fs.existsSync(cacheDir)) return;
++    const files = await fs.readdir(cacheDir);
++    let totalSize = 0;
++    const fileInfos = [];
++    for (const file of files) {
++      const fp = path.join(cacheDir, file);
++      try {
++        const stat = await fs.stat(fp);
++        if (stat.isFile()) {
++          totalSize += stat.size;
++          fileInfos.push({ path: fp, size: stat.size, mtime: stat.mtimeMs });
++        }
++      } catch {}
++    }
++    const maxBytes = maxSizeMB * 1024 * 1024;
++    if (totalSize > maxBytes) {
++      // LRU: sort by mtime oldest first
++      fileInfos.sort((a, b) => a.mtime - b.mtime);
++      for (const info of fileInfos) {
++        if (totalSize <= maxBytes * 0.8) break; // clean to 80%
++        try {
++          await fs.remove(info.path);
++          totalSize -= info.size;
++        } catch {}
++      }
++    }
++  } catch (err) {
++    console.warn('[Cache] Clean failed:', err.message);
++  }
++}
++
++module.exports = {
++  getFileHash,
++  ensureDir,
++  getFileSize,
++  formatBytes,
++  getExtension,
++  isMediaFile,
++  parseMovieFilename,
++  cleanCache,
++};
+diff --git a/server/utils/logger.js b/server/utils/logger.js
+new file mode 100644
+index 0000000..2f22368
+--- /dev/null
++++ b/server/utils/logger.js
+@@ -0,0 +1,19 @@
++const LOG_LEVELS = { error: 0, warn: 1, info: 2, debug: 3 };
++const currentLevel = process.env.LOG_LEVEL || 'info';
++
++function log(level, ...args) {
++  if (LOG_LEVELS[level] <= LOG_LEVELS[currentLevel]) {
++    const ts = new Date().toISOString();
++    const prefix = `[${ts}] [${level.toUpperCase()}]`;
++    if (level === 'error') console.error(prefix, ...args);
++    else if (level === 'warn') console.warn(prefix, ...args);
++    else console.log(prefix, ...args);
++  }
++}
++
++module.exports = {
++  error: (...a) => log('error', ...a),
++  warn: (...a) => log('warn', ...a),
++  info: (...a) => log('info', ...a),
++  debug: (...a) => log('debug', ...a),
++};
+diff --git a/server/utils/validators.js b/server/utils/validators.js
+new file mode 100644
+index 0000000..d5c2372
+--- /dev/null
++++ b/server/utils/validators.js
+@@ -0,0 +1,60 @@
++const validator = require('validator');
++const path = require('path');
++
++function sanitizeString(str, maxLen = 500) {
++  if (typeof str !== 'string') return '';
++  let s = validator.trim(str);
++  s = validator.escape(s);
++  if (s.length > maxLen) s = s.substring(0, maxLen);
++  return s;
++}
++
++function sanitizeFilename(filename) {
++  if (typeof filename !== 'string') return 'untitled';
++  // Remove path traversal
++  let name = path.basename(filename);
++  // Allow only safe chars: alphanumeric, dash, underscore, dot, space, parentheses
++  name = name.replace(/[^a-zA-Z0-9\-_.\s()\[\]]/g, '_');
++  // Prevent hidden files and excessive dots
++  name = name.replace(/^\.+/, '');
++  if (!name) name = 'untitled';
++  // Limit length
++  if (name.length > 255) {
++    const ext = path.extname(name);
++    name = name.substring(0, 255 - ext.length) + ext;
++  }
++  return name;
++}
++
++function isValidMediaType(type) {
++  return ['movie', 'music', 'video'].includes(type);
++}
++
++function isValidGridPattern(pattern) {
++  if (!Array.isArray(pattern)) return false;
++  if (pattern.length !== 8) return false;
++  const seen = new Set();
++  for (const idx of pattern) {
++    if (typeof idx !== 'number' || !Number.isInteger(idx) || idx < 0 || idx > 15) return false;
++    if (seen.has(idx)) return false;
++    seen.add(idx);
++  }
++  return true;
++}
++
++function isValidUsername(username) {
++  return typeof username === 'string' && username.length >= 3 && username.length <= 50 && /^[a-zA-Z0-9_\-]+$/.test(username);
++}
++
++function isValidPassword(password) {
++  return typeof password === 'string' && password.length >= 4 && password.length <= 128;
++}
++
++module.exports = {
++  sanitizeString,
++  sanitizeFilename,
++  isValidMediaType,
++  isValidGridPattern,
++  isValidUsername,
++  isValidPassword,
++};
