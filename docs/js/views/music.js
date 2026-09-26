@@ -227,7 +227,7 @@ export function renderMusic(container) {
       const section = document.createElement('div');
       section.style.marginBottom = '16px';
       section.innerHTML = `
-        <div style="display:flex; align-items:center; justify-content:space-between; background:var(--bg-secondary); padding:12px 16px; border-radius:12px; cursor:pointer;">
+        <div style="display:flex; align-items:center; justify-content:space-between; background:rgba(var(--glass-tint),0.05); padding:12px 16px; border-radius:12px; cursor:pointer;">
           <span style="font-weight:600;">${escapeHtml(genre)}</span>
           <span style="color:var(--text-tertiary); font-size:13px;">${tracks.length} tracks</span>
         </div>

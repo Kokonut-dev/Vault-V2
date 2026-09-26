@@ -3,7 +3,12 @@
 .onboarding-gate {
   position: fixed;
   inset: 0;
-  background: var(--bg-primary);
+  background-color: var(--bg-primary);
+  background-image:
+    radial-gradient(46vw 46vw at 14% 4%, var(--ambient-1), transparent 68%),
+    radial-gradient(42vw 42vw at 88% 2%, var(--ambient-2), transparent 66%),
+    radial-gradient(64vw 64vw at 52% 114%, var(--ambient-3), transparent 70%),
+    var(--ambient-base);
   z-index: 500;
   display: flex;
   align-items: center;
@@ -15,10 +20,12 @@
 .onboarding-container {
   width: 100%;
   max-width: 560px;
-  background: var(--bg-elevated);
-  border: 1px solid var(--border);
+  background: rgba(var(--glass-tint), calc(var(--glass-fill-strong) + 0.06));
+  backdrop-filter: blur(calc(var(--glass-blur-effective) + 14px)) saturate(190%);
+  -webkit-backdrop-filter: blur(calc(var(--glass-blur-effective) + 14px)) saturate(190%);
+  border: 1px solid var(--glass-border);
   border-radius: 24px;
-  box-shadow: var(--shadow-xl);
+  box-shadow: var(--shadow-xl), var(--glass-ring), inset 0 1px 0 var(--glass-highlight);
   overflow: hidden;
   animation: onboardingEnter 0.5s var(--ease-out);
 }
@@ -51,7 +58,7 @@
 
 .onboarding-header {
   padding: 28px 32px 20px;
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid rgba(var(--glass-tint), 0.08);
   position: relative;
 }
 
@@ -65,7 +72,7 @@
   flex: 1;
   height: 4px;
   border-radius: 9999px;
-  background: var(--bg-tertiary);
+  background: rgba(var(--glass-tint), 0.12);
   transition: all 0.4s var(--ease-out);
   position: relative;
   overflow: hidden;
@@ -154,15 +161,15 @@
   gap: 12px;
   align-items: flex-start;
   padding: 12px;
-  background: var(--bg-secondary);
-  border: 1px solid var(--border);
+  background: rgba(var(--glass-tint), 0.05);
+  border: 1px solid rgba(var(--glass-tint), 0.1);
   border-radius: 12px;
 }
 
 .onboarding-feature-icon {
   width: 32px;
   height: 32px;
-  background: var(--bg-tertiary);
+  background: rgba(var(--glass-tint), 0.09);
   border-radius: 8px;
   display: flex;
   align-items: center;
@@ -211,8 +218,8 @@
 .onboarding-input {
   width: 100%;
   padding: 12px 14px;
-  background: var(--bg-secondary);
-  border: 1px solid var(--border);
+  background: rgba(var(--glass-tint), 0.05);
+  border: 1px solid rgba(var(--glass-tint), 0.1);
   border-radius: 10px;
   color: var(--text-primary);
   font-size: 14px;
@@ -223,7 +230,7 @@
   outline: none;
   border-color: var(--accent);
   box-shadow: 0 0 0 3px var(--accent-muted);
-  background: var(--bg-tertiary);
+  background: rgba(var(--glass-tint), 0.09);
 }
 
 .onboarding-input.error {
@@ -266,7 +273,7 @@
 .password-strength-bar {
   flex: 1;
   height: 3px;
-  background: var(--bg-tertiary);
+  background: rgba(var(--glass-tint), 0.09);
   border-radius: 9999px;
   transition: background 0.3s ease;
 }
@@ -292,14 +299,14 @@
   gap: 10px;
   margin: 16px 0;
   padding: 16px;
-  background: var(--bg-secondary);
-  border: 1px solid var(--border);
+  background: rgba(var(--glass-tint), 0.05);
+  border: 1px solid rgba(var(--glass-tint), 0.1);
   border-radius: 16px;
 }
 
 .onboarding-grid-square {
   aspect-ratio: 1;
-  background: var(--bg-tertiary);
+  background: rgba(var(--glass-tint), 0.09);
   border: 2px solid var(--border);
   border-radius: 12px;
   cursor: pointer;
@@ -316,7 +323,7 @@
 
 .onboarding-grid-square:hover {
   border-color: var(--border-strong);
-  background: var(--bg-hover);
+  background: rgba(var(--glass-tint), 0.12);
   transform: scale(1.02);
 }
 
@@ -352,8 +359,8 @@
   align-items: center;
   gap: 10px;
   padding: 10px 12px;
-  background: var(--bg-secondary);
-  border: 1px solid var(--border);
+  background: rgba(var(--glass-tint), 0.05);
+  border: 1px solid rgba(var(--glass-tint), 0.1);
   border-radius: 10px;
   cursor: pointer;
   transition: all 0.15s ease;
@@ -395,7 +402,7 @@
   font-size: 11px;
   padding: 4px 8px;
   border-radius: 6px;
-  background: var(--bg-tertiary);
+  background: rgba(var(--glass-tint), 0.09);
   color: var(--text-tertiary);
   white-space: nowrap;
   display: flex;
@@ -417,8 +424,8 @@
   display: flex;
   justify-content: space-between;
   padding: 12px;
-  background: var(--bg-secondary);
-  border: 1px solid var(--border);
+  background: rgba(var(--glass-tint), 0.05);
+  border: 1px solid rgba(var(--glass-tint), 0.1);
   border-radius: 10px;
 }
 
@@ -453,8 +460,8 @@
 /* Footer */
 .onboarding-footer {
   padding: 20px 32px;
-  background: var(--bg-secondary);
-  border-top: 1px solid var(--border);
+  background: rgba(var(--glass-tint), 0.05);
+  border-top: 1px solid rgba(var(--glass-tint), 0.08);
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -497,7 +504,7 @@
 }
 
 .connection-test.testing {
-  background: var(--bg-tertiary);
+  background: rgba(var(--glass-tint), 0.09);
   color: var(--text-secondary);
 }
 

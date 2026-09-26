@@ -33,7 +33,7 @@ export function renderUpload(container) {
     </div>
     
     <div id="upload-form-container" style="display:none;">
-      <div style="background:var(--bg-secondary); border:1px solid var(--border); border-radius:16px; padding:24px;">
+      <div style="background:rgba(var(--glass-tint),0.05); border:1px solid rgba(var(--glass-tint),0.1); border-radius:16px; padding:24px;">
         <h3 id="upload-type-title" style="font-size:18px; font-weight:700; margin-bottom:16px;"></h3>
         
         <div id="drop-zone" style="border:2px dashed var(--border); border-radius:12px; padding:40px; text-align:center; cursor:pointer; transition:all 0.2s;">
@@ -61,8 +61,8 @@ export function renderUpload(container) {
     
     <style>
       .upload-type-card {
-        background: var(--bg-secondary);
-        border: 1px solid var(--border);
+        background:rgba(var(--glass-tint),0.05);
+        border:1px solid rgba(var(--glass-tint),0.1);
         border-radius: 16px;
         padding: 24px;
         text-align: center;
@@ -71,7 +71,7 @@ export function renderUpload(container) {
       }
       .upload-type-card:hover {
         border-color: var(--accent);
-        background: var(--bg-hover);
+        background:rgba(var(--glass-tint),0.12);
         transform: translateY(-2px);
       }
       .upload-type-card.active {
@@ -184,7 +184,7 @@ export function renderUpload(container) {
   
   function renderFileList() {
     fileList.innerHTML = selectedFiles.map((file, idx) => `
-      <div style="display:flex; align-items:center; justify-content:space-between; background:var(--bg-tertiary); padding:8px 12px; border-radius:8px; margin-bottom:8px;">
+      <div style="display:flex; align-items:center; justify-content:space-between; background:rgba(var(--glass-tint),0.09); padding:8px 12px; border-radius:8px; margin-bottom:8px;">
         <div style="flex:1; min-width:0;">
           <div style="font-weight:500; font-size:13px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${escapeHtml(file.name)}</div>
           <div style="font-size:11px; color:var(--text-secondary);">${(file.size / 1024 / 1024).toFixed(2)} MB</div>

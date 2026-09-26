@@ -56,7 +56,7 @@ export function renderPlaylists(container) {
         const card = document.createElement('div');
         card.className = 'media-card';
         card.innerHTML = `
-          <div class="media-card-cover" style="background:var(--bg-secondary); display:flex; align-items:center; justify-content:center; font-size:32px;">
+          <div class="media-card-cover" style="background:rgba(var(--glass-tint),0.05); display:flex; align-items:center; justify-content:center; font-size:32px;">
             ${pl.type === 'collection' ? '◫' : '♫'}
           </div>
           <div class="media-card-info">
@@ -140,7 +140,7 @@ export function renderPlaylists(container) {
       <div style="margin-bottom:24px;">
         <button class="btn btn-secondary btn-sm" id="back-btn">← Back</button>
       </div>
-      <div style="background:var(--bg-secondary); border-radius:16px; padding:24px; margin-bottom:24px;">
+      <div style="background:rgba(var(--glass-tint),0.05); border-radius:16px; padding:24px; margin-bottom:24px;">
         <h2 style="font-size:24px; font-weight:700; margin-bottom:8px;">${escapeHtml(playlist.name)}</h2>
         <p style="color:var(--text-secondary); margin-bottom:16px;">${escapeHtml(playlist.description || '')}</p>
         <div style="display:flex; gap:8px;">

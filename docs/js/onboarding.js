@@ -253,7 +253,7 @@ export class OnboardingManager {
           </div>
         </div>
 
-        <div class="onboarding-hint" style="margin-top:16px; padding:12px; background:var(--bg-secondary); border-radius:10px; border:1px solid var(--border);">
+        <div class="onboarding-hint" style="margin-top:16px; padding:12px; background:rgba(var(--glass-tint),0.05); border-radius:10px; border:1px solid rgba(var(--glass-tint),0.1);">
           <strong style="color:var(--text-primary);">First time?</strong> This wizard will set up your server in under 2 minutes. 
           You'll create an admin account and a secret grid pattern.
         </div>
@@ -291,7 +291,7 @@ export class OnboardingManager {
           ` : `
             <div class="onboarding-hint" style="margin-top:8px;">
               Enter your Vault server URL and test connection. The server must be running:<br>
-              <code style="background:var(--bg-tertiary); padding:2px 6px; border-radius:4px;">cd server && npm install && npm start</code>
+              <code style="background:rgba(var(--glass-tint),0.09); padding:2px 6px; border-radius:4px;">cd server && npm install && npm start</code>
             </div>
           `}
 
@@ -637,7 +637,7 @@ export class OnboardingManager {
                 <div class="onboarding-theme ${this.data.theme === t.id ? 'selected' : ''}" data-theme="${t.id}">
                   <div class="onboarding-theme-name">${t.name}</div>
                   <div class="onboarding-theme-preview">
-                    ${t.colors.map(c => `<span style="background:${c}; border:1px solid var(--border);"></span>`).join('')}
+                    ${t.colors.map(c => `<span style="background:${c}; border:1px solid rgba(var(--glass-tint),0.1);"></span>`).join('')}
                   </div>
                 </div>
               `).join('')}

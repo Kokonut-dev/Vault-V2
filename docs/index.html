@@ -41,6 +41,9 @@
   <!-- Skip link for accessibility -->
   <a href="#main-content" class="skip-link">Skip to content</a>
   
+  <!-- Ambient light — the layer the frosted glass actually frosts -->
+  <div id="ambient" class="ambient" aria-hidden="true"></div>
+  
   <!-- Grain overlay -->
   <div id="grain-overlay" class="grain-overlay" aria-hidden="true"></div>
 
@@ -264,7 +267,12 @@
     .auth-gate {
       position: fixed;
       inset: 0;
-      background: var(--bg-primary);
+      background-color: var(--bg-primary);
+      background-image:
+        radial-gradient(46vw 46vw at 14% 4%, var(--ambient-1), transparent 68%),
+        radial-gradient(42vw 42vw at 88% 2%, var(--ambient-2), transparent 66%),
+        radial-gradient(64vw 64vw at 52% 114%, var(--ambient-3), transparent 70%),
+        var(--ambient-base);
       display: flex;
       align-items: center;
       justify-content: center;
@@ -274,11 +282,13 @@
     .auth-container {
       width: 100%;
       max-width: 400px;
-      background: var(--bg-elevated);
-      border: 1px solid var(--border);
-      border-radius: 20px;
+      background: rgba(var(--glass-tint), calc(var(--glass-fill-strong) + 0.06));
+      backdrop-filter: blur(calc(var(--glass-blur-effective) + 14px)) saturate(190%);
+      -webkit-backdrop-filter: blur(calc(var(--glass-blur-effective) + 14px)) saturate(190%);
+      border: 1px solid var(--glass-border);
+      border-radius: 22px;
       padding: 32px;
-      box-shadow: var(--shadow-xl);
+      box-shadow: var(--shadow-xl), var(--glass-ring), inset 0 1px 0 var(--glass-highlight);
     }
     .auth-logo {
       text-align: center;
@@ -287,7 +297,7 @@
     .auth-logo-icon {
       width: 56px;
       height: 56px;
-      background: var(--accent);
+      background: linear-gradient(140deg, var(--accent), var(--accent-strong));
       border-radius: 16px;
       display: flex;
       align-items: center;
@@ -368,7 +378,7 @@
     }
     .grid-square {
       aspect-ratio: 1;
-      background: var(--bg-secondary);
+      background: rgba(var(--glass-tint),0.05);
       border: 2px solid var(--border);
       border-radius: 12px;
       cursor: pointer;
@@ -381,7 +391,7 @@
     }
     .grid-square:hover {
       border-color: var(--border-strong);
-      background: var(--bg-hover);
+      background: rgba(var(--glass-tint),0.12);
     }
     .grid-square.selected {
       background: var(--accent);
