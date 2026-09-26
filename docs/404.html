@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Vault — Redirecting</title>
+  <script>
+    // GitHub Pages SPA hack — https://github.com/rafgraph/spa-github-pages
+    // Stores the current path and redirects to index.html
+    (function() {
+      var path = window.location.pathname;
+      var base = '/Vault-V2';
+      var redirectPath = path;
+      if (path.startsWith(base)) {
+        redirectPath = path.substring(base.length);
+      }
+      if (!redirectPath) redirectPath = '/';
+      sessionStorage.setItem('vault_redirect', redirectPath + window.location.search + window.location.hash);
+      window.location.replace(base + '/');
+    })();
+  </script>
+</head>
+<body>
+  <p>Redirecting to Vault...</p>
+</body>
+</html>

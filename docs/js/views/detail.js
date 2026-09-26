@@ -1,0 +1,328 @@
+/**
+ * Detail view — movie, music, video detail pages
+ */
+import { store } from '../store.js';
+import { api } from '../api.js';
+import { formatTime, formatBytes, formatDate, formatBitrate, formatResolution } from '../utils/format.js';
+import { toast } from '../components/toast.js';
+
+export async function renderDetail(container, id) {
+  container.className = 'page';
+  container.innerHTML = `
+    <div style="display:flex; align-items:center; gap:12px; margin-bottom:24px;">
+      <button class="btn btn-secondary btn-sm" id="back-btn">← Back</button>
+      <div class="skeleton skeleton-text" style="width:200px; height:20px;"></div>
+    </div>
+    <div class="skeleton" style="height:400px; border-radius:16px;"></div>
+  `;
+  
+  const library = store.get('library');
+  let item = library.find(i => i.id === id);
+  
+  // If not in local library, fetch from API
+  if (!item) {
+    try {
+      item = await api.getItem(id);
+    } catch (err) {
+      container.innerHTML = `
+        <div class="empty-state">
+          <div class="empty-state-icon">∅</div>
+          <div class="empty-state-title">Item not found</div>
+          <div class="empty-state-message">${err.message}</div>
+          <button class="btn btn-secondary" id="back-btn2">Go Back</button>
+        </div>
+      `;
+      container.querySelector('#back-btn2').addEventListener('click', () => history.back());
+      return;
+    }
+  }
+  
+  if (!item) {
+    container.innerHTML = `<div class="empty-state"><div class="empty-state-title">Item not found</div></div>`;
+    return;
+  }
+  
+  const isMusic = item.type === 'music';
+  const isMovie = item.type === 'movie';
+  
+  if (isMusic) {
+    renderMusicDetail(container, item);
+  } else {
+    renderVideoDetail(container, item);
+  }
+}
+
+function renderVideoDetail(container, item) {
+  container.innerHTML = `
+    <div style="display:flex; align-items:center; gap:12px; margin-bottom:24px;">
+      <button class="btn btn-secondary btn-sm" id="back-btn">← Back</button>
+      <span style="color:var(--text-tertiary); font-size:13px;">${item.type} • ${item.year || ''}</span>
+    </div>
+    
+    <div style="display:grid; grid-template-columns: 300px 1fr; gap:32px; margin-bottom:32px;" class="detail-grid">
+      <div>
+        <div style="aspect-ratio:2/3; background:var(--bg-secondary); border-radius:16px; overflow:hidden;">
+          <img src="${api.getThumbnailUrl(item.id)}" alt="${escapeHtml(item.title)}" style="width:100%;height:100%;object-fit:cover;" onerror="this.style.display='none'">
+        </div>
+        <div style="display:flex; gap:8px; margin-top:16px;">
+          <button class="btn btn-primary" id="play-btn" style="flex:1;">▶ Play</button>
+          <button class="btn btn-secondary" id="fav-btn">${store.get('favourites').includes(item.id) ? '♥' : '♡'}</button>
+        </div>
+      </div>
+      
+      <div>
+        <h1 style="font-size:32px; font-weight:800; line-height:1.1; margin-bottom:8px;">${escapeHtml(item.title)}</h1>
+        <div style="display:flex; gap:12px; flex-wrap:wrap; margin-bottom:16px; font-size:13px; color:var(--text-secondary);">
+          ${item.year ? `<span>${item.year}</span>` : ''}
+          ${item.genre ? `<span>${escapeHtml(item.genre)}</span>` : ''}
+          ${item.duration ? `<span>${formatTime(item.duration)}</span>` : ''}
+          ${item.resolution ? `<span>${item.resolution}</span>` : ''}
+          ${item.rating ? `<span>★ ${item.rating}</span>` : ''}
+        </div>
+        
+        ${item.description ? `<p style="color:var(--text-secondary); line-height:1.6; margin-bottom:24px;">${escapeHtml(item.description)}</p>` : ''}
+        
+        <div style="display:grid; gap:16px;">
+          <div style="background:var(--bg-secondary); border-radius:12px; padding:16px;">
+            <h3 style="font-weight:600; margin-bottom:8px;">Media Info</h3>
+            <div style="font-size:12px; font-family:var(--font-mono); color:var(--text-secondary); line-height:1.8;">
+              <div>File: ${escapeHtml(item.filename)}</div>
+              <div>Size: ${formatBytes(item.fileSize)}</div>
+              <div>Codec: ${item.videoCodec || ''} / ${item.audioCodec || ''}</div>
+              <div>Path: ${escapeHtml(item.path)}</div>
+              ${item.subtitles?.length ? `<div>Subtitles: ${item.subtitles.length}</div>` : ''}
+            </div>
+            <button class="btn btn-ghost btn-sm" id="more-info" style="margin-top:8px;">Technical Details</button>
+          </div>
+          
+          <div style="background:var(--bg-secondary); border-radius:12px; padding:16px;">
+            <h3 style="font-weight:600; margin-bottom:12px;">Actions</h3>
+            <div style="display:flex; gap:8px; flex-wrap:wrap;">
+              <button class="btn btn-secondary btn-sm" id="edit-btn">Edit Metadata</button>
+              <button class="btn btn-secondary btn-sm" id="add-playlist">Add to Playlist</button>
+              <button class="btn btn-secondary btn-sm" id="share-btn">Share</button>
+              <button class="btn btn-ghost btn-sm" id="delete-btn" style="color:var(--error);">Delete</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    
+    <style>
+      @media (max-width: 768px) {
+        .detail-grid { grid-template-columns: 1fr !important; }
+      }
+    </style>
+  `;
+  
+  container.querySelector('#back-btn').addEventListener('click', () => history.back());
+  container.querySelector('#play-btn').addEventListener('click', () => {
+    window.dispatchEvent(new CustomEvent('vault:open-video', { detail: { item } }));
+  });
+  container.querySelector('#fav-btn').addEventListener('click', async (e) => {
+    const isFav = store.toggleFavourite(item.id);
+    e.target.textContent = isFav ? '♥' : '♡';
+    try {
+      if (isFav) await api.addFavourite(item.id);
+      else await api.removeFavourite(item.id);
+    } catch {}
+    toast.info(isFav ? 'Added to favourites' : 'Removed from favourites');
+  });
+  
+  container.querySelector('#more-info').addEventListener('click', async () => {
+    try {
+      const info = await api.getMediaInfo(item.id);
+      alert(JSON.stringify(info, null, 2));
+    } catch (err) {
+      toast.error(err.message);
+    }
+  });
+  
+  container.querySelector('#edit-btn').addEventListener('click', () => showEditModal(item));
+  container.querySelector('#add-playlist').addEventListener('click', () => showAddToPlaylist(item));
+  container.querySelector('#delete-btn').addEventListener('click', async () => {
+    if (!confirm(`Delete "${item.title}"?`)) return;
+    const deleteFile = confirm('Also delete file from disk?');
+    try {
+      await api.deleteItem(item.id, deleteFile);
+      toast.success('Deleted');
+      history.back();
+      // Refresh library
+      const data = await api.getLibrary({ limit: 1000 });
+      store.setLibrary(data.items || []);
+    } catch (err) {
+      toast.error(err.message);
+    }
+  });
+}
+
+function renderMusicDetail(container, item) {
+  const library = store.get('library');
+  const albumTracks = library.filter(i => i.type === 'music' && i.album === item.album).sort((a, b) => (a.track || 0) - (b.track || 0));
+  const isAlbumView = albumTracks.length > 1;
+  
+  container.innerHTML = `
+    <div style="display:flex; align-items:center; gap:12px; margin-bottom:24px;">
+      <button class="btn btn-secondary btn-sm" id="back-btn">← Back</button>
+      <span style="color:var(--text-tertiary); font-size:13px;">${isAlbumView ? 'Album' : 'Track'}</span>
+    </div>
+    
+    <div style="display:grid; grid-template-columns: 280px 1fr; gap:32px;" class="detail-grid">
+      <div>
+        <div style="aspect-ratio:1/1; background:var(--bg-secondary); border-radius:16px; overflow:hidden; box-shadow:var(--shadow-lg);">
+          <img src="${api.getCoverUrl(item.id)}" alt="" style="width:100%;height:100%;object-fit:cover;" onerror="this.style.display='none'">
+        </div>
+      </div>
+      
+      <div>
+        <h1 style="font-size:32px; font-weight:800; line-height:1.1;">${escapeHtml(isAlbumView ? item.album : item.title)}</h1>
+        <div style="font-size:18px; color:var(--text-secondary); margin-top:8px; margin-bottom:24px;">${escapeHtml(item.artist || '')} ${item.year ? `• ${item.year}` : ''}</div>
+        
+        <div style="display:flex; gap:12px; margin-bottom:24px;">
+          <button class="btn btn-primary" id="play-btn">▶ Play ${isAlbumView ? 'Album' : ''}</button>
+          <button class="btn btn-secondary" id="shuffle-btn">🔀 Shuffle</button>
+          <button class="btn btn-secondary" id="fav-btn">${store.get('favourites').includes(item.id) ? '♥' : '♡'}</button>
+        </div>
+        
+        <div id="track-list"></div>
+      </div>
+    </div>
+    
+    <style>@media (max-width: 768px) { .detail-grid { grid-template-columns: 1fr !important; } }</style>
+  `;
+  
+  container.querySelector('#back-btn').addEventListener('click', () => history.back());
+  
+  const tracks = isAlbumView ? albumTracks : [item];
+  const trackListEl = container.querySelector('#track-list');
+  
+  import('../components/mediaList.js').then(({ renderMediaList }) => {
+    renderMediaList(trackListEl, tracks, {
+      onClick: (track) => {
+        window.dispatchEvent(new CustomEvent('vault:play', { detail: { item: track, queue: tracks, index: tracks.findIndex(t => t.id === track.id) } }));
+      }
+    });
+  });
+  
+  container.querySelector('#play-btn').addEventListener('click', () => {
+    window.dispatchEvent(new CustomEvent('vault:play', { detail: { item: tracks[0], queue: tracks, index: 0 } }));
+  });
+  
+  container.querySelector('#shuffle-btn').addEventListener('click', () => {
+    const shuffled = [...tracks].sort(() => Math.random() - 0.5);
+    window.dispatchEvent(new CustomEvent('vault:play', { detail: { item: shuffled[0], queue: shuffled, index: 0 } }));
+  });
+  
+  container.querySelector('#fav-btn').addEventListener('click', async (e) => {
+    const isFav = store.toggleFavourite(item.id);
+    e.target.textContent = isFav ? '♥' : '♡';
+    try {
+      if (isFav) await api.addFavourite(item.id);
+      else await api.removeFavourite(item.id);
+    } catch {}
+  });
+}
+
+function showEditModal(item) {
+  const backdrop = document.createElement('div');
+  backdrop.className = 'modal-backdrop active';
+  backdrop.innerHTML = `
+    <div class="modal">
+      <div class="modal-header"><div class="modal-title">Edit Metadata</div><button class="modal-close">✕</button></div>
+      <div class="modal-body">
+        <div class="form-group"><label class="form-label">Title</label><input type="text" class="form-input" id="edit-title" value="${escapeHtml(item.title)}"></div>
+        <div class="form-group"><label class="form-label">Genre</label><input type="text" class="form-input" id="edit-genre" value="${escapeHtml(item.genre || '')}"></div>
+        <div class="form-group"><label class="form-label">Year</label><input type="number" class="form-input" id="edit-year" value="${item.year || ''}"></div>
+        <div class="form-group"><label class="form-label">Description</label><textarea class="form-textarea" id="edit-desc">${escapeHtml(item.description || '')}</textarea></div>
+        <div class="form-group"><label class="form-label">Rating (0-5)</label><input type="number" class="form-input" id="edit-rating" min="0" max="5" step="0.5" value="${item.rating || 0}"></div>
+      </div>
+      <div class="modal-footer"><button class="btn btn-secondary" id="edit-cancel">Cancel</button><button class="btn btn-primary" id="edit-save">Save</button></div>
+    </div>
+  `;
+  document.body.appendChild(backdrop);
+  
+  const close = () => backdrop.remove();
+  backdrop.querySelector('.modal-close').addEventListener('click', close);
+  backdrop.querySelector('#edit-cancel').addEventListener('click', close);
+  backdrop.addEventListener('click', (e) => { if (e.target === backdrop) close(); });
+  
+  backdrop.querySelector('#edit-save').addEventListener('click', async () => {
+    const updates = {
+      title: backdrop.querySelector('#edit-title').value.trim(),
+      genre: backdrop.querySelector('#edit-genre').value.trim(),
+      year: parseInt(backdrop.querySelector('#edit-year').value, 10) || undefined,
+      description: backdrop.querySelector('#edit-desc').value.trim(),
+      rating: parseFloat(backdrop.querySelector('#edit-rating').value) || 0,
+    };
+    
+    try {
+      await api.updateItem(item.id, updates);
+      toast.success('Metadata updated');
+      close();
+      // Refresh
+      const updated = await api.getItem(item.id);
+      Object.assign(item, updated);
+      renderDetail(document.getElementById('view-container'), item.id);
+      const data = await api.getLibrary({ limit: 1000 });
+      store.setLibrary(data.items || []);
+    } catch (err) {
+      toast.error(err.message);
+    }
+  });
+}
+
+function showAddToPlaylist(item) {
+  const backdrop = document.createElement('div');
+  backdrop.className = 'modal-backdrop active';
+  backdrop.innerHTML = `
+    <div class="modal">
+      <div class="modal-header"><div class="modal-title">Add to Playlist</div><button class="modal-close">✕</button></div>
+      <div class="modal-body" id="playlist-list">Loading...</div>
+      <div class="modal-footer"><button class="btn btn-secondary" id="pl-cancel">Cancel</button></div>
+    </div>
+  `;
+  document.body.appendChild(backdrop);
+  
+  const close = () => backdrop.remove();
+  backdrop.querySelector('.modal-close').addEventListener('click', close);
+  backdrop.querySelector('#pl-cancel').addEventListener('click', close);
+  backdrop.addEventListener('click', (e) => { if (e.target === backdrop) close(); });
+  
+  const listEl = backdrop.querySelector('#playlist-list');
+  
+  api.getPlaylists().then(data => {
+    const playlists = data.playlists || [];
+    if (playlists.length === 0) {
+      listEl.innerHTML = '<p>No playlists yet. Create one in Playlists page.</p>';
+      return;
+    }
+    
+    listEl.innerHTML = playlists.map(pl => `
+      <div style="display:flex; justify-content:space-between; align-items:center; padding:12px; background:var(--bg-secondary); border-radius:8px; margin-bottom:8px;">
+        <span>${escapeHtml(pl.name)}</span>
+        <button class="btn btn-primary btn-sm" data-id="${pl.id}">Add</button>
+      </div>
+    `).join('');
+    
+    listEl.querySelectorAll('button').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        try {
+          await api.addToPlaylist(btn.dataset.id, item.id);
+          toast.success('Added to playlist');
+          close();
+        } catch (err) {
+          toast.error(err.message);
+        }
+      });
+    });
+  }).catch(err => {
+    listEl.innerHTML = `<p>Failed to load: ${err.message}</p>`;
+  });
+}
+
+function escapeHtml(str) {
+  if (!str) return '';
+  const div = document.createElement('div');
+  div.textContent = str;
+  return div.innerHTML;
+}

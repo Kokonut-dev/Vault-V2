@@ -1,0 +1,175 @@
+/* Accessibility */
+
+/* Focus indicators */
+*:focus {
+  outline: none;
+}
+
+*:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+
+.btn:focus-visible,
+.nav-item:focus-visible,
+.media-card:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  box-shadow: 0 0 0 4px var(--accent-muted);
+}
+
+/* Skip link */
+.skip-link {
+  position: absolute;
+  top: -40px;
+  left: 0;
+  background: var(--accent);
+  color: white;
+  padding: 8px 16px;
+  border-radius: 0 0 var(--radius-md) 0;
+  font-weight: 600;
+  z-index: 10000;
+  transition: top var(--duration-fast);
+}
+
+.skip-link:focus {
+  top: 0;
+}
+
+/* Screen reader only */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border-width: 0;
+}
+
+/* High contrast mode support */
+@media (prefers-contrast: high) {
+  :root {
+    --border: rgba(255,255,255,0.3);
+    --border-strong: rgba(255,255,255,0.5);
+  }
+  
+  .btn {
+    border-width: 2px;
+  }
+  
+  .media-card {
+    border-width: 2px;
+  }
+}
+
+/* Reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+}
+
+/* Text scaling */
+html {
+  font-size: 100%;
+}
+
+@media (min-width: 1200px) {
+  html {
+    font-size: 102%;
+  }
+}
+
+/* Ensure minimum touch target size */
+@media (pointer: coarse) {
+  .btn,
+  .nav-item,
+  .media-card,
+  .video-control-btn {
+    min-height: 44px;
+    min-width: 44px;
+  }
+  
+  .btn-icon {
+    width: 44px;
+    height: 44px;
+  }
+}
+
+/* Color contrast — ensure AA */
+[data-theme="dark"] {
+  --text-primary: rgba(255,255,255,0.92); /* 15.8:1 on #0A0A0A */
+  --text-secondary: rgba(255,255,255,0.6); /* 7.1:1 */
+}
+
+[data-theme="light"] {
+  --text-primary: rgba(0,0,0,0.87); /* 15.8:1 on white */
+  --text-secondary: rgba(0,0,0,0.6); /* 7:1 */
+}
+
+/* Keyboard navigation indicators */
+.keyboard-nav .nav-item:focus,
+.keyboard-nav .btn:focus,
+.keyboard-nav .media-card:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* ARIA */
+[aria-hidden="true"] {
+  display: none;
+}
+
+[aria-busy="true"] {
+  cursor: progress;
+}
+
+/* Ensure interactive elements have accessible names */
+button:empty::after {
+  content: attr(aria-label);
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0,0,0,0);
+}
+
+/* Large text mode */
+@media (min-width: 0) {
+  .text-scalable {
+    font-size: 1rem;
+  }
+  
+  .text-scalable-lg {
+    font-size: 1.125rem;
+  }
+}
+
+/* Focus trap for modals */
+.modal-backdrop.active {
+  /* Ensure modal is focusable */
+}
+
+.modal-backdrop.active .modal {
+  /* Focus first element */
+}
+
+/* Ensure sufficient line height for readability */
+p, li, .text-body {
+  line-height: 1.6;
+}
+
+/* Link underlines for accessibility */
+.content a:not(.btn):not(.nav-item):not(.media-card) {
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  text-decoration-color: var(--border-strong);
+}
+
+.content a:not(.btn):not(.nav-item):not(.media-card):hover {
+  text-decoration-color: var(--accent);
+}
