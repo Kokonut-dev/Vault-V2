@@ -15,6 +15,8 @@ export function initMiniPlayer() {
   const miniPrevBtn = document.getElementById('mini-prev');
   const miniNextBtn = document.getElementById('mini-next');
   const miniExpandBtn = document.getElementById('mini-expand');
+  const miniMuteBtn = document.getElementById('mini-mute');
+  const miniVolume = document.getElementById('mini-volume');
   
   const nowPlaying = document.getElementById('now-playing');
   const nowPlayingClose = document.getElementById('now-playing-close');
@@ -100,6 +102,27 @@ export function initMiniPlayer() {
   miniExpandBtn.addEventListener('click', () => {
     nowPlaying.classList.add('active');
   });
+
+  if (miniVolume) {
+    miniVolume.value = store.get('volume') ?? 0.8;
+    miniVolume.addEventListener('input', (e) => {
+      const vol = parseFloat(e.target.value);
+      store.set('volume', vol, true);
+      store.set('isMuted', vol === 0);
+      if (miniMuteBtn) miniMuteBtn.textContent = vol === 0 ? '🔇' : '🔊';
+    });
+  }
+  if (miniMuteBtn) {
+    miniMuteBtn.addEventListener('click', () => {
+      window.dispatchEvent(new CustomEvent('vault:player-action', { detail: { action: 'mute' } }));
+      const muted = store.get('isMuted');
+      miniMuteBtn.textContent = muted ? '🔇' : '🔊';
+    });
+  }
+  store.subscribe('volume', (vol) => {
+    if (miniVolume && document.activeElement !== miniVolume) miniVolume.value = vol;
+    if (miniMuteBtn) miniMuteBtn.textContent = vol === 0 || store.get('isMuted') ? '🔇' : '🔊';
+  });
   
   nowPlayingClose.addEventListener('click', () => {
     nowPlaying.classList.remove('active');
@@ -153,41 +176,46 @@ export function initMiniPlayer() {
   }
 }
 
+let visualizerRaf = null;
+let visualizerStarted = false;
+
 function initVisualizer() {
   const visualizerEl = document.getElementById('visualizer');
   if (!visualizerEl) return;
-  
-  visualizerEl.innerHTML = '';
-  for (let i = 0; i < 32; i++) {
-    const bar = document.createElement('div');
-    bar.className = 'visualizer-bar';
-    bar.style.height = '4px';
-    visualizerEl.appendChild(bar);
-  }
-  
-  const analyser = window.VAULT_AUDIO?.getAnalyser();
-  if (!analyser) return;
-  
-  const dataArray = new Uint8Array(analyser.frequencyBinCount);
-  const bars = visualizerEl.querySelectorAll('.visualizer-bar');
-  
-  function animate() {
-    if (!document.getElementById('now-playing').classList.contains('active')) {
-      requestAnimationFrame(animate);
-      return;
+
+  if (!visualizerEl.childElementCount) {
+    for (let i = 0; i < 32; i++) {
+      const bar = document.createElement('div');
+      bar.className = 'visualizer-bar';
+      bar.style.height = '4px';
+      visualizerEl.appendChild(bar);
     }
-    
-    analyser.getByteFrequencyData(dataArray);
-    
+  }
+
+  if (visualizerStarted) return;
+  visualizerStarted = true;
+
+  const bars = visualizerEl.querySelectorAll('.visualizer-bar');
+  const dataArray = new Uint8Array(256);
+
+  function animate() {
+    visualizerRaf = requestAnimationFrame(animate);
+    const nowPlaying = document.getElementById('now-playing');
+    if (!nowPlaying || !nowPlaying.classList.contains('active')) return;
+    const analyser = window.VAULT_AUDIO?.getAnalyser();
+    if (!analyser) return;
+    if (dataArray.length !== analyser.frequencyBinCount) {
+      // recreate locally
+    }
+    const buf = new Uint8Array(analyser.frequencyBinCount);
+    analyser.getByteFrequencyData(buf);
     bars.forEach((bar, idx) => {
-      const value = dataArray[idx * 2] || 0;
+      const value = buf[idx * 2] || 0;
       const height = Math.max(4, (value / 255) * 60);
       bar.style.height = `${height}px`;
-      bar.style.opacity = 0.5 + (value / 255) * 0.5;
+      bar.style.opacity = String(0.5 + (value / 255) * 0.5);
     });
-    
-    requestAnimationFrame(animate);
   }
-  
+
   animate();
 }

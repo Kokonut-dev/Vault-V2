@@ -69,6 +69,10 @@ export function renderEQPanel(container) {
     store.set('eqEnabled', e.target.checked, true);
   });
   
+  container.querySelector('#eq-close')?.addEventListener('click', () => {
+    container.closest('.modal-backdrop')?.remove();
+  });
+
   container.querySelector('#eq-reset').addEventListener('click', () => {
     const flat = [0,0,0,0,0,0,0,0,0,0];
     store.set('eqGains', flat, true);

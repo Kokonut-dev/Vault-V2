@@ -8,11 +8,19 @@ export function initPWA() {
     return;
   }
 
-  const basePath = window.VAULT_CONFIG?.basePath || '';
-  const swPath = `${basePath}/sw.js`;
+  const isGitHubPages = window.location.hostname.includes('github.io');
 
   window.addEventListener('load', async () => {
     try {
+      // Local server: unregister any SW so it cannot intercept SPA navigations
+      // with the GitHub Pages /Vault-V2 cache paths.
+      if (!isGitHubPages) {
+        const regs = await navigator.serviceWorker.getRegistrations();
+        await Promise.all(regs.map(r => r.unregister()));
+        return;
+      }
+      const basePath = window.VAULT_CONFIG?.basePath || '/Vault-V2';
+      const swPath = `${basePath}/sw.js`;
       const reg = await navigator.serviceWorker.register(swPath);
       console.log('[PWA] Service Worker registered:', reg.scope);
 

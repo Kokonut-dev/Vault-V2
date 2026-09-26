@@ -21,14 +21,16 @@ export function renderFavourites(container) {
     const favIds = store.get('favourites') || [];
     const favItems = favIds.map(id => library.find(i => i.id === id)).filter(Boolean);
     
+    const play = (item) => {
+      if (item.type === 'music') {
+        window.dispatchEvent(new CustomEvent('vault:play', { detail: { item, queue: favItems, index: favItems.findIndex(i => i.id === item.id) } }));
+      } else {
+        window.dispatchEvent(new CustomEvent('vault:open-video', { detail: { item } }));
+      }
+    };
     renderMediaGrid(content, favItems, {
-      onClick: (item) => {
-        if (item.type === 'music') {
-          window.dispatchEvent(new CustomEvent('vault:play', { detail: { item, queue: favItems, index: favItems.findIndex(i => i.id === item.id) } }));
-        } else {
-          window.dispatchEvent(new CustomEvent('vault:open-video', { detail: { item } }));
-        }
-      },
+      onClick: (item) => window.dispatchEvent(new CustomEvent('vault:open-detail', { detail: { item } })),
+      onPlay: play,
       emptyMessage: 'No favourites yet. Heart items to add them here.'
     });
   }

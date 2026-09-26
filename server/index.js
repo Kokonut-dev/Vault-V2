@@ -121,15 +121,28 @@ app.get('/api/events', authMiddleware, (req, res) => {
   });
 });
 
-// Serve static for local dev if docs folder exists (optional)
+// Serve static frontend (same origin as API — required for playback without mixed-content)
 const docsPath = path.join(__dirname, '../docs');
 if (fs.existsSync(docsPath)) {
-  app.use(express.static(docsPath));
+  app.use(express.static(docsPath, { index: 'index.html', fallthrough: true }));
   logger.info(`Serving static frontend from ${docsPath}`);
 }
 
-// 404 handler for API
-app.use('/api/*', notFoundHandler);
+// 404 handler for unmatched API routes
+app.use('/api', notFoundHandler);
+
+// SPA fallback so /movies, /music, etc. work when the UI is served by this server.
+// Without this, refreshing or navigating via history API 404s and "switching pages
+// didn't work".
+if (fs.existsSync(docsPath)) {
+  app.use((req, res, next) => {
+    if (req.path.startsWith('/api')) return next();
+    if (req.method !== 'GET' && req.method !== 'HEAD') return next();
+    res.sendFile(path.join(docsPath, 'index.html'), (err) => {
+      if (err) next(err);
+    });
+  });
+}
 
 // Error handler
 app.use(errorHandler);

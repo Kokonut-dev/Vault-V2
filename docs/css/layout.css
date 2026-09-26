@@ -15,6 +15,7 @@
   bottom: 0;
   width: var(--sidebar-width);
   background: var(--bg-secondary);
+  background: color-mix(in srgb, var(--bg-secondary) 92%, transparent);
   border-right: 1px solid var(--border);
   display: flex;
   flex-direction: column;
@@ -189,8 +190,14 @@
   background: var(--bg-primary);
 }
 
-.sidebar.collapsed ~ .main {
+/* Sidebar lives inside #sidebar-container, so sibling selectors never matched.
+   Collapse is applied on .app instead. */
+.app.sidebar-collapsed .main {
   margin-left: var(--sidebar-collapsed);
+}
+
+.app.sidebar-collapsed .sidebar {
+  width: var(--sidebar-collapsed);
 }
 
 /* Header */
@@ -201,18 +208,34 @@
   justify-content: space-between;
   padding: 0 var(--space-lg);
   background: var(--bg-primary);
+  background: color-mix(in srgb, var(--bg-primary) 78%, transparent);
   border-bottom: 1px solid var(--border);
   position: sticky;
   top: 0;
   z-index: var(--z-header);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(16px) saturate(160%);
+  -webkit-backdrop-filter: blur(16px) saturate(160%);
 }
 
 .header-left {
   display: flex;
   align-items: center;
   gap: var(--space-md);
+}
+
+.breadcrumb {
+  font-size: 15px;
+  font-weight: 650;
+  letter-spacing: -0.015em;
+  color: var(--text-primary);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.breadcrumb-sep {
+  color: var(--text-tertiary);
+  font-weight: 400;
 }
 
 .header-right {
@@ -263,6 +286,16 @@
 
 .page-header {
   margin-bottom: var(--space-xl);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.page-header.row {
+  flex-direction: row;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-md);
 }
 
 .page-title {
@@ -276,6 +309,94 @@
 .page-subtitle {
   color: var(--text-secondary);
   font-size: 15px;
+}
+
+.home-section {
+  margin-bottom: 40px;
+}
+
+.home-section h2 {
+  font-size: 20px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  margin-bottom: 16px;
+}
+
+.home-hero {
+  background: linear-gradient(135deg, var(--bg-secondary), var(--bg-tertiary));
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xl);
+  padding: 24px;
+  display: flex;
+  gap: 20px;
+  align-items: center;
+  margin-top: 8px;
+}
+
+.home-hero-art {
+  width: 128px;
+  height: 128px;
+  border-radius: 14px;
+  background: var(--bg-tertiary);
+  overflow: hidden;
+  flex-shrink: 0;
+  box-shadow: var(--shadow-lg);
+}
+
+.home-hero-art img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.settings-grid {
+  display: grid;
+  gap: 20px;
+  max-width: 840px;
+}
+
+.settings-card {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xl);
+  padding: 24px;
+}
+
+.settings-card h3 {
+  font-size: 16px;
+  font-weight: 700;
+  margin-bottom: 16px;
+}
+
+.detail-layout {
+  display: grid;
+  grid-template-columns: 280px 1fr;
+  gap: 32px;
+  margin-bottom: 32px;
+}
+
+@media (max-width: 768px) {
+  .detail-layout {
+    grid-template-columns: 1fr;
+  }
+  .home-hero {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+}
+
+.filter-chips {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 20px;
+  flex-wrap: wrap;
+}
+
+.filter-chips .btn.active,
+.filter-chips .btn[aria-pressed="true"] {
+  background: var(--accent);
+  color: white;
+  border-color: var(--accent);
 }
 
 /* View toggle */
@@ -312,6 +433,12 @@
 
 /* Responsive */
 @media (max-width: 1024px) {
+  .app.sidebar-collapsed .main,
+  .app.sidebar-collapsed .sidebar {
+    margin-left: 0;
+    width: var(--sidebar-width);
+  }
+
   .sidebar {
     transform: translateX(-100%);
     width: var(--sidebar-width);

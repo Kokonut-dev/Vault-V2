@@ -13,34 +13,48 @@ function sendFileWithRange(req, res, filePath) {
     const stat = fs.statSync(filePath);
     const fileSize = stat.size;
     const range = req.headers.range;
-
     const contentType = mime.lookup(filePath) || 'application/octet-stream';
 
-    if (range) {
-      const parts = range.replace(/bytes=/, '').split('-');
-      const start = parseInt(parts[0], 10);
-      const end = parts[1] ? parseInt(parts[1], 10) : fileSize - 1;
-      const chunkSize = end - start + 1;
+    // Use setHeader (not writeHead) so CORS headers from middleware are preserved.
+    res.setHeader('Content-Type', contentType);
+    res.setHeader('Accept-Ranges', 'bytes');
+    res.setHeader('Cache-Control', 'private, max-age=0, must-revalidate');
 
-      const file = fs.createReadStream(filePath, { start, end });
-      res.writeHead(206, {
-        'Content-Range': `bytes ${start}-${end}/${fileSize}`,
-        'Accept-Ranges': 'bytes',
-        'Content-Length': chunkSize,
-        'Content-Type': contentType,
+    const onStreamError = (stream) => {
+      stream.on('error', (err) => {
+        logger.error(`Stream error ${filePath}: ${err.message}`);
+        if (!res.headersSent) res.status(500).end();
+        else res.destroy();
       });
+    };
+
+    if (range) {
+      const parts = range.replace(/bytes=/i, '').split('-');
+      let start = parseInt(parts[0], 10);
+      let end = parts[1] ? parseInt(parts[1], 10) : fileSize - 1;
+      if (Number.isNaN(start) || start < 0) start = 0;
+      if (Number.isNaN(end) || end >= fileSize) end = fileSize - 1;
+      if (start >= fileSize || start > end) {
+        res.setHeader('Content-Range', `bytes */${fileSize}`);
+        return res.status(416).end();
+      }
+      const chunkSize = end - start + 1;
+      res.status(206);
+      res.setHeader('Content-Range', `bytes ${start}-${end}/${fileSize}`);
+      res.setHeader('Content-Length', chunkSize);
+      const file = fs.createReadStream(filePath, { start, end });
+      onStreamError(file);
       file.pipe(res);
     } else {
-      res.writeHead(200, {
-        'Content-Length': fileSize,
-        'Content-Type': contentType,
-        'Accept-Ranges': 'bytes',
-      });
-      fs.createReadStream(filePath).pipe(res);
+      res.status(200);
+      res.setHeader('Content-Length', fileSize);
+      const file = fs.createReadStream(filePath);
+      onStreamError(file);
+      file.pipe(res);
     }
   } catch (err) {
     logger.error(`Failed to stream ${filePath}: ${err.message}`);
-    res.status(404).json({ error: 'File not found' });
+    if (!res.headersSent) res.status(404).json({ error: 'File not found' });
   }
 }
 

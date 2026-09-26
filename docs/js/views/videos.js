@@ -58,14 +58,18 @@ export function renderVideos(container) {
   
   function render() {
     const items = getFiltered();
+    const play = (item) => window.dispatchEvent(new CustomEvent('vault:open-video', { detail: { item } }));
+    const open = (item) => window.dispatchEvent(new CustomEvent('vault:open-detail', { detail: { item } }));
     if (viewMode === 'grid') {
       renderMediaGrid(content, items, {
-        onClick: (item) => window.dispatchEvent(new CustomEvent('vault:open-video', { detail: { item } })),
-        emptyMessage: 'No videos found.'
+        onClick: open,
+        onPlay: play,
+        emptyMessage: 'No videos found. Upload some videos to get started.'
       });
     } else {
       renderMediaList(content, items, {
-        onClick: (item) => window.dispatchEvent(new CustomEvent('vault:open-video', { detail: { item } }))
+        onClick: open,
+        onPlay: play,
       });
     }
   }

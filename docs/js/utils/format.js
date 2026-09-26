@@ -68,6 +68,12 @@ export function parseYear(year) {
   return y;
 }
 
+export function formatYear(year) {
+  if (year === null || year === undefined || year === '') return '';
+  if (typeof year === 'object' && year.year) return String(year.year);
+  return String(year);
+}
+
 export function getFileExtension(filename) {
   if (!filename) return '';
   const parts = filename.split('.');

@@ -105,7 +105,7 @@
     
     <!-- Main -->
     <main class="main" id="main-content">
-      <header class="header" id="header">
+      <header class="header glass" id="header">
         <div class="header-left">
           <button id="mobile-menu-btn" class="btn btn-icon" aria-label="Toggle menu" style="display:none;">
             ☰
@@ -148,6 +148,10 @@
       <button class="btn btn-icon" id="mini-next" aria-label="Next">⏭</button>
       <button class="btn btn-icon" id="mini-expand" aria-label="Expand">⛶</button>
     </div>
+    <div class="mini-player-volume">
+      <button class="btn btn-icon" id="mini-mute" aria-label="Mute">🔊</button>
+      <input type="range" class="slider" id="mini-volume" min="0" max="1" step="0.01" value="0.8" aria-label="Volume">
+    </div>
   </div>
   
   <!-- Now Playing Fullscreen -->
@@ -188,9 +192,13 @@
   </div>
   
   <!-- Video Player Modal -->
-  <div id="video-modal" class="modal-backdrop" style="display:none;">
-    <div class="video-player" id="video-player">
+  <div id="video-modal" class="video-modal" hidden aria-hidden="true">
+    <div class="video-player paused" id="video-player">
       <video id="video-element" playsinline></video>
+      <div class="video-error" id="video-error" style="display:none;">
+        <div class="video-error-msg">Can't play this file</div>
+        <button class="btn btn-primary" type="button" id="video-retry-transcode">Try transcoding</button>
+      </div>
       <div class="video-player-controls" id="video-controls">
         <div class="video-progress" id="video-progress">
           <div class="video-progress-buffered" id="video-buffered" style="width:0%"></div>
@@ -600,6 +608,8 @@
       return false;
     }
     
+    let appReady = false;
+
     function showApp() {
       if (authGate) authGate.style.display = 'none';
       if (appEl) appEl.style.display = 'flex';
@@ -629,6 +639,12 @@
     }
     
     async function initApp() {
+      if (appReady) {
+        router.handleRoute();
+        return;
+      }
+      appReady = true;
+
       // Theme
       themeManager.init();
       initEffects();
@@ -661,12 +677,45 @@
       
       // Mobile menu
       const mobileBtn = document.getElementById('mobile-menu-btn');
-      if (mobileBtn && window.innerWidth <= 1024) {
-        mobileBtn.style.display = 'flex';
+      const syncMobileBtn = () => {
+        if (!mobileBtn) return;
+        mobileBtn.style.display = window.innerWidth <= 1024 ? 'flex' : 'none';
+      };
+      if (mobileBtn) {
+        syncMobileBtn();
         mobileBtn.addEventListener('click', () => {
           window.dispatchEvent(new CustomEvent('vault:toggle-sidebar'));
         });
+        window.addEventListener('resize', syncMobileBtn);
       }
+
+      const ROUTE_TITLES = {
+        '/': 'Home',
+        '/home': 'Home',
+        '/movies': 'Movies & Series',
+        '/music': 'Music',
+        '/videos': 'Videos',
+        '/playlists': 'Playlists',
+        '/favourites': 'Favourites',
+        '/history': 'History',
+        '/upload': 'Upload',
+        '/settings': 'Settings',
+      };
+      window.addEventListener('vault:route-changed', (e) => {
+        const el = document.getElementById('breadcrumb');
+        if (!el) return;
+        const path = e.detail?.path || '/';
+        if (ROUTE_TITLES[path]) el.textContent = ROUTE_TITLES[path];
+        else if (path.startsWith('/watch') || path.startsWith('/movie') || path.startsWith('/album')) el.textContent = 'Details';
+        else el.textContent = 'Vault';
+      });
+
+      window.addEventListener('vault:open-detail', (e) => {
+        const item = e.detail?.item;
+        if (!item) return;
+        const prefix = item.type === 'music' ? '/album' : item.type === 'movie' ? '/movie' : '/watch';
+        router.navigate(`${prefix}/${item.id}`);
+      });
       
       // Header actions
       const searchTrigger = document.getElementById('search-trigger');
@@ -741,78 +790,72 @@
     
     function setupRoutes() {
       const viewContainer = document.getElementById('view-container');
-      
-      router.addRoute('/', async () => {
+
+      const mount = (render) => async (params, nav) => {
+        if (nav && !nav.isCurrent()) return;
+        viewContainer.innerHTML = '';
+        await render(viewContainer, params);
+      };
+
+      router.addRoute('/', async (params, nav) => {
         const { renderHome } = await import('./js/views/home.js');
-        viewContainer.innerHTML = '';
-        renderHome(viewContainer);
+        return mount(renderHome)(params, nav);
       });
-      
-      router.addRoute('/movies', async () => {
+
+      router.addRoute('/home', async (params, nav) => {
+        const { renderHome } = await import('./js/views/home.js');
+        return mount(renderHome)(params, nav);
+      });
+
+      router.addRoute('/movies', async (params, nav) => {
         const { renderMovies } = await import('./js/views/movies.js');
-        viewContainer.innerHTML = '';
-        renderMovies(viewContainer);
+        return mount(renderMovies)(params, nav);
       });
-      
-      router.addRoute('/music', async () => {
+
+      router.addRoute('/music', async (params, nav) => {
         const { renderMusic } = await import('./js/views/music.js');
-        viewContainer.innerHTML = '';
-        renderMusic(viewContainer);
+        return mount(renderMusic)(params, nav);
       });
-      
-      router.addRoute('/videos', async () => {
+
+      router.addRoute('/videos', async (params, nav) => {
         const { renderVideos } = await import('./js/views/videos.js');
-        viewContainer.innerHTML = '';
-        renderVideos(viewContainer);
+        return mount(renderVideos)(params, nav);
       });
-      
-      router.addRoute('/playlists', async () => {
+
+      router.addRoute('/playlists', async (params, nav) => {
         const { renderPlaylists } = await import('./js/views/playlists.js');
-        viewContainer.innerHTML = '';
-        renderPlaylists(viewContainer);
+        return mount(renderPlaylists)(params, nav);
       });
-      
-      router.addRoute('/favourites', async () => {
+
+      router.addRoute('/favourites', async (params, nav) => {
         const { renderFavourites } = await import('./js/views/favourites.js');
-        viewContainer.innerHTML = '';
-        renderFavourites(viewContainer);
+        return mount(renderFavourites)(params, nav);
       });
-      
-      router.addRoute('/history', async () => {
+
+      router.addRoute('/history', async (params, nav) => {
         const { renderHistory } = await import('./js/views/history.js');
-        viewContainer.innerHTML = '';
-        renderHistory(viewContainer);
+        return mount(renderHistory)(params, nav);
       });
-      
-      router.addRoute('/upload', async () => {
+
+      router.addRoute('/upload', async (params, nav) => {
         const { renderUpload } = await import('./js/views/upload.js');
-        viewContainer.innerHTML = '';
-        renderUpload(viewContainer);
+        return mount(renderUpload)(params, nav);
       });
-      
-      router.addRoute('/settings', async () => {
+
+      router.addRoute('/settings', async (params, nav) => {
         const { renderSettings } = await import('./js/views/settings.js');
-        viewContainer.innerHTML = '';
-        renderSettings(viewContainer);
+        return mount(renderSettings)(params, nav);
       });
-      
-      router.addRoute('/watch/:id', async (params) => {
+
+      const mountDetail = async (params, nav) => {
         const { renderDetail } = await import('./js/views/detail.js');
+        if (nav && !nav.isCurrent()) return;
         viewContainer.innerHTML = '';
         renderDetail(viewContainer, params.id);
-      });
-      
-      router.addRoute('/movie/:id', async (params) => {
-        const { renderDetail } = await import('./js/views/detail.js');
-        viewContainer.innerHTML = '';
-        renderDetail(viewContainer, params.id);
-      });
-      
-      router.addRoute('/album/:id', async (params) => {
-        const { renderDetail } = await import('./js/views/detail.js');
-        viewContainer.innerHTML = '';
-        renderDetail(viewContainer, params.id);
-      });
+      };
+      router.addRoute('/watch/:id', mountDetail);
+      router.addRoute('/movie/:id', mountDetail);
+      router.addRoute('/album/:id', mountDetail);
     }
     
     // Shake animation

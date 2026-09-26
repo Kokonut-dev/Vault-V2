@@ -104,20 +104,22 @@ async function loadHomeContent(container) {
   if (randomPick) {
     const randomSection = document.createElement('div');
     randomSection.className = 'home-section';
-    randomSection.style.marginTop = '32px';
     randomSection.innerHTML = `
       <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:16px;">
-        <h2 style="font-size:20px; font-weight:700;">Random Pick</h2>
+        <h2>Random Pick</h2>
         <button class="btn btn-secondary btn-sm" id="shuffle-pick">Shuffle</button>
       </div>
-      <div style="background:var(--bg-secondary); border:1px solid var(--border); border-radius:16px; padding:20px; display:flex; gap:20px; align-items:center;">
-        <div style="width:120px; height:120px; border-radius:12px; background:var(--bg-tertiary); overflow:hidden; flex-shrink:0;">
-          <img src="${api.getThumbnailUrl(randomPick.id)}" alt="" style="width:100%;height:100%;object-fit:cover;" onerror="this.style.display='none'">
+      <div class="home-hero">
+        <div class="home-hero-art">
+          <img src="${api.getThumbnailUrl(randomPick.id)}" alt="" onerror="this.style.display='none'">
         </div>
         <div style="flex:1; min-width:0;">
           <div style="font-weight:700; font-size:18px; margin-bottom:4px;">${escapeHtml(randomPick.title)}</div>
           <div style="color:var(--text-secondary); font-size:14px; margin-bottom:12px;">${escapeHtml(randomPick.artist || randomPick.genre || '')} ${randomPick.year ? `• ${randomPick.year}` : ''}</div>
-          <button class="btn btn-primary" id="play-random">Play Now</button>
+          <div style="display:flex; gap:8px; flex-wrap:wrap;">
+            <button class="btn btn-primary" id="play-random">Play Now</button>
+            <button class="btn btn-secondary" id="open-random">Details</button>
+          </div>
         </div>
       </div>
     `;
@@ -133,6 +135,9 @@ async function loadHomeContent(container) {
     });
     
     randomSection.querySelector('#play-random').addEventListener('click', () => handleItemClick(randomPick));
+    randomSection.querySelector('#open-random')?.addEventListener('click', () => {
+      window.dispatchEvent(new CustomEvent('vault:open-detail', { detail: { item: randomPick } }));
+    });
   }
   
   if (library.length === 0) {
@@ -150,16 +155,18 @@ async function loadHomeContent(container) {
 function createSection(title, items, onClick) {
   const section = document.createElement('div');
   section.className = 'home-section';
-  section.style.marginBottom = '32px';
-  
+
   section.innerHTML = `
-    <h2 style="font-size:20px; font-weight:700; margin-bottom:16px;">${escapeHtml(title)}</h2>
+    <h2>${escapeHtml(title)}</h2>
     <div class="section-content"></div>
   `;
-  
+
   const content = section.querySelector('.section-content');
-  renderMediaGrid(content, items, { onClick });
-  
+  renderMediaGrid(content, items, {
+    onClick: (item) => window.dispatchEvent(new CustomEvent('vault:open-detail', { detail: { item } })),
+    onPlay: onClick,
+  });
+
   return section;
 }
 

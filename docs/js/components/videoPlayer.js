@@ -1,9 +1,13 @@
 /**
- * Video Player — optimized: rAF throttled progress, cleanup listeners, debounced history
+ * Video Player — custom overlay with transcode fallback.
+ * Fixes: modal used .modal-backdrop (opacity:0 so video was invisible),
+ * play() errors swallowed, no transcode fallback, no error UI.
  */
 import { store } from '../store.js';
 import { api } from '../api.js';
 import { formatTime, escapeHtml } from '../utils/format.js';
+import { toast } from './toast.js';
+import { showEQModal } from './eqPanel.js';
 
 let videoEl = null;
 let isTheatre = false;
@@ -14,12 +18,43 @@ let rafId = null;
 let lastProgressSave = 0;
 let nextEpisodeListener = null;
 let nextEpisodeInterval = null;
+let usingTranscode = false;
+
+function showModal(modal) {
+  if (!modal) return;
+  modal.hidden = false;
+  modal.classList.add('active');
+  modal.style.display = 'flex';
+  modal.setAttribute('aria-hidden', 'false');
+}
+
+function hideModal(modal) {
+  if (!modal) return;
+  modal.hidden = true;
+  modal.classList.remove('active');
+  modal.style.display = 'none';
+  modal.setAttribute('aria-hidden', 'true');
+}
+
+function setError(message, showTranscode = false) {
+  const el = document.getElementById('video-error');
+  if (!el) return;
+  const msg = el.querySelector('.video-error-msg');
+  if (msg) msg.textContent = message || 'Playback failed';
+  const retry = el.querySelector('#video-retry-transcode');
+  if (retry) retry.style.display = showTranscode ? 'inline-flex' : 'none';
+  el.style.display = 'flex';
+}
+
+function clearError() {
+  const el = document.getElementById('video-error');
+  if (el) el.style.display = 'none';
+}
 
 export function initVideoPlayer() {
   videoEl = document.getElementById('video-element');
   const modal = document.getElementById('video-modal');
   const player = document.getElementById('video-player');
-  const controls = document.getElementById('video-controls');
   const progress = document.getElementById('video-progress');
   const played = document.getElementById('video-played');
   const buffered = document.getElementById('video-buffered');
@@ -37,42 +72,51 @@ export function initVideoPlayer() {
   const eqBtn = document.getElementById('video-eq');
   const speedBtn = document.getElementById('video-speed');
   const nextBtn = document.getElementById('video-next');
-  
-  if (!videoEl) return;
-  
-  // Play/pause
-  playBtn.addEventListener('click', () => {
-    if (videoEl.paused) videoEl.play();
+  const retryBtn = document.getElementById('video-retry-transcode');
+
+  if (!videoEl || !modal) return;
+
+  playBtn?.addEventListener('click', () => {
+    if (videoEl.paused) videoEl.play().catch(err => toast.error(err.message || 'Play failed'));
     else videoEl.pause();
   });
-  
+
   videoEl.addEventListener('click', () => {
-    if (videoEl.paused) videoEl.play();
+    if (videoEl.paused) videoEl.play().catch(() => {});
     else videoEl.pause();
   });
-  
+
   videoEl.addEventListener('play', () => {
-    playBtn.textContent = '⏸';
-    player.classList.remove('paused');
+    if (playBtn) playBtn.textContent = '⏸';
+    player?.classList.remove('paused');
+    clearError();
   });
-  
+
   videoEl.addEventListener('pause', () => {
-    playBtn.textContent = '▶';
-    player.classList.add('paused');
+    if (playBtn) playBtn.textContent = '▶';
+    player?.classList.add('paused');
   });
-  
-  // Progress — throttled via rAF to avoid layout thrash on every timeupdate
+
+  videoEl.addEventListener('error', () => {
+    const err = videoEl.error;
+    console.error('[VideoPlayer] error', err);
+    if (currentItem && !usingTranscode) {
+      toast.info('Direct play failed — trying transcode…');
+      openPlayer(currentItem, { forceTranscode: true });
+      return;
+    }
+    setError('This file could not be played. The codec may be unsupported or the server is unreachable.', false);
+  });
+
   videoEl.addEventListener('timeupdate', () => {
-    if (rafId) return; // already scheduled
+    if (rafId) return;
     rafId = requestAnimationFrame(() => {
       rafId = null;
       if (!videoEl.duration) return;
       const percent = (videoEl.currentTime / videoEl.duration) * 100;
-      played.style.width = `${percent}%`;
-      thumb.style.left = `${percent}%`;
-      currentTimeEl.textContent = formatTime(videoEl.currentTime);
-      
-      // Debounced history save: only every 5s
+      if (played) played.style.width = `${percent}%`;
+      if (thumb) thumb.style.left = `${percent}%`;
+      if (currentTimeEl) currentTimeEl.textContent = formatTime(videoEl.currentTime);
       const now = Date.now();
       if (currentItem && now - lastProgressSave > 5000) {
         lastProgressSave = now;
@@ -80,176 +124,182 @@ export function initVideoPlayer() {
       }
     });
   });
-  
+
   videoEl.addEventListener('loadedmetadata', () => {
-    durationEl.textContent = formatTime(videoEl.duration);
+    if (durationEl) durationEl.textContent = formatTime(videoEl.duration);
   });
-  
+
   videoEl.addEventListener('progress', () => {
-    if (videoEl.buffered.length > 0) {
+    if (videoEl.buffered.length > 0 && videoEl.duration) {
       const bufferedEnd = videoEl.buffered.end(videoEl.buffered.length - 1);
       const percent = (bufferedEnd / videoEl.duration) * 100;
-      buffered.style.width = `${percent}%`;
+      if (buffered) buffered.style.width = `${percent}%`;
     }
   });
-  
-  // Seek
-  progress.addEventListener('click', (e) => {
+
+  progress?.addEventListener('click', (e) => {
     const rect = progress.getBoundingClientRect();
     const percent = (e.clientX - rect.left) / rect.width;
-    videoEl.currentTime = percent * videoEl.duration;
+    if (videoEl.duration) videoEl.currentTime = percent * videoEl.duration;
   });
-  
-  // Drag seek
+
   let isDragging = false;
-  thumb.addEventListener('mousedown', () => isDragging = true);
-  document.addEventListener('mouseup', () => isDragging = false);
+  thumb?.addEventListener('mousedown', () => { isDragging = true; });
+  document.addEventListener('mouseup', () => { isDragging = false; });
   document.addEventListener('mousemove', (e) => {
-    if (!isDragging) return;
+    if (!isDragging || !progress) return;
     const rect = progress.getBoundingClientRect();
     const percent = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
-    videoEl.currentTime = percent * videoEl.duration;
+    if (videoEl.duration) videoEl.currentTime = percent * videoEl.duration;
   });
-  
-  // Volume
-  muteBtn.addEventListener('click', () => {
+
+  muteBtn?.addEventListener('click', () => {
     videoEl.muted = !videoEl.muted;
     muteBtn.textContent = videoEl.muted ? '🔇' : '🔊';
   });
-  
-  volumeSlider.addEventListener('input', (e) => {
+
+  volumeSlider?.addEventListener('input', (e) => {
     videoEl.volume = parseFloat(e.target.value);
     videoEl.muted = false;
-    muteBtn.textContent = videoEl.volume === 0 ? '🔇' : '🔊';
+    if (muteBtn) muteBtn.textContent = videoEl.volume === 0 ? '🔇' : '🔊';
   });
-  
-  // Fullscreen
-  fullscreenBtn.addEventListener('click', () => {
+
+  fullscreenBtn?.addEventListener('click', () => {
     if (!document.fullscreenElement) {
-      player.requestFullscreen().catch(() => {});
+      (player || modal).requestFullscreen?.().catch(() => {});
     } else {
       document.exitFullscreen().catch(() => {});
     }
   });
-  
+
   document.addEventListener('fullscreenchange', () => {
     isFullscreen = !!document.fullscreenElement;
-    player.classList.toggle('fullscreen', isFullscreen);
-    fullscreenBtn.textContent = isFullscreen ? '⛶' : '⛶';
+    player?.classList.toggle('fullscreen', isFullscreen);
   });
-  
-  // Theatre
-  theatreBtn.addEventListener('click', () => {
+
+  theatreBtn?.addEventListener('click', () => {
     isTheatre = !isTheatre;
-    player.classList.toggle('theatre', isTheatre);
+    player?.classList.toggle('theatre', isTheatre);
     store.set('theatreMode', isTheatre);
   });
-  
-  // PiP
-  pipBtn.addEventListener('click', async () => {
+
+  pipBtn?.addEventListener('click', async () => {
     try {
-      if (document.pictureInPictureElement) {
-        await document.exitPictureInPicture();
-      } else {
-        await videoEl.requestPictureInPicture();
-      }
+      if (document.pictureInPictureElement) await document.exitPictureInPicture();
+      else await videoEl.requestPictureInPicture();
     } catch (err) {
-      console.warn('PiP failed', err);
+      toast.info('Picture-in-Picture is not available');
     }
   });
-  
-  // Close
-  closeBtn.addEventListener('click', closePlayer);
+
+  closeBtn?.addEventListener('click', closePlayer);
   modal.addEventListener('click', (e) => {
     if (e.target === modal) closePlayer();
   });
-  
-  // Captions
-  captionsBtn.addEventListener('click', () => {
+
+  captionsBtn?.addEventListener('click', () => {
     const tracks = videoEl.textTracks;
     for (let i = 0; i < tracks.length; i++) {
       tracks[i].mode = tracks[i].mode === 'showing' ? 'hidden' : 'showing';
     }
   });
-  
-  // Speed
+
+  eqBtn?.addEventListener('click', () => {
+    try { showEQModal(); } catch {}
+  });
+
   let speeds = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 1.75, 2, 3];
   let speedIdx = 3;
-  speedBtn.addEventListener('click', () => {
+  speedBtn?.addEventListener('click', () => {
     speedIdx = (speedIdx + 1) % speeds.length;
     videoEl.playbackRate = speeds[speedIdx];
     speedBtn.textContent = `${speeds[speedIdx]}x`;
   });
-  
-  // Next episode
-  nextBtn.addEventListener('click', () => {
+
+  nextBtn?.addEventListener('click', () => {
     window.dispatchEvent(new CustomEvent('vault:play-next-episode'));
   });
-  
-  // Keyboard
+
+  retryBtn?.addEventListener('click', () => {
+    if (currentItem) openPlayer(currentItem, { forceTranscode: true });
+  });
+
   window.addEventListener('vault:player-action', (e) => {
-    if (!modal.style.display || modal.style.display === 'none') return;
-    const { action, percent } = e.detail;
+    if (!modal.classList.contains('active')) return;
+    const { action, percent } = e.detail || {};
     switch (action) {
       case 'playPause':
-        if (videoEl.paused) videoEl.play(); else videoEl.pause();
+        if (videoEl.paused) videoEl.play().catch(() => {});
+        else videoEl.pause();
         break;
       case 'seekBack':
         videoEl.currentTime = Math.max(0, videoEl.currentTime - 10);
         break;
       case 'seekForward':
-        videoEl.currentTime = Math.min(videoEl.duration, videoEl.currentTime + 10);
+        videoEl.currentTime = Math.min(videoEl.duration || 0, videoEl.currentTime + 10);
         break;
       case 'mute':
         videoEl.muted = !videoEl.muted;
+        if (muteBtn) muteBtn.textContent = videoEl.muted ? '🔇' : '🔊';
         break;
       case 'fullscreen':
-        fullscreenBtn.click();
+        fullscreenBtn?.click();
         break;
       case 'theatre':
-        theatreBtn.click();
+        theatreBtn?.click();
         break;
       case 'pip':
-        pipBtn.click();
+        pipBtn?.click();
         break;
       case 'captions':
-        captionsBtn.click();
+        captionsBtn?.click();
         break;
       case 'seekPercent':
-        if (percent !== undefined) videoEl.currentTime = (percent / 100) * videoEl.duration;
+        if (percent !== undefined && videoEl.duration) videoEl.currentTime = (percent / 100) * videoEl.duration;
         break;
     }
   });
-  
-  // Show/hide controls on mousemove
-  player.addEventListener('mousemove', () => {
+
+  player?.addEventListener('mousemove', () => {
     player.classList.add('show-controls');
     clearTimeout(controlsTimeout);
     controlsTimeout = setTimeout(() => {
       if (!videoEl.paused) player.classList.remove('show-controls');
     }, 3000);
   });
-  
-  // Open video event
+
   window.addEventListener('vault:open-video', (e) => {
-    openPlayer(e.detail.item);
+    if (e.detail?.item) openPlayer(e.detail.item);
   });
-  
+
+  window.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && modal.classList.contains('active')) closePlayer();
+  });
+
   console.log('[VideoPlayer] Initialized');
 }
 
-export function openPlayer(item) {
+export function openPlayer(item, { forceTranscode = false } = {}) {
   currentItem = item;
+  usingTranscode = !!forceTranscode;
   const modal = document.getElementById('video-modal');
-  const videoEl = document.getElementById('video-element');
-  
-  // Clear old tracks
+  videoEl = document.getElementById('video-element') || videoEl;
+  if (!videoEl || !modal) return;
+
+  clearError();
+
   while (videoEl.firstChild) videoEl.removeChild(videoEl.firstChild);
-  
-  // Set source
-  videoEl.src = api.getStreamUrl(item.id);
-  
-  // Subtitles
+
+  const url = api.getPlaybackUrl(item, { forceTranscode });
+  if (api.isMixedContent(url)) {
+    showModal(modal);
+    setError('Browser blocked this stream (HTTPS page talking to HTTP server). Open Vault at http://localhost:4000 or use an HTTPS tunnel.', false);
+    return;
+  }
+
+  videoEl.src = url;
+  usingTranscode = forceTranscode || api.needsTranscode(item);
+
   if (item.subtitles && item.subtitles.length > 0) {
     item.subtitles.forEach(sub => {
       const track = document.createElement('track');
@@ -261,63 +311,74 @@ export function openPlayer(item) {
       videoEl.appendChild(track);
     });
   }
-  
-  // Resume position if exists
-  const history = store.get('history').find(h => h.itemId === item.id);
+
+  const history = (store.get('history') || []).find(h => h.itemId === item.id);
   if (history && history.progress > 5 && history.progress < 95) {
-    videoEl.addEventListener('loadedmetadata', function onMeta() {
+    const onMeta = () => {
       videoEl.currentTime = (history.progress / 100) * videoEl.duration;
       videoEl.removeEventListener('loadedmetadata', onMeta);
-    });
+    };
+    videoEl.addEventListener('loadedmetadata', onMeta);
   }
-  
-  modal.style.display = 'flex';
+
+  showModal(modal);
+  const player = document.getElementById('video-player');
+  player?.classList.add('paused', 'show-controls');
+
   videoEl.load();
-  videoEl.play().catch(() => {});
-  
-  // Check for next episode if series
-  if (item.season && item.episode) {
-    checkNextEpisode(item);
-  }
+  videoEl.play().catch((err) => {
+    console.warn('[VideoPlayer] play() rejected', err);
+    // Autoplay policies: show controls so user can press play
+    player?.classList.add('paused', 'show-controls');
+    if (!usingTranscode) {
+      // Keep the overlay visible; user can retry
+    }
+  });
+
+  if (item.season && item.episode) checkNextEpisode(item);
 }
 
 export function closePlayer() {
   const modal = document.getElementById('video-modal');
   const vEl = document.getElementById('video-element');
-  
+
   if (rafId) { cancelAnimationFrame(rafId); rafId = null; }
   if (controlsTimeout) { clearTimeout(controlsTimeout); controlsTimeout = null; }
-  if (nextEpisodeListener) { vEl.removeEventListener('timeupdate', nextEpisodeListener); nextEpisodeListener = null; }
+  if (nextEpisodeListener && vEl) { vEl.removeEventListener('timeupdate', nextEpisodeListener); nextEpisodeListener = null; }
   if (nextEpisodeInterval) { clearInterval(nextEpisodeInterval); nextEpisodeInterval = null; }
-  
-  vEl.pause();
-  vEl.src = '';
-  modal.style.display = 'none';
-  
+
+  if (vEl) {
+    vEl.pause();
+    vEl.removeAttribute('src');
+    vEl.load();
+  }
+  hideModal(modal);
+
   if (document.fullscreenElement) {
     document.exitFullscreen().catch(() => {});
   }
-  
+
   currentItem = null;
   lastProgressSave = 0;
+  usingTranscode = false;
+  clearError();
 }
 
 function checkNextEpisode(item) {
-  const library = store.get('library');
-  const next = library.find(i => 
-    i.title === item.title && 
-    i.season === item.season && 
+  const library = store.get('library') || [];
+  const next = library.find(i =>
+    i.title === item.title &&
+    i.season === item.season &&
     i.episode === item.episode + 1
   );
-  
+
   if (next) {
     const overlay = document.getElementById('next-episode-overlay');
     const titleEl = document.getElementById('next-episode-title');
     if (titleEl) titleEl.textContent = `S${next.season}E${next.episode} — ${escapeHtml(next.title)}`;
     const imgEl = document.getElementById('next-episode-img');
     if (imgEl) imgEl.src = api.getThumbnailUrl(next.id);
-    
-    // Cleanup previous listener if any
+
     if (nextEpisodeListener && videoEl) {
       videoEl.removeEventListener('timeupdate', nextEpisodeListener);
     }
@@ -346,8 +407,7 @@ function startCountdown(nextItem) {
       openPlayer(nextItem);
     }
   }, 1000);
-  
-  // Cancel if user interacts
+
   document.getElementById('video-element')?.addEventListener('click', () => {
     if (nextEpisodeInterval) { clearInterval(nextEpisodeInterval); nextEpisodeInterval = null; }
   }, { once: true });
