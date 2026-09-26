@@ -699,26 +699,6 @@
       window.addEventListener('vault:auth-required', () => {
         showAuthGate();
       });
-
-      // Onboarding events
-      window.addEventListener('vault:onboarding-complete', (e) => {
-        console.log('Onboarding complete', e.detail);
-        // If we got token, go straight to app, else check auth
-        if (e.detail && e.detail.token) {
-          showApp();
-        } else {
-          checkAuth();
-        }
-      });
-
-      window.addEventListener('vault:onboarding-complete-no-token', () => {
-        showAuthGate();
-        toast.info('Setup complete — please login with your new credentials');
-      });
-
-      window.addEventListener('vault:onboarding-skipped', () => {
-        showAuthGate();
-      });
       
       // Connection status
       window.addEventListener('vault:online', () => {
@@ -847,7 +827,33 @@
     document.head.appendChild(style);
     
     // Start — check onboarding first, then auth
+    // Centralized onboarding event listeners — setup once
+    function setupOnboardingListeners() {
+      // Use { once: false } but guard against double registration by removing existing if any
+      // We add listeners once at startup
+      window.addEventListener('vault:onboarding-complete', (e) => {
+        console.log('Onboarding complete', e.detail);
+        if (e.detail && e.detail.token) {
+          showApp();
+        } else {
+          checkAuth();
+        }
+      });
+
+      window.addEventListener('vault:onboarding-complete-no-token', () => {
+        showAuthGate();
+        toast.info('Setup complete — please login with your new credentials');
+      });
+
+      window.addEventListener('vault:onboarding-skipped', () => {
+        showAuthGate();
+      });
+    }
+
     async function start() {
+      // Setup listeners once
+      setupOnboardingListeners();
+
       // Show loading state? Hide both initially
       if (authGate) authGate.style.display = 'none';
       if (appEl) appEl.style.display = 'none';
@@ -858,21 +864,6 @@
         if (status.needsSetup) {
           console.log('Setup required, showing onboarding wizard');
           showOnboarding();
-          // Listen for onboarding complete even before initApp
-          window.addEventListener('vault:onboarding-complete', (e) => {
-            console.log('Onboarding complete event', e.detail);
-            if (e.detail && e.detail.token) {
-              showApp();
-            } else {
-              checkAuth();
-            }
-          });
-          window.addEventListener('vault:onboarding-complete-no-token', () => {
-            showAuthGate();
-          });
-          window.addEventListener('vault:onboarding-skipped', () => {
-            showAuthGate();
-          });
           return;
         }
       } catch (err) {
@@ -880,18 +871,10 @@
         // If no token and server unreachable, show onboarding in connection mode to help user
         const token = localStorage.getItem('vault_token');
         if (!token) {
-          // Check if we should show onboarding as fallback for first-time users
-          // Only if api base url is default localhost and we failed — show onboarding
           const isLocalhost = getApiBaseUrl().includes('localhost') || getApiBaseUrl().includes('127.0.0.1');
           if (isLocalhost) {
             console.log('No token and server unreachable — showing onboarding for connection help');
             showOnboarding();
-            window.addEventListener('vault:onboarding-complete', (e) => {
-              if (e.detail && e.detail.token) showApp();
-              else checkAuth();
-            });
-            window.addEventListener('vault:onboarding-complete-no-token', () => showAuthGate());
-            window.addEventListener('vault:onboarding-skipped', () => showAuthGate());
             return;
           }
         }
@@ -899,13 +882,6 @@
 
       // Normal flow — check auth
       await checkAuth();
-
-      // Setup onboarding listeners for later (if user manually triggers via settings?)
-      window.addEventListener('vault:onboarding-complete', (e) => {
-        if (e.detail && e.detail.token) showApp();
-      });
-      window.addEventListener('vault:onboarding-complete-no-token', () => showAuthGate());
-      window.addEventListener('vault:onboarding-skipped', () => showAuthGate());
     }
 
     start();

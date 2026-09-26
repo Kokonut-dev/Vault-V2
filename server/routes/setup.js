@@ -293,17 +293,28 @@ router.post('/complete', async (req, res) => {
       }
     }
 
-    // CORS
+    // CORS — validate as URLs, do NOT escape (escape breaks https://)
     let validatedCorsOrigins = [...DEFAULT_CONFIG.cors.origins];
     if (corsOrigins && Array.isArray(corsOrigins) && corsOrigins.length > 0) {
       validatedCorsOrigins = corsOrigins
         .filter(o => typeof o === 'string' && o.trim())
-        .map(o => sanitizeString(o, 500))
+        .map(o => o.trim().replace(/\/$/, '').substring(0, 500))
+        .filter(o => {
+          // Allow valid URLs or localhost patterns
+          if (!o) return false;
+          if (o.startsWith('http://') || o.startsWith('https://')) return true;
+          if (o.includes('localhost') || o.includes('127.0.0.1')) return true;
+          if (o.includes('github.io')) return true;
+          // Also allow domains without protocol for flexibility, but must contain dot
+          return o.includes('.');
+        })
         .filter(Boolean);
       // Always include GitHub Pages origin
       if (!validatedCorsOrigins.includes('https://kokonut-dev.github.io')) {
         validatedCorsOrigins.push('https://kokonut-dev.github.io');
       }
+      // Deduplicate
+      validatedCorsOrigins = [...new Set(validatedCorsOrigins)];
     }
 
     // Build final config

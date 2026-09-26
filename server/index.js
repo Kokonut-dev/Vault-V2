@@ -81,9 +81,20 @@ app.use('/api/library', authMiddleware, require('./routes/library'));
 app.use('/api/media', authMiddleware, require('./routes/media'));
 app.use('/api/transcode', authMiddleware, require('./routes/transcode'));
 app.use('/api/upload', authMiddleware, require('./routes/upload'));
-app.use('/api/playlists', authMiddleware, require('./routes/playlists'));
-app.use('/api/favourites', authMiddleware, require('./routes/playlists')); // same file handles /favourites
-app.use('/api/history', authMiddleware, require('./routes/playlists'));
+const playlistsRouter = require('./routes/playlists');
+app.use('/api/playlists', authMiddleware, playlistsRouter);
+// Favourites and history are handled via /api/playlists/favourites and /api/playlists/history
+// The frontend api client uses /api/playlists/* paths, so no duplicate mounts needed
+// For backwards compatibility, also support direct /api/favourites and /api/history via same handler
+app.use('/api/favourites', authMiddleware, (req, res, next) => {
+  // Rewrite url to /favourites for the router
+  req.url = '/favourites' + (req.url === '/' ? '' : req.url);
+  playlistsRouter(req, res, next);
+});
+app.use('/api/history', authMiddleware, (req, res, next) => {
+  req.url = '/history' + (req.url === '/' ? '' : req.url);
+  playlistsRouter(req, res, next);
+});
 app.use('/api/settings', authMiddleware, require('./routes/settings'));
 
 // SSE for real-time updates (optional)

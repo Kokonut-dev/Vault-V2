@@ -81,7 +81,16 @@ router.put('/', (req, res) => {
     }
 
     if (cors && cors.origins && Array.isArray(cors.origins)) {
-      config.cors.origins = cors.origins.map(o => sanitizeString(o, 500)).filter(Boolean);
+      // CORS origins must NOT be HTML-escaped — that breaks https://
+      config.cors.origins = cors.origins
+        .filter(o => typeof o === 'string' && o.trim())
+        .map(o => o.trim().replace(/\/$/, '').substring(0, 500))
+        .filter(Boolean);
+      // Deduplicate and ensure GitHub Pages always allowed
+      config.cors.origins = [...new Set(config.cors.origins)];
+      if (!config.cors.origins.includes('https://kokonut-dev.github.io')) {
+        config.cors.origins.push('https://kokonut-dev.github.io');
+      }
     }
 
     saveConfig(config);

@@ -22,6 +22,17 @@ const SHELL_ASSETS = [
   `${BASE_PATH}/css/eq.css`,
   `${BASE_PATH}/css/animations.css`,
   `${BASE_PATH}/css/accessibility.css`,
+  `${BASE_PATH}/css/onboarding.css`,
+  `${BASE_PATH}/js/config.js`,
+  `${BASE_PATH}/js/api.js`,
+  `${BASE_PATH}/js/auth.js`,
+  `${BASE_PATH}/js/onboarding.js`,
+  `${BASE_PATH}/js/store.js`,
+  `${BASE_PATH}/js/router.js`,
+  `${BASE_PATH}/js/themes.js`,
+  `${BASE_PATH}/js/effects.js`,
+  `${BASE_PATH}/js/keyboard.js`,
+  `${BASE_PATH}/js/pwa.js`,
 ];
 
 self.addEventListener('install', (event) => {
