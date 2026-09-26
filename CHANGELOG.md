@@ -1,5 +1,26 @@
 # Changelog
 
+## [2.0.1] - 2026-09-26
+
+### Fixed — GitHub Pages playback (HTTPS → HTTP)
+- **Media now plays from the GitHub Pages site with the default `http://localhost:4000` server.** `api.isMixedContent()` no longer pre-emptively blocks loopback URLs (`localhost`, `127.0.0.1`, `[::1]`, `*.localhost`) — per the Secure Contexts spec, Chrome/Edge/Firefox allow these from HTTPS pages, and the old check refused to even attempt playback, showing "Browser blocked this stream" on every video/music.
+- Genuinely-blocked URLs (plain-HTTP LAN/NAS addresses) now get a clear, actionable error in both players instead of a generic message, and the login screen shows an upfront warning when the configured server URL will be blocked.
+- Fixed `api.baseUrl` staleness: the base URL was captured once at construction, so changing the Server URL (onboarding / settings / login screen) kept calling the old server until a full reload. It is now a live getter; removed the scattered `api.baseUrl = …` workarounds (which would now throw).
+- `openssl` fallback in `scripts/generate-cert.js` now includes `subjectAltName` (Chrome/Firefox reject CN-only certs with `ERR_CERT_COMMON_NAME_INVALID`) plus per-OS trust instructions; added `npm run generate-cert` in `server/`.
+- `verify()` no longer logs the user out when the server is merely unreachable (network errors keep the token; only a 401 clears the session).
+- Grid step: an expired 5-minute challenge token now returns the user to the password step with a clear message instead of a dead-end error.
+
+### Fixed — "Too many sign in attempts" lockout with correct credentials
+- The auth rate limiter counted **every** request under `/api/auth/*` — including successful logins and the `/api/auth/verify` call made on every page load — so normal usage tripped the 10-per-15-minute cap and returned "Too many login attempts, please try again later" with the correct password/grid. The limiter now:
+  - only applies to `POST /api/auth/login` and `POST /api/auth/grid` (`verify`/`logout` are exempt),
+  - counts **only failed credential attempts** (wrong password or wrong grid, flagged by the routes) — successful sign-ins never consume the budget,
+  - no longer counts expired-challenge 401s as wrong grid attempts.
+- The `authService` brute-force lock (5 wrong passwords/grids → 15 min) is unchanged and remains the primary defense.
+- Media endpoints (`/api/media/*`, `/api/transcode/*`) are exempt from the general 200-req/15-min cap — HTTP Range streaming could previously exhaust it and kill playback mid-video with 429s.
+
+### Changed
+- README troubleshooting rewritten for both issues (what actually gets blocked and the three fixes: localhost, `npm run generate-cert` + HTTPS, or a Cloudflare Tunnel).
+
 ## [2.0.0] - 2025-09-26
 
 ### Added — Stage 0: Research

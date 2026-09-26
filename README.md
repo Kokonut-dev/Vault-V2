@@ -283,12 +283,19 @@ By default Vault only works at home (`localhost`). To use from phone anywhere:
 - Username is case-sensitive. Check `server/config.json` → `auth.username`
 - Password: if you forgot, delete `config.json` and restart setup wizard, or run `npm run setup` in `server/`
 
-**"Invalid grid pattern"**
-- You clicked wrong 8 squares. Check `server/config.json` → `auth.gridPattern` shows your numbers (e.g., [0,1,4,5,8,9,12,13]). Count from 0 top-left to 15 bottom-right.
-- Locked out after 5 fails? Wait 15 min or delete `server/data/bruteforce.json` and restart server.
+**"Too many login attempts / locked out"**
+- Lockout only counts **wrong** credentials. Successful logins and normal page loads never trip it.
+- After 5 wrong passwords/grids, Vault locks that IP for 15 min. Wait 15 min or delete `server/data/bruteforce.json` and restart server.
+- Grid squares: check `server/config.json` → `auth.gridPattern` shows your numbers (e.g. [0,1,4,5,8,9,12,13]). Count from 0 top-left to 15 bottom-right.
+- If the grid step says your "login session expired", just enter your password again — the 5-minute challenge window passed; this is not a failed attempt.
 
 **"Mixed Content / HTTPS vs HTTP"**
-- GitHub Pages is HTTPS, your local server is HTTP → browser blocks. Fix: run frontend locally via `npx serve docs` (http → http, no block), or use Cloudflare Tunnel (https → https).
+- Good news: **`http://localhost:4000` works from the GitHub Pages site.** Chrome, Edge and Firefox never block `localhost` / `127.0.0.1` from HTTPS pages, so the default setup (server on your computer, UI on github.io) just plays.
+- What IS blocked: plain-HTTP addresses that are **not** localhost (e.g. `http://192.168.1.50:4000` from a NAS or another machine), and all HTTP in Safari. Fix any of these ways:
+  1. Serve the UI from the local server instead: open `http://localhost:4000` (same origin, no mixed content), or `npx serve docs` (http → http).
+  2. Give the server HTTPS: `cd server && npm run generate-cert`, set `"server": { "https": { "enabled": true } }` in `server/config.json`, then use `https://localhost:4000` as the Server URL. Trust the generated cert so the browser accepts it.
+  3. Use Cloudflare Tunnel (free HTTPS): `cloudflared tunnel --url http://localhost:4000` → set that URL as the Server URL.
+- Vault detects a blocked URL up front and warns you on the login screen instead of failing silently.
 
 **"Upload fails / File too large"**
 - Default max 10GB. Check `server/config.json` → `media.maxUploadSizeMB`. Increase if needed.

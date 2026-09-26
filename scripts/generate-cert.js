@@ -33,11 +33,21 @@ function tryOpenssl() {
     console.log('Found openssl — generating self-signed cert');
     const keyPath = path.join(certDir, 'key.pem');
     const certPath = path.join(certDir, 'cert.pem');
-    execSync(`openssl req -x509 -newkey rsa:4096 -keyout ${keyPath} -out ${certPath} -days 365 -nodes -subj "/CN=localhost"`, { stdio: 'inherit' });
+    // subjectAltName is REQUIRED — Chrome/Firefox ignore the CommonName and
+    // reject certs without a matching SAN (ERR_CERT_COMMON_NAME_INVALID).
+    execSync(
+      `openssl req -x509 -newkey rsa:4096 -keyout ${keyPath} -out ${certPath} -days 365 -nodes ` +
+      `-subj "/CN=localhost" ` +
+      `-addext "subjectAltName=DNS:localhost,DNS:*.localhost,IP:127.0.0.1,IP:::1" ` +
+      `-addext "keyUsage=digitalSignature,keyEncipherment" -addext "extendedKeyUsage=serverAuth"`,
+      { stdio: 'inherit' }
+    );
     console.log('\n✓ Certificates generated with openssl (self-signed, needs manual trust)');
     console.log(`  Key: ${keyPath}`);
     console.log(`  Cert: ${certPath}`);
     console.log('\nTo trust: On Mac, double-click cert.pem → Keychain → Always Trust');
+    console.log('On Windows: double-click cert.pem → Install Certificate → Trusted Root Certification Authorities');
+    console.log('On Linux: copy to /usr/local/share/ca-certificates/ and run update-ca-certificates');
     return true;
   } catch {
     return false;

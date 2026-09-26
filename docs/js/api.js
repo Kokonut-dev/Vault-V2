@@ -6,13 +6,21 @@ import { store } from './store.js';
 
 class ApiClient {
   constructor() {
-    this.baseUrl = getApiBaseUrl();
     this._tokenCache = null;
     this._tokenCacheTime = 0;
     this._cache = new Map(); // simple GET cache
     this._cacheTTL = 30 * 1000; // 30s for stats/genres
     this._abortControllers = new Map();
   }
+
+  // Always read the live base URL. Previously this was captured once in the
+  // constructor, so changing the server URL (onboarding / settings / login
+  // screen) kept hitting the stale URL until a full page reload.
+  get baseUrl() {
+    return getApiBaseUrl();
+  }
+
+  // NOTE: `baseUrl` is a getter — do not assign to `api.baseUrl` anywhere.
 
   getToken() {
     // Memoize token for 1s to avoid repeated localStorage reads
@@ -111,7 +119,10 @@ class ApiClient {
             store.clearAuth();
             window.dispatchEvent(new CustomEvent('vault:auth-required'));
           }
-          throw new Error(data.error || 'Unauthorized');
+          const err = new Error(data.error || 'Unauthorized');
+          err.status = 401;
+          err.code = data.code || 'UNAUTHORIZED';
+          throw err;
         }
 
         const contentType = res.headers.get('content-type');
@@ -122,7 +133,10 @@ class ApiClient {
         const data = await res.json().catch(() => ({}));
 
         if (!res.ok) {
-          throw new Error(data.error || `Request failed: ${res.status}`);
+          const err = new Error(data.error || `Request failed: ${res.status}`);
+          err.status = res.status;
+          err.code = data.code || 'REQUEST_FAILED';
+          throw err;
         }
 
         if (useCache) this._setCached(path, data);
@@ -270,8 +284,49 @@ class ApiClient {
     return this.getStreamUrl(item.id);
   }
 
+  // Hosts browsers NEVER treat as mixed content. Per the Secure Contexts spec
+  // (https://w3c.github.io/webappsec-secure-contexts/#potentially-trustworthy-origin)
+  // Chrome, Edge and Firefox allow an HTTPS page to load http://localhost,
+  // http://127.0.0.1, http://[::1] and http://*.localhost without blocking.
+  // (Safari is the exception and may still block — playback will simply fail
+  // with a media error there, which the players surface.)
+  _isLoopbackHost(hostname) {
+    if (!hostname) return false;
+    const h = String(hostname).toLowerCase().replace(/^\[|\]$/g, '');
+    return (
+      h === 'localhost' ||
+      h.endsWith('.localhost') ||
+      h === '127.0.0.1' ||
+      h.startsWith('127.') || // whole 127.0.0.0/8 loopback range
+      h === '::1' ||
+      h === '::ffff:127.0.0.1'
+    );
+  }
+
+  // True ONLY when the browser will actually block the URL, i.e. the page is
+  // HTTPS and the target is plain HTTP on a NON-loopback host (LAN IP, NAS
+  // hostname, etc.). Loopback URLs are deliberately exempt — modern browsers
+  // allow them, and pre-emptively blocking them here was preventing playback
+  // from the GitHub Pages site with a local server on the same machine.
   isMixedContent(url) {
-    return window.location.protocol === 'https:' && typeof url === 'string' && url.startsWith('http:');
+    if (window.location.protocol !== 'https:') return false;
+    if (typeof url !== 'string' || !url.startsWith('http:')) return false;
+    try {
+      const host = new URL(url, window.location.href).hostname;
+      return !this._isLoopbackHost(host);
+    } catch {
+      return true;
+    }
+  }
+
+  // Human-readable explanation + fixes for a genuinely blocked URL.
+  mixedContentHelp(url) {
+    return [
+      `Browsers block HTTP media ("${url}") on HTTPS pages like this one.`,
+      'Fixes: (1) if Vault runs on this same computer, set the server URL to http://localhost:4000 — browsers allow localhost;',
+      '(2) give the server HTTPS: run "npm run generate-cert" in server/, enable server.https in config.json, then use https://localhost:4000;',
+      '(3) or expose it over an HTTPS tunnel: cloudflared tunnel --url http://localhost:4000',
+    ].join(' ');
   }
 
   getSubtitleUrl(id, subtitleId) {

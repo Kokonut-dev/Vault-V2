@@ -39,7 +39,12 @@ app.use(morgan('combined'));
 // Rate limiters
 const { generalLimiter, authLimiter, uploadLimiter } = createRateLimiters();
 app.use('/api/', generalLimiter);
-app.use('/api/auth/', authLimiter);
+// Auth limiter applies ONLY to the credential-checking endpoints (login/grid).
+// Mounting it on all of /api/auth/ used to rate-limit /api/auth/verify, which
+// the frontend calls on every page load — locking users out with a
+// "Too many login attempts" error even when their credentials were correct.
+app.use('/api/auth/login', authLimiter);
+app.use('/api/auth/grid', authLimiter);
 app.use('/api/upload/', uploadLimiter);
 
 // Ensure data dirs
