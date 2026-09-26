@@ -202,12 +202,15 @@ Supported formats: `.mp4, .mkv, .webm, .avi, .mov, .mp3, .flac, .wav, .ogg, .opu
 - **Sanitization:** All inputs escaped via `validator`, filenames sanitized (no path traversal), mime-type checked by magic bytes, not just extension.
 
 ### Appearance — Premium Feel
-- **Themes:** Dark (default #0A0A0A), Light, Warm (amber), Cold (blue). CSS variables, instant switch, saved in localStorage.
-- **Glassmorphism:** `backdrop-filter: blur(20px)` with intensity slider 0–100% in Settings. Frosted glass cards, sidebar, player.
+- **Themes:** Dark (default), Light, Warm (amber), Cold (blue). CSS variables, instant switch, saved in localStorage. Each theme ships its own ambient light palette so the glass always has something to frost.
+- **Glassmorphism:** every floating shell — sidebar island, header bar, player dock, modals, command palette, toasts, EQ — is built from one material recipe in `docs/css/glass.css`: translucent tinted fill + `backdrop-filter: blur() saturate()` + hairline border + inset top sheen + deep diffuse shadow. The Settings intensity slider (0–100%) drives **both** the blur radius (4–34px) and the fill opacity from a single `--glass-intensity` token.
+- **Ambient light layer:** a fixed, gradient-lit backdrop (`#ambient`) sits behind the app. Without it, `backdrop-filter` has nothing to blur and the glass reads as flat grey.
+- **Floating shells:** the sidebar, header and player are rounded islands inset from the viewport instead of full-bleed panels. The mini-player is a compact 64px dock centred inside the content stage — it never slides under the sidebar.
+- **Performance guardrail:** `backdrop-filter` is GPU-expensive, so it is limited to the app chrome. Repeating content surfaces (media cards, list rows) use the same tint *without* the blur.
 - **Film Grain:** Subtle noise texture overlay, intensity slider 0–100%, respects `prefers-reduced-motion`.
 - **Animations:** Page enter, card hover (translateY + scale), skeleton loaders, shake on wrong grid, onboarding enter, complete pop. All respect `prefers-reduced-motion`.
-- **Layout:** Sidebar collapsible, mobile hamburger menu, responsive grid (1–6 columns), bottom mini-player, theatre mode.
-- **Accessibility:** Focus-visible rings, skip link, ARIA labels, keyboard navigation for grid, screen reader support.
+- **Layout:** Sidebar collapsible, mobile hamburger menu, responsive grid (1–6 columns), bottom mini-player dock, theatre mode.
+- **Accessibility:** Focus-visible rings, skip link, ARIA labels, keyboard navigation for grid, screen reader support. A `@supports not (backdrop-filter)` block falls back to solid elevated surfaces.
 
 ### PWA & Offline
 - **Installable:** Add to home screen on phone/desktop. Manifest with icons, theme color.

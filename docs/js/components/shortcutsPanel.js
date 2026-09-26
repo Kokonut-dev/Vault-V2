@@ -19,9 +19,9 @@ export function initShortcutsPanel() {
             <h3 style="font-size:13px; font-weight:700; text-transform:uppercase; letter-spacing:0.05em; color:var(--text-tertiary); margin-bottom:12px;">${section}</h3>
             <div style="display:flex; flex-direction:column; gap:8px;">
               ${shortcuts.map(s => `
-                <div style="display:flex; justify-content:space-between; align-items:center; padding:8px 12px; background:var(--bg-secondary); border-radius:8px;">
+                <div style="display:flex; justify-content:space-between; align-items:center; padding:8px 12px; background:rgba(var(--glass-tint),0.05); border-radius:8px;">
                   <span style="font-size:13px; color:var(--text-secondary);">${s.desc}</span>
-                  <kbd style="background:var(--bg-tertiary); border:1px solid var(--border); border-bottom-width:2px; padding:2px 8px; border-radius:6px; font-size:11px; font-family:var(--font-mono);">${s.key}</kbd>
+                  <kbd style="background:rgba(var(--glass-tint),0.09); border:1px solid rgba(var(--glass-tint),0.1); border-bottom-width:2px; padding:2px 8px; border-radius:6px; font-size:11px; font-family:var(--font-mono);">${s.key}</kbd>
                 </div>
               `).join('')}
             </div>

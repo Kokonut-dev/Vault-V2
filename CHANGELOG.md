@@ -1,5 +1,30 @@
 # Changelog
 
+## [2.1.0] - 2026-09-26
+
+### Fixed — the seam between the sidebar and the player
+- **The mini-player no longer slides underneath the sidebar.** It was `position: fixed; left: 0; right: 0` — a full-bleed 80px bar with `z-index: 80` running *under* the sidebar's `z-index: 100`. Because the sidebar is translucent and blurs its backdrop, the player's cover, title and transport buttons smeared through it and its top border/hairline doubled up against the sidebar edge — the graphical glitch at the sidebar/player junction.
+  The dock is now `z-index: var(--z-mini-player)` = **120**, above the sidebar (100) and header (90), so even where the shells overlap the player floats cleanly on top instead of ghosting through the glass.
+- **The dock is centred inside the content stage, not the viewport.** It is bounded by `left: var(--sidebar-track)` / `right: var(--shell-gap)` with `max-width: 780px` and auto margins, so it can never reach the sidebar column — at 1440px it sits at x 457–1237, at 1024px it starts exactly where the sidebar island ends. It follows the sidebar when it collapses (`.app.sidebar-collapsed ~ #mini-player`) and owns the full width once the sidebar goes off-canvas (≤1024px).
+- **Sidebar active indicator was invisible.** `.nav-item.active::before` sat at `left: -8px`, outside the sidebar's box, where the sidebar's `overflow: hidden` chopped it off. It now lives inside the pill at `left: 3px` with an accent glow, and is hidden when the sidebar is collapsed (where it would collide with the centred icon).
+- **The film-grain overlay was never rendered.** `docs/css/accessibility.css` had `[aria-hidden="true"] { display: none }` — equal specificity to `.grain-overlay` but loaded after it, so the decorative overlay (and anything else marked `aria-hidden`) was display:none. Removed; `aria-hidden` is an a11y hint, not a presentation switch.
+- **Collapsed-sidebar layout:** section titles are `display: none` when collapsed (previously `width: 0` on a block left a stray gap), nav items centre their icon, and the collapse button's label is hidden instead of relying on the shared `.nav-label` rule.
+
+### Added — a real glassmorphism material system
+- `docs/css/glass.css` rewritten as one recipe used by every floating shell: translucent tinted fill (`rgba(var(--glass-tint), …)`) + `backdrop-filter: blur() saturate()` + hairline border + **inset top sheen** (`inset 0 1px 0 var(--glass-highlight)`) + deep diffuse shadow + generous radius. Variants: `.glass`, `.glass-strong`, `.glass-subtle`, `.glass-flat`, `.glass-island`, `.glass-hover`, `.glass-sheen`, plus a `@supports not (backdrop-filter)` solid fallback.
+- **Ambient light layer** (`#ambient` in `docs/index.html`, styled in `docs/css/themes.css`): a fixed, gradient-lit backdrop with per-theme colour leaks and a vignette. Without something behind it, `backdrop-filter` has nothing to frost and glass reads as flat grey — this is what makes the whole UI read as glass. The app shell and `.main` are now transparent so the light shows through.
+- **Floating shells instead of full-bleed panels.** Sidebar, header and player are rounded islands inset from the viewport by `--shell-gap` (14px). The header is a sticky frosted bar that hangs over the content; the sidebar lost its hard `border-right` for a hairline + radius.
+- **The Settings glass slider actually works now.** `--glass-intensity` is the single source of truth: `glass.css` derives blur radius (4→34px), fill opacity (0.014→0.24) and hairline strength from it. Previously `themes.js` overwrote `--glass-blur` with a fixed 8px and `--glass-opacity` (a variable nothing read), so the slider barely changed anything.
+- New tokens in `variables.css`: `--shell-gap`, `--sidebar-track(-collapsed)`, `--dock-height`, `--dock-gap`, `--dock-max`, `--radius-2xl`, `--ease-spring`, per-theme `--glass-tint`, `--glass-highlight`, `--glass-ring`, `--ambient-1/2/3`, `--ambient-base`, `--card-bg`/`--card-border` as translucent tints, and theme-specific shadows for light/warm.
+
+### Changed — full UI overhaul
+- **Player dock is compact**: 64px tall (was 80px), 44px cover, tighter type, and a 3px progress rail hugging the island's top edge with an accent glow. Hidden state translates down by its own height + gap.
+- **Everything chrome is glass**: header, sidebar, modals, command palette, toasts, EQ panel (incl. the video-player mini EQ), now-playing screen, lyrics, queue, settings cards, home hero, inline audio player, skip-intro and next-episode overlays, video control buttons and progress preview.
+- **Cards, list rows and forms** use the same tint *without* `backdrop-filter` — `backdrop-filter` is GPU-expensive and RESEARCH.md explicitly limits it to the app chrome; hundreds of blurred cards would melt the frame rate.
+- Softer radii (`--radius-md/lg/xl` 12/16/22px), accent-gradient primary buttons and logo, glowing accent progress bars/sliders, glass-morphic `kbd` chips, and a new `.toast-close` style (the button existed but had no CSS).
+- **Toasts sit above the dock** (`bottom: calc(var(--dock-height) + var(--dock-gap) * 2)`) instead of underneath it.
+- Content padding accounts for the island dock (`96px`), auth gate and onboarding wizard get the ambient backdrop + glass card, and ~24 inline `var(--bg-secondary)` / `var(--bg-tertiary)` opaque panels in the views were converted to translucent tints so nothing punches a hole in the glass.
+
 ## [2.0.1] - 2026-09-26
 
 ### Fixed — GitHub Pages playback (HTTPS → HTTP)

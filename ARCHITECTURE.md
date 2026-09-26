@@ -124,13 +124,13 @@ Vault-V2/
 │   ├── favicon.svg
 │   ├── css/
 │   │   ├── reset.css
-│   │   ├── variables.css           # CSS custom properties + themes
-│   │   ├── themes.css              # Dark, Light, Warm, Cold definitions
-│   │   ├── glass.css               # Frosted glass effects
+│   │   ├── variables.css           # Design tokens + 4 theme definitions
+│   │   ├── themes.css              # Ambient light layer + per-theme surface tuning
+│   │   ├── glass.css               # Glassmorphism material system (base + variants)
 │   │   ├── grain.css               # Grain texture
-│   │   ├── layout.css              # Sidebar, main, responsive
-│   │   ├── components.css          # Cards, buttons, modals, etc.
-│   │   ├── player.css              # Video + audio player UI
+│   │   ├── layout.css              # Floating shells: sidebar island, header bar, content
+│   │   ├── components.css          # Cards, buttons, modals, forms, toasts
+│   │   ├── player.css              # Video stage + mini-player dock island
 │   │   ├── eq.css                  # EQ UI
 │   │   ├── search.css              # Command palette
 │   │   ├── animations.css          # Transitions, skeletons

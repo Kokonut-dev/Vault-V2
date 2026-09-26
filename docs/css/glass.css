@@ -1,108 +1,170 @@
-/* Frosted Glass / Glassmorphism */
+/* ============================================================
+   Frosted Glass / Glassmorphism — the core material of Vault
+   ------------------------------------------------------------
+   Recipe (per RESEARCH.md, tuned for a modern "liquid glass" look):
+     translucent tinted fill  +  backdrop blur + saturate
+     hairline border          +  inset top sheen (specular highlight)
+     deep diffuse shadow      +  generous corner radius
+   The Settings "Frosted Glass Intensity" slider (0-100) drives BOTH the
+   blur radius and the fill opacity through --glass-intensity.
+   ============================================================ */
 
-.glass {
-  background: var(--glass-bg);
-  backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
-  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
-  border: 1px solid var(--glass-border);
-  box-shadow: var(--glass-shadow);
+:root {
+  --glass-intensity: 20;
+
+  /* Derived material values — recalculated whenever --glass-intensity changes */
+  --glass-blur-effective: calc(4px + var(--glass-intensity) * 0.3px);
+  --glass-fill: calc(0.014 + var(--glass-intensity) * 0.0023);
+  --glass-fill-strong: calc(0.03 + var(--glass-intensity) * 0.004);
+  --glass-fill-subtle: calc(0.006 + var(--glass-intensity) * 0.0012);
+  --glass-hairline: calc(0.06 + var(--glass-intensity) * 0.002);
 }
 
-.glass-strong {
-  --glass-blur: 32px;
-  --glass-opacity: 0.12;
-  background: var(--glass-bg);
-  backdrop-filter: blur(32px) saturate(180%);
-  -webkit-backdrop-filter: blur(32px) saturate(180%);
+/* ---------- Base material ---------- */
+.glass {
+  position: relative;
+  background: rgba(var(--glass-tint), var(--glass-fill));
+  backdrop-filter: blur(var(--glass-blur-effective)) saturate(var(--glass-saturate));
+  -webkit-backdrop-filter: blur(var(--glass-blur-effective)) saturate(var(--glass-saturate));
   border: 1px solid var(--glass-border);
+  box-shadow:
+    var(--glass-shadow),
+    var(--glass-ring),
+    inset 0 1px 0 var(--glass-highlight);
+}
+
+/* Specular gradient across the top edge — what makes glass read as glass.
+   Opt-in per surface (kept off repeating content to save paint). */
+.glass-sheen::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  background: linear-gradient(180deg, var(--glass-highlight-soft) 0%, transparent 45%);
+}
+
+/* ---------- Variants ---------- */
+.glass-strong {
+  background: rgba(var(--glass-tint), var(--glass-fill-strong));
+  backdrop-filter: blur(calc(var(--glass-blur-effective) + 10px)) saturate(190%);
+  -webkit-backdrop-filter: blur(calc(var(--glass-blur-effective) + 10px)) saturate(190%);
+  border: 1px solid var(--glass-border);
+  box-shadow:
+    var(--glass-shadow),
+    var(--glass-ring),
+    inset 0 1px 0 var(--glass-highlight);
 }
 
 .glass-subtle {
-  --glass-blur: 12px;
-  --glass-opacity: 0.04;
-  background: rgba(255,255,255,0.04);
-  backdrop-filter: blur(12px) saturate(150%);
-  -webkit-backdrop-filter: blur(12px) saturate(150%);
-  border: 1px solid rgba(255,255,255,0.06);
+  background: rgba(var(--glass-tint), var(--glass-fill-subtle));
+  backdrop-filter: blur(calc(var(--glass-blur-effective) * 0.6)) saturate(150%);
+  -webkit-backdrop-filter: blur(calc(var(--glass-blur-effective) * 0.6)) saturate(150%);
+  border: 1px solid rgba(var(--glass-tint), var(--glass-hairline));
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18), inset 0 1px 0 var(--glass-highlight-soft);
 }
 
+/* Translucent tint with NO backdrop-filter.
+   Used for repeating content surfaces (cards, list rows) — backdrop-filter is
+   GPU-expensive and must stay limited to the app chrome. */
+.glass-flat {
+  background: rgba(var(--glass-tint), calc(var(--glass-fill) * 0.7));
+  border: 1px solid rgba(var(--glass-tint), var(--glass-hairline));
+  box-shadow: inset 0 1px 0 var(--glass-highlight-soft);
+}
+
+/* ---------- Floating shell (island) ---------- */
+.glass-island {
+  background: rgba(var(--glass-tint), calc(var(--glass-fill) + 0.02));
+  backdrop-filter: blur(calc(var(--glass-blur-effective) + 6px)) saturate(var(--glass-saturate));
+  -webkit-backdrop-filter: blur(calc(var(--glass-blur-effective) + 6px)) saturate(var(--glass-saturate));
+  border: 1px solid var(--glass-border);
+  box-shadow:
+    var(--glass-shadow),
+    var(--glass-ring),
+    inset 0 1px 0 var(--glass-highlight),
+    inset 0 0 60px rgba(var(--glass-tint), 0.02);
+}
+
+/* ---------- Hover: the frost thickens ---------- */
+.glass-hover {
+  transition:
+    background var(--duration-fast) var(--ease-out),
+    border-color var(--duration-fast) var(--ease-out),
+    box-shadow var(--duration-fast) var(--ease-out),
+    transform var(--duration-fast) var(--ease-out);
+}
+
+.glass-hover:hover {
+  background: rgba(var(--glass-tint), calc(var(--glass-fill) + 0.03));
+  border-color: var(--border-strong);
+  box-shadow:
+    var(--shadow-lg),
+    var(--glass-ring),
+    inset 0 1px 0 var(--glass-highlight);
+}
+
+/* ---------- Theme tuning ---------- */
 [data-theme="light"] .glass,
-[data-theme="warm"] .glass {
-  background: rgba(255,255,255,0.7);
-  border: 1px solid rgba(0,0,0,0.06);
+[data-theme="warm"] .glass,
+[data-theme="light"] .glass-island,
+[data-theme="warm"] .glass-island {
+  --glass-fill: calc(0.34 + var(--glass-intensity) * 0.0028);
 }
 
-[data-theme="light"] .glass-subtle {
-  background: rgba(255,255,255,0.5);
+[data-theme="light"] .glass-strong,
+[data-theme="warm"] .glass-strong {
+  --glass-fill-strong: calc(0.5 + var(--glass-intensity) * 0.003);
 }
 
-/* Glass intensity controlled via CSS variable */
-:root {
-  --glass-intensity: 20; /* 0-100 mapped to blur 0-40px */
+[data-theme="light"] .glass-subtle,
+[data-theme="warm"] .glass-subtle {
+  --glass-fill-subtle: calc(0.28 + var(--glass-intensity) * 0.002);
 }
 
-.glass-dynamic {
-  backdrop-filter: blur(calc(var(--glass-intensity) * 0.4px)) saturate(calc(100% + var(--glass-intensity) * 0.8%));
-  -webkit-backdrop-filter: blur(calc(var(--glass-intensity) * 0.4px)) saturate(calc(100% + var(--glass-intensity) * 0.8%));
-  background: rgba(255,255,255, calc(var(--glass-intensity) * 0.003));
-  border: 1px solid rgba(255,255,255, calc(var(--glass-intensity) * 0.002));
+/* ---------- Specific glass surfaces ---------- */
+.sidebar.glass,
+.sidebar.glass-island {
+  background: rgba(var(--glass-tint), calc(var(--glass-fill) + 0.02));
+  backdrop-filter: blur(calc(var(--glass-blur-effective) + 6px)) saturate(var(--glass-saturate));
+  -webkit-backdrop-filter: blur(calc(var(--glass-blur-effective) + 6px)) saturate(var(--glass-saturate));
 }
 
-[data-theme="light"] .glass-dynamic {
-  background: rgba(255,255,255, calc(0.5 + var(--glass-intensity) * 0.005));
+.mini-player.glass,
+.mini-player.glass-strong {
+  background: rgba(var(--glass-tint), calc(var(--glass-fill-strong) + 0.02));
+  backdrop-filter: blur(calc(var(--glass-blur-effective) + 12px)) saturate(190%);
+  -webkit-backdrop-filter: blur(calc(var(--glass-blur-effective) + 12px)) saturate(190%);
+  border: 1px solid var(--glass-border);
 }
 
-[data-theme="dark"] .glass-dynamic {
-  background: rgba(255,255,255, calc(var(--glass-intensity) * 0.002));
-}
-
-[data-theme="cold"] .glass-dynamic {
-  background: rgba(30,41,59, calc(0.4 + var(--glass-intensity) * 0.004));
-}
-
-/* Specific glass surfaces */
-.sidebar.glass {
-  background: var(--glass-bg);
-  backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
-  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
-}
-
-.mini-player.glass {
-  background: var(--glass-bg);
-  backdrop-filter: blur(24px) saturate(180%);
-  -webkit-backdrop-filter: blur(24px) saturate(180%);
-  border-top: 1px solid var(--glass-border);
-}
-
-.search-modal.glass {
-  background: var(--glass-bg);
-  backdrop-filter: blur(32px) saturate(180%);
-  -webkit-backdrop-filter: blur(32px) saturate(180%);
-}
-
+.search-modal.glass,
 .modal.glass {
-  background: var(--glass-bg);
-  backdrop-filter: blur(24px) saturate(180%);
-  -webkit-backdrop-filter: blur(24px) saturate(180%);
+  background: rgba(var(--glass-tint), calc(var(--glass-fill-strong) + 0.04));
+  backdrop-filter: blur(calc(var(--glass-blur-effective) + 12px)) saturate(190%);
+  -webkit-backdrop-filter: blur(calc(var(--glass-blur-effective) + 12px)) saturate(190%);
 }
 
-/* Fallback for browsers without backdrop-filter */
+/* ---------- Fallback for browsers without backdrop-filter ---------- */
 @supports not (backdrop-filter: blur(1px)) {
-  .glass, .glass-strong, .glass-subtle, .glass-dynamic,
-  .sidebar.glass, .mini-player.glass, .search-modal.glass, .modal.glass {
-    background: var(--bg-elevated) !important;
-    backdrop-filter: none !important;
-    -webkit-backdrop-filter: none !important;
+  .glass, .glass-strong, .glass-subtle, .glass-island, .glass-flat,
+  .sidebar.glass, .sidebar.glass-island, .mini-player.glass, .mini-player.glass-strong,
+  .search-modal.glass, .modal.glass, .header.glass {
+    background: var(--bg-elevated);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
   }
 }
 
-/* Glass hover intensification */
+/* ---------- Media cards ---------- */
 .media-card.glass:hover {
-  --glass-blur: 28px;
-  background: rgba(255,255,255,0.1);
-  transform: translateY(-2px);
+  background: rgba(var(--glass-tint), calc(var(--glass-fill) + 0.03));
+  transform: translateY(-4px) scale(1.02);
+  border-color: var(--border-strong);
+  box-shadow: var(--shadow-lg), inset 0 1px 0 var(--glass-highlight);
 }
 
-[data-theme="light"] .media-card.glass:hover {
-  background: rgba(255,255,255,0.85);
+[data-theme="light"] .media-card.glass:hover,
+[data-theme="warm"] .media-card.glass:hover {
+  background: rgba(255, 255, 255, 0.9);
 }

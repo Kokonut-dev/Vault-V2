@@ -77,7 +77,7 @@ export function renderSettings(container) {
           <button class="btn btn-secondary btn-sm" id="trigger-scan">Trigger Library Scan</button>
         </div>
         
-        <div id="server-info" style="font-size:12px; color:var(--text-secondary); background:var(--bg-tertiary); padding:12px; border-radius:8px; margin-top:12px; font-family:var(--font-mono);"></div>
+        <div id="server-info" style="font-size:12px; color:var(--text-secondary); background:rgba(var(--glass-tint),0.09); padding:12px; border-radius:8px; margin-top:12px; font-family:var(--font-mono);"></div>
       </div>
       
       <!-- Security -->

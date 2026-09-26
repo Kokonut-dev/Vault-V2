@@ -120,9 +120,9 @@ html {
 }
 
 /* ARIA */
-[aria-hidden="true"] {
-  display: none;
-}
+/* NOTE: `aria-hidden` is an accessibility hint, not a presentation switch.
+   It must never force `display:none` — that rule used to silently kill the
+   decorative grain overlay (and would kill the ambient light layer too). */
 
 [aria-busy="true"] {
   cursor: progress;

@@ -61,7 +61,7 @@ function renderVideoDetail(container, item) {
     
     <div class="detail-layout">
       <div>
-        <div style="aspect-ratio:2/3; background:var(--bg-secondary); border-radius:16px; overflow:hidden;">
+        <div style="aspect-ratio:2/3; background:rgba(var(--glass-tint),0.05); border-radius:16px; overflow:hidden;">
           <img src="${api.getThumbnailUrl(item.id)}" alt="${escapeHtml(item.title)}" style="width:100%;height:100%;object-fit:cover;" onerror="this.style.display='none'">
         </div>
         <div style="display:flex; gap:8px; margin-top:16px;">
@@ -83,7 +83,7 @@ function renderVideoDetail(container, item) {
         ${item.description ? `<p style="color:var(--text-secondary); line-height:1.6; margin-bottom:24px;">${escapeHtml(item.description)}</p>` : ''}
         
         <div style="display:grid; gap:16px;">
-          <div style="background:var(--bg-secondary); border-radius:12px; padding:16px;">
+          <div style="background:rgba(var(--glass-tint),0.05); border-radius:12px; padding:16px;">
             <h3 style="font-weight:600; margin-bottom:8px;">Media Info</h3>
             <div style="font-size:12px; font-family:var(--font-mono); color:var(--text-secondary); line-height:1.8;">
               <div>File: ${escapeHtml(item.filename)}</div>
@@ -95,7 +95,7 @@ function renderVideoDetail(container, item) {
             <button class="btn btn-ghost btn-sm" id="more-info" style="margin-top:8px;">Technical Details</button>
           </div>
           
-          <div style="background:var(--bg-secondary); border-radius:12px; padding:16px;">
+          <div style="background:rgba(var(--glass-tint),0.05); border-radius:12px; padding:16px;">
             <h3 style="font-weight:600; margin-bottom:12px;">Actions</h3>
             <div style="display:flex; gap:8px; flex-wrap:wrap;">
               <button class="btn btn-secondary btn-sm" id="edit-btn">Edit Metadata</button>
@@ -169,7 +169,7 @@ function renderMusicDetail(container, item) {
     
     <div class="detail-layout">
       <div>
-        <div style="aspect-ratio:1/1; background:var(--bg-secondary); border-radius:16px; overflow:hidden; box-shadow:var(--shadow-lg);">
+        <div style="aspect-ratio:1/1; background:rgba(var(--glass-tint),0.05); border-radius:16px; overflow:hidden; box-shadow:var(--shadow-lg);">
           <img src="${api.getCoverUrl(item.id)}" alt="" style="width:100%;height:100%;object-fit:cover;" onerror="this.style.display='none'">
         </div>
       </div>
@@ -298,7 +298,7 @@ function showAddToPlaylist(item) {
     }
     
     listEl.innerHTML = playlists.map(pl => `
-      <div style="display:flex; justify-content:space-between; align-items:center; padding:12px; background:var(--bg-secondary); border-radius:8px; margin-bottom:8px;">
+      <div style="display:flex; justify-content:space-between; align-items:center; padding:12px; background:rgba(var(--glass-tint),0.05); border-radius:8px; margin-bottom:8px;">
         <span>${escapeHtml(pl.name)}</span>
         <button class="btn btn-primary btn-sm" data-id="${escapeHtml(pl.id)}">Add</button>
       </div>

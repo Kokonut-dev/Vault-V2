@@ -38,9 +38,9 @@ export class ThemeManager {
 
   setGlassIntensity(value) {
     const v = Math.max(0, Math.min(100, parseInt(value, 10) || 0));
+    // Single source of truth: glass.css derives blur radius, fill opacity and
+    // hairline strength from --glass-intensity.
     document.documentElement.style.setProperty('--glass-intensity', v);
-    document.documentElement.style.setProperty('--glass-blur', `${v * 0.4}px`);
-    document.documentElement.style.setProperty('--glass-opacity', `${v * 0.003}`);
     store.set('glassIntensity', v, true);
     localStorage.setItem('vault_glass', String(v));
   }
