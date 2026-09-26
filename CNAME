@@ -1,0 +1,7 @@
+# Placeholder for custom domain
+# To use a custom domain with GitHub Pages:
+# 1. Replace this file's content with your domain, e.g.: vault.example.com
+# 2. In your DNS provider, create a CNAME record pointing to kokonut-dev.github.io
+# 3. In GitHub repo Settings → Pages → Custom domain, enter your domain
+# 4. Enable Enforce HTTPS
+# Leave this file empty or delete it if not using custom domain.

@@ -1,0 +1,51 @@
+# Dependencies
+node_modules/
+package-lock.json
+yarn.lock
+
+# Server runtime data
+server/data/
+server/cache/
+server/media/
+server/uploads/
+!server/data/.gitkeep
+!server/cache/.gitkeep
+!server/media/movies/.gitkeep
+!server/media/music/.gitkeep
+!server/media/videos/.gitkeep
+!server/uploads/.gitkeep
+
+# Server config (contains secrets)
+server/config.json
+server/.env
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+
+# Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Build
+dist/
+build/
+.next/
+out/
+
+# Env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Misc
+.cache/
+coverage/
