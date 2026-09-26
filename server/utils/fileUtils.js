@@ -2,6 +2,10 @@ const fs = require('fs-extra');
 const path = require('path');
 const crypto = require('crypto');
 
+const fileSizeCache = new Map();
+const parseCache = new Map();
+const CACHE_TTL = 60000;
+
 function getFileHash(filePath) {
   return new Promise((resolve, reject) => {
     const hash = crypto.createHash('sha256');
@@ -19,6 +23,18 @@ function ensureDir(dir) {
 function getFileSize(filePath) {
   try {
     const stat = fs.statSync(filePath);
+    return stat.size;
+  } catch {
+    return 0;
+  }
+}
+
+async function getFileSizeAsync(filePath) {
+  const cached = fileSizeCache.get(filePath);
+  if (cached && Date.now() - cached.t < CACHE_TTL) return cached.size;
+  try {
+    const stat = await fs.stat(filePath);
+    fileSizeCache.set(filePath, { size: stat.size, t: Date.now() });
     return stat.size;
   } catch {
     return 0;
@@ -43,22 +59,20 @@ function isMediaFile(filePath, supportedExtensions) {
 }
 
 function parseMovieFilename(filename) {
-  // Try to extract title, year, season/episode from filename
-  // Examples: "Movie.Name.2021.1080p", "Series.S01E02", "The Matrix (1999)"
+  if (parseCache.has(filename)) return parseCache.get(filename);
+  
   const base = path.basename(filename, path.extname(filename));
   let title = base;
   let year = null;
   let season = null;
   let episode = null;
 
-  // Year: (YYYY) or .YYYY. or YYYY
   const yearMatch = base.match(/[\(\[]?((?:19|20)\d{2})[\)\]]?/);
   if (yearMatch) {
     year = parseInt(yearMatch[1], 10);
-    title = base.substring(0, yearMatch.index).replace(/[.\-_]+$/g, '').replace(/[.\-_]/g, ' ').trim();
+    title = base.substring(0, yearMatch.index).replace(/[\.\-_]+$/g, '').replace(/[\.\-_]/g, ' ').trim();
   }
 
-  // Season/Episode: S01E02, s01e02, 1x02, Season 1 Episode 2
   const seMatch = base.match(/[Ss](\d{1,2})[Ee](\d{1,3})|(\d{1,2})x(\d{1,3})|[Ss]eason\s*(\d+)\s*[Ee]pisode\s*(\d+)/i);
   if (seMatch) {
     if (seMatch[1] && seMatch[2]) {
@@ -71,16 +85,21 @@ function parseMovieFilename(filename) {
       season = parseInt(seMatch[5], 10);
       episode = parseInt(seMatch[6], 10);
     }
-    // Title is before SxxExx
     const seIndex = base.search(/[Ss]\d+[Ee]\d+|\d+x\d+/i);
     if (seIndex > 0) {
-      title = base.substring(0, seIndex).replace(/[.\-_]+$/g, '').replace(/[.\-_]/g, ' ').trim();
+      title = base.substring(0, seIndex).replace(/[\.\-_]+$/g, '').replace(/[\.\-_]/g, ' ').trim();
     }
   }
 
-  if (!title) title = base.replace(/[.\-_]/g, ' ').trim();
+  if (!title) title = base.replace(/[\.\-_]/g, ' ').trim();
 
-  return { title: title || base, year, season, episode };
+  const result = { title: title || base, year, season, episode };
+  if (parseCache.size > 500) {
+    const firstKey = parseCache.keys().next().value;
+    parseCache.delete(firstKey);
+  }
+  parseCache.set(filename, result);
+  return result;
 }
 
 async function cleanCache(cacheDir, maxSizeMB) {
@@ -89,22 +108,27 @@ async function cleanCache(cacheDir, maxSizeMB) {
     const files = await fs.readdir(cacheDir);
     let totalSize = 0;
     const fileInfos = [];
-    for (const file of files) {
+    // Batch stat for speed
+    const statPromises = files.map(async (file) => {
       const fp = path.join(cacheDir, file);
       try {
         const stat = await fs.stat(fp);
-        if (stat.isFile()) {
-          totalSize += stat.size;
-          fileInfos.push({ path: fp, size: stat.size, mtime: stat.mtimeMs });
-        }
+        if (stat.isFile()) return { path: fp, size: stat.size, mtime: stat.mtimeMs };
       } catch {}
+      return null;
+    });
+    const results = await Promise.all(statPromises);
+    for (const info of results) {
+      if (info) {
+        totalSize += info.size;
+        fileInfos.push(info);
+      }
     }
     const maxBytes = maxSizeMB * 1024 * 1024;
     if (totalSize > maxBytes) {
-      // LRU: sort by mtime oldest first
       fileInfos.sort((a, b) => a.mtime - b.mtime);
       for (const info of fileInfos) {
-        if (totalSize <= maxBytes * 0.8) break; // clean to 80%
+        if (totalSize <= maxBytes * 0.8) break;
         try {
           await fs.remove(info.path);
           totalSize -= info.size;
@@ -120,6 +144,7 @@ module.exports = {
   getFileHash,
   ensureDir,
   getFileSize,
+  getFileSizeAsync,
   formatBytes,
   getExtension,
   isMediaFile,

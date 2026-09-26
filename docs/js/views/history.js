@@ -3,7 +3,7 @@
  */
 import { store } from '../store.js';
 import { renderMediaList } from '../components/mediaList.js';
-import { formatRelativeTime } from '../utils/format.js';
+import { formatRelativeTime, escapeHtml } from '../utils/format.js';
 import { api } from '../api.js';
 import { toast } from '../components/toast.js';
 
@@ -110,11 +110,4 @@ export function renderHistory(container) {
   
   render();
   store.subscribe('history', render);
-}
-
-function escapeHtml(str) {
-  if (!str) return '';
-  const div = document.createElement('div');
-  div.textContent = str;
-  return div.innerHTML;
 }

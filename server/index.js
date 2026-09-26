@@ -185,16 +185,22 @@ async function onServerStart() {
   }
 }
 
-// Graceful shutdown
-process.on('SIGINT', () => {
+// Graceful shutdown — flush library debounced saves
+process.on('SIGINT', async () => {
   logger.info('Shutting down...');
-  scannerService.stopWatcher();
+  try {
+    scannerService.stopWatcher();
+    await libraryService.flush();
+  } catch {}
   process.exit(0);
 });
 
-process.on('SIGTERM', () => {
+process.on('SIGTERM', async () => {
   logger.info('Shutting down...');
-  scannerService.stopWatcher();
+  try {
+    scannerService.stopWatcher();
+    await libraryService.flush();
+  } catch {}
   process.exit(0);
 });
 

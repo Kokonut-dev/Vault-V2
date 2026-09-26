@@ -110,18 +110,10 @@ export function initAudioPlayer() {
   
   // Volume
   currentAudio.volume = store.get('volume');
-  gainNode && (gainNode.gain.value = store.get('volume'));
+  if (gainNode) gainNode.gain.value = store.get('volume');
   
-  // Events
-  currentAudio.addEventListener('timeupdate', onTimeUpdate);
-  currentAudio.addEventListener('ended', onEnded);
-  currentAudio.addEventListener('play', () => store.set('isPlaying', true));
-  currentAudio.addEventListener('pause', () => store.set('isPlaying', false));
-  currentAudio.addEventListener('loadedmetadata', onLoadedMetadata);
-  currentAudio.addEventListener('error', (e) => {
-    console.error('Audio error', e);
-    toast.error('Failed to play track');
-  });
+  // Events — use attach to ensure single registration
+  attachAudioListeners(currentAudio);
   
   // Store subscriptions
   store.subscribe('volume', (vol) => {
@@ -273,34 +265,69 @@ function preloadNext() {
   }
 }
 
+let audioRaf = null;
+let lastHistorySave = 0;
 function onTimeUpdate() {
-  if (!currentAudio.duration) return;
-  
-  const progress = (currentAudio.currentTime / currentAudio.duration) * 100;
-  const currentTrack = store.get('currentTrack');
-  
-  if (currentTrack) {
-    store.addToHistory(currentTrack.id, progress);
-  }
-  
-  // Crossfade
-  const crossfade = store.get('crossfade');
-  if (crossfade > 0 && currentAudio.duration - currentAudio.currentTime <= crossfade && !isCrossfading) {
-    const queue = store.get('queue');
-    const idx = store.get('queueIndex');
-    if (idx + 1 < queue.length) {
-      isCrossfading = true;
-      crossfadeToNext();
+  if (audioRaf) return;
+  audioRaf = requestAnimationFrame(() => {
+    audioRaf = null;
+    if (!currentAudio?.duration) return;
+    
+    const progress = (currentAudio.currentTime / currentAudio.duration) * 100;
+    const currentTrack = store.get('currentTrack');
+    
+    // Debounce history: save every 10s
+    const now = Date.now();
+    if (currentTrack && now - lastHistorySave > 10000) {
+      lastHistorySave = now;
+      store.addToHistory(currentTrack.id, progress);
     }
-  }
-  
-  window.dispatchEvent(new CustomEvent('vault:timeupdate', { 
-    detail: { 
-      currentTime: currentAudio.currentTime, 
-      duration: currentAudio.duration,
-      progress 
-    } 
-  }));
+    
+    // Crossfade
+    const crossfade = store.get('crossfade');
+    if (crossfade > 0 && currentAudio.duration - currentAudio.currentTime <= crossfade && !isCrossfading) {
+      const queue = store.get('queue');
+      const idx = store.get('queueIndex');
+      if (idx + 1 < queue.length) {
+        isCrossfading = true;
+        crossfadeToNext();
+      }
+    }
+    
+    window.dispatchEvent(new CustomEvent('vault:timeupdate', { 
+      detail: { 
+        currentTime: currentAudio.currentTime, 
+        duration: currentAudio.duration,
+        progress 
+      } 
+    }));
+  });
+}
+
+function cleanupAudioListeners(audio) {
+  if (!audio) return;
+  try {
+    audio.removeEventListener('timeupdate', onTimeUpdate);
+    audio.removeEventListener('ended', onEnded);
+    audio.removeEventListener('play', () => store.set('isPlaying', true));
+    audio.removeEventListener('pause', () => store.set('isPlaying', false));
+    audio.removeEventListener('loadedmetadata', onLoadedMetadata);
+  } catch {}
+}
+
+function attachAudioListeners(audio) {
+  if (!audio) return;
+  // Remove existing to prevent duplicates
+  cleanupAudioListeners(audio);
+  audio.addEventListener('timeupdate', onTimeUpdate);
+  audio.addEventListener('ended', onEnded);
+  audio.addEventListener('play', () => store.set('isPlaying', true));
+  audio.addEventListener('pause', () => store.set('isPlaying', false));
+  audio.addEventListener('loadedmetadata', onLoadedMetadata);
+  audio.addEventListener('error', (e) => {
+    console.error('Audio error', e);
+    toast.error('Failed to play track');
+  });
 }
 
 function crossfadeToNext() {
@@ -323,21 +350,38 @@ function crossfadeToNext() {
     const elapsed = Date.now() - start;
     const progress = Math.min(elapsed / duration, 1);
     
-    currentAudio.volume = (1 - progress) * store.get('volume');
-    nextAudio.volume = progress * store.get('volume');
+    if (currentAudio) currentAudio.volume = (1 - progress) * store.get('volume');
+    if (nextAudio) nextAudio.volume = progress * store.get('volume');
     
     if (progress < 1) {
       requestAnimationFrame(fade);
     } else {
+      // Cleanup old current
+      if (currentAudio) {
+        cleanupAudioListeners(currentAudio);
+        try { currentAudio.pause(); } catch {}
+      }
+      
       // Swap
       const temp = currentAudio;
       currentAudio = nextAudio;
       nextAudio = temp;
-      nextAudio.pause();
-      nextAudio.src = '';
       
-      currentAudio.addEventListener('timeupdate', onTimeUpdate);
-      currentAudio.addEventListener('ended', onEnded);
+      if (nextAudio) {
+        try {
+          nextAudio.pause();
+          nextAudio.src = '';
+          nextAudio.load();
+        } catch {}
+        cleanupAudioListeners(nextAudio);
+      }
+      
+      // Ensure new current has listeners
+      attachAudioListeners(currentAudio);
+      if (currentAudio) {
+        currentAudio.volume = store.get('volume');
+        connectAudioToGraph(currentAudio);
+      }
       
       store.set('queueIndex', idx + 1, true);
       store.set('currentTrack', nextItem);

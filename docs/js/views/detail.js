@@ -1,9 +1,9 @@
 /**
- * Detail view — movie, music, video detail pages
+ * Detail view — movie, music, video detail pages — optimized
  */
 import { store } from '../store.js';
 import { api } from '../api.js';
-import { formatTime, formatBytes, formatDate, formatBitrate, formatResolution } from '../utils/format.js';
+import { formatTime, formatBytes, formatDate, formatBitrate, formatResolution, escapeHtml } from '../utils/format.js';
 import { toast } from '../components/toast.js';
 
 export async function renderDetail(container, id) {
@@ -300,7 +300,7 @@ function showAddToPlaylist(item) {
     listEl.innerHTML = playlists.map(pl => `
       <div style="display:flex; justify-content:space-between; align-items:center; padding:12px; background:var(--bg-secondary); border-radius:8px; margin-bottom:8px;">
         <span>${escapeHtml(pl.name)}</span>
-        <button class="btn btn-primary btn-sm" data-id="${pl.id}">Add</button>
+        <button class="btn btn-primary btn-sm" data-id="${escapeHtml(pl.id)}">Add</button>
       </div>
     `).join('');
     
@@ -316,13 +316,6 @@ function showAddToPlaylist(item) {
       });
     });
   }).catch(err => {
-    listEl.innerHTML = `<p>Failed to load: ${err.message}</p>`;
+    listEl.innerHTML = `<p>Failed to load: ${escapeHtml(err.message)}</p>`;
   });
-}
-
-function escapeHtml(str) {
-  if (!str) return '';
-  const div = document.createElement('div');
-  div.textContent = str;
-  return div.innerHTML;
 }

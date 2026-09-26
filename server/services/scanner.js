@@ -39,7 +39,12 @@ async function scanFile(filePath) {
     const type = determineType(filePath, config);
     if (!type) return null;
 
-    const stat = fs.statSync(filePath);
+    let stat;
+    try {
+      stat = await fs.stat(filePath);
+    } catch {
+      return null;
+    }
     if (!stat.isFile()) return null;
 
     const id = generateId(filePath);
@@ -134,19 +139,26 @@ async function scanDirectory(dirPath, recursive = true) {
 
   let files = [];
   try {
-    if (!fs.existsSync(dirPath)) {
+    const exists = await fs.pathExists(dirPath);
+    if (!exists) {
       logger.warn(`Directory does not exist: ${dirPath}`);
       return [];
     }
 
-    const walk = (dir) => {
-      const entries = fs.readdirSync(dir, { withFileTypes: true });
+    const walk = async (dir) => {
+      let entries;
+      try {
+        entries = await fs.readdir(dir, { withFileTypes: true });
+      } catch (err) {
+        logger.warn(`Failed to read dir ${dir}: ${err.message}`);
+        return;
+      }
       for (const entry of entries) {
         const fullPath = path.join(dir, entry.name);
         if (entry.isDirectory() && recursive) {
-          // Skip hidden and cache dirs
           if (entry.name.startsWith('.') || entry.name === 'cache' || entry.name === 'node_modules') continue;
-          walk(fullPath);
+          // eslint-disable-next-line no-await-in-loop
+          await walk(fullPath);
         } else if (entry.isFile()) {
           if (isMediaFile(fullPath, allExtensions)) {
             files.push(fullPath);
@@ -155,17 +167,21 @@ async function scanDirectory(dirPath, recursive = true) {
       }
     };
 
-    walk(dirPath);
+    await walk(dirPath);
   } catch (err) {
     logger.error(`Failed to scan directory ${dirPath}: ${err.message}`);
     return [];
   }
 
   logger.info(`Found ${files.length} media files in ${dirPath}`);
+  // Process in batches to avoid overwhelming
   const results = [];
-  for (const file of files) {
-    const item = await scanFile(file);
-    if (item) results.push(item);
+  const batchSize = 10;
+  for (let i = 0; i < files.length; i += batchSize) {
+    const batch = files.slice(i, i + batchSize);
+    // eslint-disable-next-line no-await-in-loop
+    const batchResults = await Promise.all(batch.map(f => scanFile(f)));
+    results.push(...batchResults.filter(Boolean));
   }
   return results;
 }
@@ -173,7 +189,7 @@ async function scanDirectory(dirPath, recursive = true) {
 async function scanAll() {
   if (isScanning) {
     logger.warn('Scan already in progress, skipping');
-    return;
+    return { scanned: 0, removed: 0, elapsed: 0, skipped: true };
   }
   isScanning = true;
   logger.info('Starting full library scan...');
@@ -182,23 +198,26 @@ async function scanAll() {
   const startTime = Date.now();
 
   try {
-    // Ensure media dirs exist
-    for (const type of Object.keys(config.media.paths)) {
-      fs.ensureDirSync(config.media.paths[type]);
-    }
+    // Ensure media dirs exist (async)
+    await Promise.all(Object.values(config.media.paths).map(p => fs.ensureDir(p)));
 
     const allResults = [];
     for (const [type, dirPath] of Object.entries(config.media.paths)) {
       logger.info(`Scanning ${type}: ${dirPath}`);
+      // eslint-disable-next-line no-await-in-loop
       const results = await scanDirectory(dirPath, true);
       allResults.push(...results);
     }
 
-    // Remove items whose files no longer exist
+    // Remove items whose files no longer exist (batched)
     const existing = libraryService.getAll();
     let removed = 0;
-    for (const item of existing) {
-      if (!fs.existsSync(item.path)) {
+    const checks = await Promise.all(existing.map(async item => {
+      const exists = await fs.pathExists(item.path);
+      return { item, exists };
+    }));
+    for (const { item, exists } of checks) {
+      if (!exists) {
         libraryService.removeItem(item.id);
         removed++;
       }
@@ -220,8 +239,10 @@ function startWatcher() {
   const config = getConfig();
   const paths = Object.values(config.media.paths);
 
-  // Ensure dirs exist
-  paths.forEach(p => fs.ensureDirSync(p));
+  // Ensure dirs exist (sync is okay at startup, but use async-safe)
+  paths.forEach(p => {
+    try { fs.ensureDirSync(p); } catch {}
+  });
 
   watcher = chokidar.watch(paths, {
     ignored: /(^|[\/\\])\../, // ignore dotfiles

@@ -13,6 +13,7 @@
 
 import { api } from './api.js';
 import { getApiBaseUrl, setApiBaseUrl, getConfig } from './config.js';
+import { escapeHtml } from './utils/format.js';
 import { store } from './store.js';
 import { toast } from './components/toast.js';
 
@@ -358,7 +359,7 @@ export class OnboardingManager {
     setApiBaseUrl(url);
     api.baseUrl = url;
 
-    statusEl.innerHTML = `<div class="connection-test testing"><div class="connection-dot"></div> Testing connection to ${url}...</div>`;
+    statusEl.innerHTML = `<div class="connection-test testing"><div class="connection-dot"></div> Testing connection to ${escapeHtml(url)}...</div>`;
 
     try {
       // Try health first
@@ -906,13 +907,13 @@ export class OnboardingManager {
 
     } catch (err) {
       if (statusEl) {
-        statusEl.innerHTML = `<div class="onboarding-error">✕ Setup failed: ${err.message}</div>`;
+        statusEl.innerHTML = `<div class="onboarding-error">✕ Setup failed: ${escapeHtml(err.message)}</div>`;
       }
       if (nextBtn) {
         nextBtn.disabled = false;
         nextBtn.textContent = 'Retry Setup ✨';
       }
-      toast.error(`Setup failed: ${err.message}`);
+      toast.error(`Setup failed: ${escapeHtml(err.message)}`);
     }
   }
 }

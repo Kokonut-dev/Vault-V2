@@ -1,5 +1,5 @@
 /**
- * API client — handles auth, errors, retries
+ * API client — optimized with caching, abort, token memoization, retries
  */
 import { getApiBaseUrl } from './config.js';
 import { store } from './store.js';
@@ -7,65 +7,147 @@ import { store } from './store.js';
 class ApiClient {
   constructor() {
     this.baseUrl = getApiBaseUrl();
+    this._tokenCache = null;
+    this._tokenCacheTime = 0;
+    this._cache = new Map(); // simple GET cache
+    this._cacheTTL = 30 * 1000; // 30s for stats/genres
+    this._abortControllers = new Map();
+  }
+
+  getToken() {
+    // Memoize token for 1s to avoid repeated localStorage reads
+    const now = Date.now();
+    if (this._tokenCache && now - this._tokenCacheTime < 1000) return this._tokenCache;
+    const token = store.get('token') || localStorage.getItem('vault_token');
+    this._tokenCache = token;
+    this._tokenCacheTime = now;
+    return token;
+  }
+
+  clearTokenCache() {
+    this._tokenCache = null;
+    this._tokenCacheTime = 0;
   }
 
   getHeaders(includeAuth = true) {
-    const headers = {
-      'Content-Type': 'application/json',
-    };
+    const headers = { 'Content-Type': 'application/json' };
     if (includeAuth) {
-      const token = store.get('token') || localStorage.getItem('vault_token');
+      const token = this.getToken();
       if (token) headers['Authorization'] = `Bearer ${token}`;
     }
     return headers;
   }
 
+  _getCacheKey(path) {
+    return `${this.baseUrl}${path}`;
+  }
+
+  _getCached(path) {
+    const key = this._getCacheKey(path);
+    const entry = this._cache.get(key);
+    if (entry && Date.now() - entry.time < this._cacheTTL) return entry.data;
+    this._cache.delete(key);
+    return null;
+  }
+
+  _setCached(path, data) {
+    const key = this._getCacheKey(path);
+    this._cache.set(key, { data, time: Date.now() });
+    // LRU: keep max 50 entries
+    if (this._cache.size > 50) {
+      const firstKey = this._cache.keys().next().value;
+      this._cache.delete(firstKey);
+    }
+  }
+
+  clearCache() {
+    this._cache.clear();
+  }
+
   async request(path, options = {}) {
     const url = `${this.baseUrl}${path}`;
     const isFormData = options.body instanceof FormData;
+    const isGet = !options.method || options.method === 'GET';
+    const useCache = isGet && options.cache !== false && (path.includes('/stats') || path.includes('/genres') || path.includes('/settings'));
+
+    if (useCache) {
+      const cached = this._getCached(path);
+      if (cached) return cached;
+    }
 
     const headers = {
       ...this.getHeaders(options.auth !== false),
       ...(options.headers || {}),
     };
-
     if (isFormData) delete headers['Content-Type'];
 
-    try {
-      const res = await fetch(url, {
-        ...options,
-        headers,
-      });
+    // Abort previous same-path request to avoid race
+    if (isGet && this._abortControllers.has(path)) {
+      try { this._abortControllers.get(path).abort(); } catch {}
+    }
+    const controller = new AbortController();
+    if (isGet) this._abortControllers.set(path, controller);
 
-      // Handle 401 — redirect to login
-      if (res.status === 401) {
-        const data = await res.json().catch(() => ({}));
-        if (data.code !== 'GRID_REQUIRED') {
-          store.clearAuth();
-          window.dispatchEvent(new CustomEvent('vault:auth-required'));
+    const fetchOptions = {
+      ...options,
+      headers,
+      signal: options.signal || controller.signal,
+    };
+
+    // Retry logic for transient failures
+    const maxRetries = options.retry === false ? 0 : (options.retries ?? 1);
+    let lastErr;
+
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+      try {
+        const res = await fetch(url, fetchOptions);
+
+        if (isGet) this._abortControllers.delete(path);
+
+        if (res.status === 401) {
+          const data = await res.json().catch(() => ({}));
+          if (data.code !== 'GRID_REQUIRED') {
+            this.clearTokenCache();
+            store.clearAuth();
+            window.dispatchEvent(new CustomEvent('vault:auth-required'));
+          }
+          throw new Error(data.error || 'Unauthorized');
         }
-        throw new Error(data.error || 'Unauthorized');
+
+        const contentType = res.headers.get('content-type');
+        if (contentType && (contentType.includes('video/') || contentType.includes('audio/') || contentType.includes('image/') || contentType.includes('text/vtt'))) {
+          return res;
+        }
+
+        const data = await res.json().catch(() => ({}));
+
+        if (!res.ok) {
+          throw new Error(data.error || `Request failed: ${res.status}`);
+        }
+
+        if (useCache) this._setCached(path, data);
+        if (isGet && res.ok) store.set('serverConnected', true);
+
+        return data;
+      } catch (err) {
+        lastErr = err;
+        if (err.name === 'AbortError') throw err;
+        if (attempt < maxRetries && (err.message === 'Failed to fetch' || err.message.includes('Network'))) {
+          await new Promise(r => setTimeout(r, 300 * (attempt + 1)));
+          continue;
+        }
+        break;
       }
+    }
 
-      // Handle non-JSON (media streams)
-      const contentType = res.headers.get('content-type');
-      if (contentType && (contentType.includes('video/') || contentType.includes('audio/') || contentType.includes('image/') || contentType.includes('text/vtt'))) {
-        return res;
-      }
+    if (isGet) this._abortControllers.delete(path);
 
-      const data = await res.json().catch(() => ({}));
-
-      if (!res.ok) {
-        throw new Error(data.error || `Request failed: ${res.status}`);
-      }
-
-      return data;
-    } catch (err) {
-      if (err.message === 'Failed to fetch') {
+    if (lastErr) {
+      if (lastErr.message === 'Failed to fetch' || lastErr.name === 'TypeError') {
         store.set('serverConnected', false);
         throw new Error('Cannot connect to Vault server. Check if server is running and API URL is correct in settings.');
       }
-      throw err;
+      throw lastErr;
     }
   }
 

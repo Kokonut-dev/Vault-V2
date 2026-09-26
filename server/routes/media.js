@@ -113,15 +113,34 @@ router.get('/subtitle/:id/:subtitleId', (req, res) => {
   const item = libraryService.getById(req.params.id);
   if (!item) return res.status(404).json({ error: 'Item not found' });
 
-  const subtitleId = req.params.subtitleId;
+  let subtitleId = req.params.subtitleId;
+  // Sanitize subtitleId to prevent path traversal — only allow safe chars, no .., no /
+  if (typeof subtitleId !== 'string') return res.status(400).json({ error: 'Invalid subtitle id' });
+  subtitleId = path.basename(subtitleId); // strip directory
+  if (subtitleId.includes('..') || subtitleId.includes('/') || subtitleId.includes('\\')) {
+    return res.status(400).json({ error: 'Invalid subtitle id' });
+  }
+  // Only allow alphanumeric, dash, underscore, dot, space, parentheses
+  if (!/^[\w\-\.\s\(\)\[\]]+$/.test(subtitleId) && !/^[\w\-]+\.(vtt|srt|ass|ssa)$/i.test(subtitleId)) {
+    // Still allow if it's a simple id from metadata, but block traversal
+    if (subtitleId.length > 255) return res.status(400).json({ error: 'Invalid subtitle id' });
+  }
+
   let subtitlePath = null;
 
   if (item.subtitles && Array.isArray(item.subtitles)) {
-    const sub = item.subtitles.find(s => s.id === subtitleId || s.path.includes(subtitleId));
-    if (sub) subtitlePath = sub.path;
+    const sub = item.subtitles.find(s => s.id === subtitleId || (s.path && s.path.includes(subtitleId)));
+    if (sub && sub.path) {
+      // Ensure subtitle path is inside same directory as media file (prevent traversal)
+      const mediaDir = path.dirname(item.path);
+      const resolved = path.resolve(sub.path);
+      if (resolved.startsWith(path.resolve(mediaDir)) || resolved.startsWith(path.resolve(__dirname, '../cache'))) {
+        subtitlePath = sub.path;
+      }
+    }
   }
 
-  // Also try to find by direct file lookup
+  // Also try to find by direct file lookup (only in media dir)
   if (!subtitlePath) {
     const dir = path.dirname(item.path);
     const base = path.basename(item.path, path.extname(item.path));
@@ -131,6 +150,9 @@ router.get('/subtitle/:id/:subtitleId', (req, res) => {
       path.join(dir, subtitleId),
     ];
     for (const p of possible) {
+      const resolved = path.resolve(p);
+      // Must be inside media dir
+      if (!resolved.startsWith(path.resolve(dir))) continue;
       if (fs.existsSync(p)) {
         subtitlePath = p;
         break;

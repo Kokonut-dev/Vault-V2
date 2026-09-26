@@ -37,24 +37,71 @@ function createUploader(type) {
   const config = getConfig();
   const maxSize = config.media.maxUploadSizeMB * 1024 * 1024;
 
+  // Allowed mime types for extra validation (defense in depth)
+  const allowedMimePrefixes = ['video/', 'audio/', 'image/', 'text/'];
+  const allowedMimes = [
+    'application/octet-stream', // some browsers send this for mkv etc.
+    'application/x-subrip',
+    'application/x-matroska',
+  ];
+
   return multer({
     storage: getUploadStorage(type),
-    limits: { fileSize: maxSize },
+    limits: { fileSize: maxSize, files: 25 },
     fileFilter: (req, file, cb) => {
-      // Allow all for now, but validate extension
       const ext = path.extname(file.originalname).toLowerCase();
       const allExts = [
         ...config.media.supportedExtensions.video,
         ...config.media.supportedExtensions.audio,
         ...config.media.supportedExtensions.subtitle,
-        '.jpg', '.jpeg', '.png', '.webp'
+        '.jpg', '.jpeg', '.png', '.webp', '.gif', '.bmp'
       ];
-      // Allow if it's media or image (for cover)
-      if (allExts.includes(ext) || file.fieldname === 'cover' || file.fieldname === 'subtitle' || file.fieldname === 'thumbnail') {
-        cb(null, true);
-      } else {
-        cb(new Error(`Unsupported file type: ${ext}`));
+
+      // Block dangerous extensions
+      const blockedExts = ['.exe', '.bat', '.sh', '.js', '.php', '.py', '.dll', '.so', '.dmg', '.app'];
+      if (blockedExts.includes(ext)) {
+        return cb(new Error(`Blocked file type: ${ext}`));
       }
+
+      // Validate extension
+      const isExtAllowed = allExts.includes(ext);
+      const isFieldAllowed = ['cover', 'subtitle', 'thumbnail', 'file', 'files'].includes(file.fieldname);
+
+      if (!isExtAllowed && !isFieldAllowed) {
+        return cb(new Error(`Unsupported file type: ${ext}`));
+      }
+
+      // Validate mime type (if provided by browser)
+      if (file.mimetype) {
+        const mimeOk = allowedMimePrefixes.some(prefix => file.mimetype.startsWith(prefix)) ||
+                       allowedMimes.includes(file.mimetype) ||
+                       file.mimetype === 'application/octet-stream';
+        if (!mimeOk) {
+          // For subtitle field, allow text
+          if (file.fieldname === 'subtitle' && file.mimetype.startsWith('text/')) {
+            // ok
+          } else if (file.fieldname === 'cover' && file.mimetype.startsWith('image/')) {
+            // ok
+          } else if (!isExtAllowed) {
+            return cb(new Error(`Blocked mime type: ${file.mimetype}`));
+          }
+          // If extension is allowed, be permissive with mime (some browsers misreport)
+        }
+      }
+
+      // Specific field checks
+      if (file.fieldname === 'cover' || file.fieldname === 'thumbnail') {
+        if (ext && !['.jpg', '.jpeg', '.png', '.webp', '.gif', '.bmp'].includes(ext)) {
+          return cb(new Error(`Cover must be image, got: ${ext}`));
+        }
+      }
+      if (file.fieldname === 'subtitle') {
+        if (ext && !config.media.supportedExtensions.subtitle.includes(ext)) {
+          return cb(new Error(`Subtitle must be ${config.media.supportedExtensions.subtitle.join(', ')}, got: ${ext}`));
+        }
+      }
+
+      cb(null, true);
     }
   });
 }
@@ -85,7 +132,14 @@ router.post('/:type', (req, res) => {
     }
 
     try {
-      const metadata = req.body.metadata ? JSON.parse(req.body.metadata) : {};
+      let metadata = {};
+      if (req.body.metadata) {
+        try {
+          metadata = JSON.parse(req.body.metadata);
+        } catch {
+          return res.status(400).json({ error: 'Invalid metadata JSON', code: 'INVALID_METADATA' });
+        }
+      }
       const files = [];
 
       if (req.files['file']) files.push(...req.files['file']);

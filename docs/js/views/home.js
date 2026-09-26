@@ -1,18 +1,18 @@
 /**
- * Home view — dashboard with continue watching, recently added, etc.
+ * Home view — dashboard with continue watching, recently added, etc. — optimized
  */
 import { store } from '../store.js';
 import { api } from '../api.js';
 import { renderMediaGrid, renderSkeletonGrid } from '../components/mediaGrid.js';
 import { router } from '../router.js';
-import { formatRelativeTime } from '../utils/format.js';
+import { formatRelativeTime, escapeHtml } from '../utils/format.js';
 
 export function renderHome(container) {
   container.className = 'page';
   container.innerHTML = `
     <div class="page-header">
       <h1 class="page-title">Home</h1>
-      <p class="page-subtitle">Welcome back, ${store.get('user')?.username || 'user'} — here's what's new</p>
+      <p class="page-subtitle">Welcome back, ${escapeHtml(store.get('user')?.username || 'user')} — here's what's new</p>
     </div>
     <div id="home-content">
       <div class="skeleton-grid"></div>
@@ -153,7 +153,7 @@ function createSection(title, items, onClick) {
   section.style.marginBottom = '32px';
   
   section.innerHTML = `
-    <h2 style="font-size:20px; font-weight:700; margin-bottom:16px;">${title}</h2>
+    <h2 style="font-size:20px; font-weight:700; margin-bottom:16px;">${escapeHtml(title)}</h2>
     <div class="section-content"></div>
   `;
   
@@ -165,15 +165,10 @@ function createSection(title, items, onClick) {
 
 function handleItemClick(item) {
   if (item.type === 'music') {
-    window.dispatchEvent(new CustomEvent('vault:play', { detail: { item, queue: store.get('library').filter(i => i.type === 'music'), index: store.get('library').filter(i => i.type === 'music').findIndex(i => i.id === item.id) } }));
+    const musicLibrary = store.get('library').filter(i => i.type === 'music');
+    const idx = musicLibrary.findIndex(i => i.id === item.id);
+    window.dispatchEvent(new CustomEvent('vault:play', { detail: { item, queue: musicLibrary, index: idx } }));
   } else {
     window.dispatchEvent(new CustomEvent('vault:open-video', { detail: { item } }));
   }
-}
-
-function escapeHtml(str) {
-  if (!str) return '';
-  const div = document.createElement('div');
-  div.textContent = str;
-  return div.innerHTML;
 }

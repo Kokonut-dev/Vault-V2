@@ -1,9 +1,10 @@
 /**
- * Playlists view
+ * Playlists view — optimized
  */
 import { store } from '../store.js';
 import { api } from '../api.js';
 import { toast } from '../components/toast.js';
+import { escapeHtml } from '../utils/format.js';
 
 export function renderPlaylists(container) {
   container.className = 'page';
@@ -68,7 +69,7 @@ export function renderPlaylists(container) {
       });
       
     } catch (err) {
-      content.innerHTML = `<div class="empty-state"><div class="empty-state-title">Failed to load playlists</div><div class="empty-state-message">${err.message}</div></div>`;
+      content.innerHTML = `<div class="empty-state"><div class="empty-state-title">Failed to load playlists</div><div class="empty-state-message">${escapeHtml(err.message)}</div></div>`;
     }
   }
   
@@ -128,7 +129,7 @@ export function renderPlaylists(container) {
         close();
         loadPlaylists();
       } catch (err) {
-        toast.error(err.message);
+        toast.error(escapeHtml(err.message));
       }
     });
   }
@@ -158,13 +159,15 @@ export function renderPlaylists(container) {
         toast.success('Playlist deleted');
         loadPlaylists();
       } catch (err) {
-        toast.error(err.message);
+        toast.error(escapeHtml(err.message));
       }
     });
     
     const itemsContainer = content.querySelector('#pl-items');
-    const library = store.get('library');
-    const items = (playlist.items || []).map(id => library.find(i => i.id === id)).filter(Boolean);
+    // Build id map for O(1) lookups instead of O(n*m) find
+  const library = store.get('library');
+  const libMap = new Map(library.map(i => [i.id, i]));
+  const items = (playlist.items || []).map(id => libMap.get(id)).filter(Boolean);
     
     if (items.length === 0) {
       itemsContainer.innerHTML = '<div class="empty-state"><div class="empty-state-title">No items in this playlist</div></div>';
@@ -195,9 +198,4 @@ export function renderPlaylists(container) {
   }
 }
 
-function escapeHtml(str) {
-  if (!str) return '';
-  const div = document.createElement('div');
-  div.textContent = str;
-  return div.innerHTML;
-}
+

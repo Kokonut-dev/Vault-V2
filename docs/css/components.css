@@ -83,7 +83,7 @@
   font-size: 12px;
 }
 
-/* Cards */
+/* Cards — optimized with content-visibility for offscreen cards */
 .media-card {
   background: var(--card-bg);
   border-radius: var(--radius-lg);
@@ -92,6 +92,8 @@
   cursor: pointer;
   position: relative;
   border: 1px solid var(--border);
+  content-visibility: auto;
+  contain-intrinsic-size: 180px 270px;
 }
 
 .media-card:hover {
@@ -113,6 +115,7 @@
   height: 100%;
   object-fit: cover;
   transition: transform var(--duration-slow) var(--ease-out);
+  will-change: transform;
 }
 
 .media-card:hover .media-card-cover img {
@@ -196,11 +199,12 @@
   transition: width var(--duration-fast);
 }
 
-/* Grid */
+/* Grid — optimized: will-change on transform, content-visibility on items handles paint */
 .media-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
   gap: var(--space-md);
+  contain: layout;
 }
 
 @media (max-width: 640px) {

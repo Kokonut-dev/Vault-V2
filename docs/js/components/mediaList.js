@@ -1,8 +1,8 @@
 /**
- * Media List — table view
+ * Media List — table view — optimized with DocumentFragment
  */
 import { api } from '../api.js';
-import { formatTime, formatBytes, formatDate } from '../utils/format.js';
+import { formatTime, formatBytes, formatDate, escapeHtml } from '../utils/format.js';
 
 export function renderMediaList(container, items, options = {}) {
   const { onPlay, onClick, sortField = 'title', sortOrder = 'asc' } = options;
@@ -32,6 +32,9 @@ export function renderMediaList(container, items, options = {}) {
     <span>Year</span>
   `;
   list.appendChild(header);
+  
+  // Use DocumentFragment for batch DOM insertion — faster
+  const fragment = document.createDocumentFragment();
   
   items.forEach(item => {
     const row = document.createElement('div');
@@ -73,15 +76,9 @@ export function renderMediaList(container, items, options = {}) {
       }
     });
     
-    list.appendChild(row);
+    fragment.appendChild(row);
   });
   
+  list.appendChild(fragment);
   container.appendChild(list);
-}
-
-function escapeHtml(str) {
-  if (!str) return '';
-  const div = document.createElement('div');
-  div.textContent = str;
-  return div.innerHTML;
 }
