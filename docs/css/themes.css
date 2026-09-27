@@ -4,7 +4,14 @@
    a flat background makes backdrop-filter invisible.
    ============================================================ */
 
-* {
+/* F-2: transitions were previously declared on `*` — every node in the app
+   (including 1 000-card grids) carried transition bookkeeping at all times
+   and a theme switch painted across every element. Transitions are now scoped
+   to an active theme switch only: themes.js adds .theme-transition to <html>,
+   fades, then removes it after 500 ms. Component stylesheets keep their own
+   hover/focus transitions (higher specificity, always active). */
+.theme-transition,
+.theme-transition * {
   transition-property: background-color, border-color, color, box-shadow;
   transition-duration: 0.3s;
   transition-timing-function: var(--ease-out);
@@ -43,15 +50,11 @@
   background: radial-gradient(120% 100% at 50% 50%, transparent 60%, rgba(20, 24, 40, 0.07) 100%);
 }
 
-/* ---------- Theme switch ---------- */
-.theme-transition {
-  animation: themeFade 0.4s var(--ease-out);
-}
-
-@keyframes themeFade {
-  0% { opacity: 0.85; }
-  100% { opacity: 1; }
-}
+/* ---------- Theme switch ----------
+   The .theme-transition class now ONLY enables the scoped universal
+   transitions above (the old `animation: themeFade` opacity blink never ran
+   in production — the class had no JS attached — and is intentionally not
+   reactivated to preserve the current look). */
 
 /* ---------- Dark theme enhancements ---------- */
 [data-theme="dark"] {

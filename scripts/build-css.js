@@ -50,7 +50,7 @@ const SHEETS = [
 const MARKERS = {
   'reset.css': 'box-sizing',
   'variables.css': '--font-sans:',
-  'themes.css': 'themeFade',
+  'themes.css': 'no-theme-transition',
   'glass.css': 'glass-island',
   'grain.css': 'grainShift',
   'layout.css': 'detail-layout',
