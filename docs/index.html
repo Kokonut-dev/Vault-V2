@@ -97,7 +97,7 @@
     <div id="sidebar-container"></div>
     
     <!-- Main -->
-    <main class="main" id="main-content">
+    <main class="main" id="main-content" tabindex="-1">
       <header class="header glass" id="header">
         <div class="header-left">
           <button id="mobile-menu-btn" class="btn btn-icon" aria-label="Toggle menu" style="display:none;">
@@ -174,7 +174,7 @@
         <div class="now-playing-controls">
           <button class="btn btn-icon" id="np-shuffle" aria-label="Shuffle">🔀</button>
           <button class="btn btn-icon" id="np-prev" aria-label="Previous">⏮</button>
-          <button class="btn btn-icon btn-lg" id="np-play" aria-label="Play" style="width:56px;height:56px;background:var(--accent);color:white;border-radius:50%;">▶</button>
+          <button class="btn btn-icon btn-lg" id="np-play" aria-label="Play" style="width:56px;height:56px;background:var(--accent-solid);color:var(--on-accent);border-radius:50%;">▶</button>
           <button class="btn btn-icon" id="np-next" aria-label="Next">⏭</button>
           <button class="btn btn-icon" id="np-repeat" aria-label="Repeat">🔁</button>
         </div>
@@ -193,7 +193,7 @@
         <button class="btn btn-primary" type="button" id="video-retry-transcode">Try transcoding</button>
       </div>
       <div class="video-player-controls" id="video-controls">
-        <div class="video-progress" id="video-progress">
+        <div class="video-progress" id="video-progress" role="slider" tabindex="0" aria-label="Seek" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" aria-valuetext="0:00 of 0:00">
           <div class="video-progress-buffered" id="video-buffered" style="width:0%"></div>
           <div class="video-progress-played" id="video-played" style="width:0%"></div>
           <div class="video-progress-thumb" id="video-thumb" style="left:0%"></div>
@@ -209,7 +209,7 @@
             <div class="video-volume">
               <button class="video-control-btn" id="video-mute" aria-label="Mute">🔊</button>
               <div class="video-volume-slider">
-                <input type="range" class="slider" id="video-volume" min="0" max="1" step="0.01" value="0.8">
+                <input type="range" class="slider" id="video-volume" min="0" max="1" step="0.01" value="0.8" aria-label="Volume">
               </div>
             </div>
             <div class="video-time"><span id="video-current">0:00</span> / <span id="video-duration">0:00</span></div>
@@ -286,14 +286,14 @@
     .auth-logo-icon {
       width: 56px;
       height: 56px;
-      background: linear-gradient(140deg, var(--accent), var(--accent-strong));
+      background: linear-gradient(140deg, var(--accent-solid), var(--btn-accent-end));
       border-radius: 16px;
       display: flex;
       align-items: center;
       justify-content: center;
       font-weight: 800;
       font-size: 28px;
-      color: white;
+      color: var(--on-accent);
       margin: 0 auto 16px;
     }
     .auth-logo h1 {
@@ -331,7 +331,7 @@
     .auth-error {
       background: rgba(239,68,68,0.1);
       border: 1px solid rgba(239,68,68,0.2);
-      color: #EF4444;
+      color: var(--error);
       padding: 10px 14px;
       border-radius: 10px;
       font-size: 13px;
@@ -340,7 +340,7 @@
       margin-top: 12px;
       background: rgba(245,158,11,0.1);
       border: 1px solid rgba(245,158,11,0.25);
-      color: #F59E0B;
+      color: var(--warning);
       padding: 10px 14px;
       border-radius: 10px;
       font-size: 12px;
@@ -366,6 +366,7 @@
       margin-bottom: 20px;
     }
     .grid-square {
+      position: relative;
       aspect-ratio: 1;
       background: rgba(var(--glass-tint),0.05);
       border: 2px solid var(--border);
@@ -383,10 +384,20 @@
       background: rgba(var(--glass-tint),0.12);
     }
     .grid-square.selected {
-      background: var(--accent);
-      border-color: var(--accent);
-      color: white;
+      background: var(--accent-solid);
+      border-color: var(--accent-solid);
+      color: var(--on-accent);
       transform: scale(0.95);
+    }
+    /* Non-color selection cue (WCAG 1.4.1): ✓ badge + aria-pressed */
+    .grid-square.selected::after {
+      content: '\2713';
+      position: absolute;
+      top: 2px;
+      right: 6px;
+      font-size: 10px;
+      font-weight: 800;
+      opacity: 0.9;
     }
     .grid-actions {
       display: flex;
@@ -561,7 +572,9 @@
       if (!gridContainer) return;
       gridContainer.querySelectorAll('.grid-square').forEach(el => {
         const i = parseInt(el.dataset.index, 10);
-        el.classList.toggle('selected', selectedSquares.includes(i));
+        const selected = selectedSquares.includes(i);
+        el.classList.toggle('selected', selected);
+        el.setAttribute('aria-pressed', String(selected));
       });
       if (gridCount) gridCount.textContent = `${selectedSquares.length} / 8 selected`;
       if (gridSubmit) gridSubmit.disabled = selectedSquares.length !== 8;

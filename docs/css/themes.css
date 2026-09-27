@@ -95,7 +95,7 @@
 }
 
 [data-theme="warm"] .btn-primary {
-  background: linear-gradient(140deg, var(--accent) 0%, #B45309 100%);
+  background: linear-gradient(140deg, var(--accent-solid) 0%, var(--btn-accent-end) 100%);
 }
 
 /* ---------- Cold theme ---------- */

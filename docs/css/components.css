@@ -30,8 +30,8 @@
 }
 
 .btn-primary {
-  background: linear-gradient(140deg, var(--accent), var(--accent-hover));
-  color: white;
+  background: linear-gradient(140deg, var(--accent-solid), var(--btn-accent-end));
+  color: var(--on-accent);
   border-color: transparent;
   box-shadow: 0 6px 18px var(--accent-muted), inset 0 1px 0 rgba(255, 255, 255, 0.28);
 }
@@ -194,12 +194,12 @@
 .media-card-play {
   width: 52px;
   height: 52px;
-  background: var(--accent);
+  background: var(--accent-solid);
   border-radius: var(--radius-full);
   display: flex;
   align-items: center;
   justify-content: center;
-  color: white;
+  color: var(--on-accent);
   transform: translateY(8px) scale(0.92);
   transition: transform var(--duration-normal) var(--ease-out), box-shadow var(--duration-fast);
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.3);
@@ -367,8 +367,8 @@
   width: 28px;
   height: 28px;
   border-radius: 50%;
-  background: var(--accent);
-  color: white;
+  background: var(--accent-solid);
+  color: var(--on-accent);
   font-size: 11px;
   display: flex;
   align-items: center;
@@ -755,7 +755,7 @@
 
 .badge-accent {
   background: var(--accent-muted);
-  color: var(--accent);
+  color: var(--accent-text);
 }
 
 .badge-success {
@@ -778,11 +778,11 @@
 }
 
 .rating-star.filled {
-  color: #F59E0B;
+  color: var(--warning); /* AA on every theme incl. light (2.1:1 for #F59E0B) */
 }
 
 .rating-star:hover {
-  color: #F59E0B;
+  color: var(--warning);
 }
 
 /* ---------- Progress bar ---------- */

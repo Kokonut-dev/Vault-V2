@@ -52,9 +52,9 @@
 }
 
 .eq-preset.active {
-  background: var(--accent);
-  border-color: var(--accent);
-  color: white;
+  background: var(--accent-solid);
+  border-color: var(--accent-solid);
+  color: var(--on-accent);
 }
 
 .eq-visual {
@@ -127,7 +127,7 @@
 .eq-band-gain {
   font-size: 12px;
   font-weight: 700;
-  color: var(--accent);
+  color: var(--accent-text);
   font-family: var(--font-mono);
 }
 
