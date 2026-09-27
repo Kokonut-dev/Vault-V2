@@ -286,6 +286,46 @@
   min-width: 0;
 }
 
+/* QoL4: back-to-top — above the toast column, below toasts/dialogs */
+.back-to-top {
+  position: fixed;
+  right: var(--space-lg);
+  bottom: calc(var(--dock-height) + var(--dock-gap) * 2 + 64px);
+  width: 44px;
+  height: 44px;
+  border-radius: var(--radius-full);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(var(--glass-tint), 0.14);
+  border: 1px solid var(--glass-border);
+  backdrop-filter: blur(var(--glass-blur-effective));
+  -webkit-backdrop-filter: blur(var(--glass-blur-effective));
+  box-shadow: var(--glass-shadow), var(--glass-ring);
+  color: var(--text-primary);
+  font-size: 16px;
+  cursor: pointer;
+  opacity: 0;
+  transform: translateY(10px);
+  pointer-events: none;
+  z-index: calc(var(--z-mini-player) - 1);
+  transition: opacity var(--duration-normal) var(--ease-out),
+              transform var(--duration-normal) var(--ease-out),
+              background var(--duration-fast) var(--ease-out),
+              border-color var(--duration-fast) var(--ease-out);
+}
+
+.back-to-top.visible {
+  opacity: 1;
+  transform: none;
+  pointer-events: auto;
+}
+
+.back-to-top:hover {
+  background: rgba(var(--glass-tint), 0.22);
+  border-color: var(--border-strong);
+}
+
 .breadcrumb {
   font-size: 15px;
   font-weight: 650;
@@ -302,6 +342,24 @@
 .breadcrumb-sep {
   color: var(--text-tertiary);
   font-weight: 400;
+}
+
+.breadcrumb-link {
+  color: var(--text-secondary);
+  text-decoration: none;
+  transition: color var(--duration-fast) var(--ease-out);
+}
+
+.breadcrumb-link:hover {
+  color: var(--accent-text);
+}
+
+.breadcrumb-current {
+  color: var(--text-primary);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .header-right {

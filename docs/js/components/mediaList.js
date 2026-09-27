@@ -5,7 +5,7 @@ import { api } from '../api.js';
 import { formatTime, formatBytes, formatDate, escapeHtml } from '../utils/format.js';
 
 export function renderMediaList(container, items, options = {}) {
-  const { onPlay, onClick, sortField = 'title', sortOrder = 'asc' } = options;
+  const { onPlay, onClick, sortField = 'title', sortOrder = 'asc', onSort } = options;
   
   container.innerHTML = '';
   
@@ -21,16 +21,35 @@ export function renderMediaList(container, items, options = {}) {
   }
   
   const list = document.createElement('div');
-  list.className = 'media-list';
+  list.className = 'media-list media-list--library';
   
   const header = document.createElement('div');
   header.className = 'media-list-header';
-  header.innerHTML = `
-    <span>Title</span>
-    <span>Artist / Genre</span>
-    <span>Duration</span>
-    <span>Year</span>
-  `;
+  const columns = [
+    ['title', 'Title'],
+    ['artist', 'Artist / Genre'],
+    ['duration', 'Duration'],
+    ['year', 'Year'],
+  ];
+  // Sortable only when the view supplies onSort; plain spans otherwise.
+  header.innerHTML = columns.map(([field, label]) => {
+    if (!onSort) return `<span>${label}</span>`;
+    const active = sortField === field;
+    const state = active ? (sortOrder === 'asc' ? 'ascending' : 'descending') : 'unsorted';
+    const ind = active ? (sortOrder === 'asc' ? '▲' : '▼') : '';
+    return `<button type="button" class="media-list-sort${active ? ' active' : ''}" data-field="${field}" aria-label="Sort by ${label} — currently ${state}">${label}<span class="sort-ind" aria-hidden="true">${ind}</span></button>`;
+  }).join('');
+  if (onSort) {
+    header.querySelectorAll('.media-list-sort').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const field = btn.dataset.field;
+        const next = sortField === field
+          ? (sortOrder === 'asc' ? 'desc' : 'asc')
+          : (field === 'title' || field === 'artist' ? 'asc' : 'desc');
+        onSort(field, next);
+      });
+    });
+  }
   list.appendChild(header);
   
   // Use DocumentFragment for batch DOM insertion — faster

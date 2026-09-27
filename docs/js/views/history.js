@@ -81,6 +81,10 @@ export function renderHistory(container) {
     items.forEach(item => {
       const row = document.createElement('div');
       row.className = 'media-list-item';
+      const watchedDate = new Date(item.history.watchedAt);
+      const timeAttrs = Number.isNaN(watchedDate.getTime())
+        ? ''
+        : `datetime="${watchedDate.toISOString()}" title="${watchedDate.toLocaleString()}"`;
       row.innerHTML = `
         <div class="media-list-item-main">
           <div class="media-list-item-cover">
@@ -96,7 +100,7 @@ export function renderHistory(container) {
             <div class="progress-bar" style="width:${item.history.progress || 0}%"></div>
           </div>
         </div>
-        <div style="font-size:12px; color:var(--text-secondary);">${formatRelativeTime(item.history.watchedAt)}</div>
+        <div style="font-size:12px; color:var(--text-secondary);"><time ${timeAttrs}>${formatRelativeTime(item.history.watchedAt)}</time></div>
         <div>
           <button class="btn btn-ghost btn-sm" data-id="${item.id}">Play</button>
         </div>

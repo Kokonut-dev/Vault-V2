@@ -152,9 +152,36 @@ export function renderMusic(container) {
       renderMediaList(content, items, {
         onClick: open,
         onPlay: play,
+        sortField: sort,
+        sortOrder: order,
+        onSort: (field, next) => {
+          sort = field;
+          order = next;
+          syncSortSelect();
+          render();
+        },
       });
     }
   }
+
+  // Keep the sort <select> truthful when a header sort picks a field the
+  // select has no option for — insert a dynamic option instead of lying.
+  function syncSortSelect() {
+    const value = `${sort}-${order}`;
+    sortSelect.querySelectorAll('option[data-dynamic]').forEach((o) => {
+      if (o.value !== value) o.remove();
+    });
+    if (![...sortSelect.options].some((o) => o.value === value)) {
+      const opt = document.createElement('option');
+      opt.value = value;
+      opt.dataset.dynamic = '1';
+      const labels = {'title': 'Title', 'artist': 'Artist', 'album': 'Album', 'duration': 'Duration', 'year': 'Year', 'addedAt': 'Recently Added'};
+      opt.textContent = `${labels[sort] || sort} ${order === 'asc' ? '↑' : '↓'}`;
+      sortSelect.prepend(opt);
+    }
+    sortSelect.value = value;
+  }
+
   
   function renderArtists() {
     const items = getFiltered();

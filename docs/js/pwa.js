@@ -1,6 +1,27 @@
 /**
  * PWA — Service Worker registration
  */
+import { toast } from './components/toast.js';
+
+// QoL: surface vault:update-available (fired above) — a sticky toast with a
+// Refresh action; the waiting worker activates on reload (sw.js skipWaiting).
+window.addEventListener('vault:update-available', () => {
+  const t = toast.show('A new version of Vault is ready.', {
+    title: 'Update available',
+    type: 'info',
+    duration: 0,
+  });
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = 'btn btn-primary btn-sm';
+  btn.style.cssText = 'margin-top:10px;';
+  btn.textContent = 'Refresh';
+  btn.addEventListener('click', () => {
+    btn.disabled = true;
+    window.location.reload();
+  });
+  t.querySelector('.toast-content')?.appendChild(btn);
+});
 
 export function initPWA() {
   if (!('serviceWorker' in navigator)) {

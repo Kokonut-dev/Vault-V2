@@ -13,6 +13,7 @@ export class Router {
     this.useHash = false;
     this.navId = 0;
     this._inited = false;
+    this._scrollMem = new Map(); // path → scrollY, capped (QoL4)
     this._onClick = this._onClick.bind(this);
     this._onPopState = () => this.handleRoute();
     this._onHashChange = () => { if (this.useHash) this.handleRoute(); };
@@ -75,9 +76,27 @@ export class Router {
     this.handleRoute();
   }
 
+  _saveScroll(path) {
+    if (!path || this._scrollMem.get(path) === window.scrollY) return;
+    this._scrollMem.set(path, window.scrollY);
+    if (this._scrollMem.size > 40) {
+      this._scrollMem.delete(this._scrollMem.keys().next().value);
+    }
+  }
+
+  _restoreScroll(path) {
+    const y = this._scrollMem.get(path) || 0;
+    requestAnimationFrame(() => {
+      // Skip if the user already scrolled before the frame landed
+      if (window.scrollY === 0 || window.scrollY === y) window.scrollTo(0, y);
+    });
+  }
+
   async handleRoute() {
     const gen = ++this.navId;
     const path = this.getCurrentPath();
+    // Capture the outgoing page's position before views swap (QoL4)
+    if (this.currentRoute && this.currentRoute !== path) this._saveScroll(this.currentRoute);
     const nav = {
       gen,
       path,
@@ -107,6 +126,7 @@ export class Router {
       this.currentRoute = path;
       this.render404(path);
       window.dispatchEvent(new CustomEvent('vault:route-changed', { detail: { path, params } }));
+      this._restoreScroll(path);
       return;
     }
 
@@ -130,6 +150,7 @@ export class Router {
 
     if (!nav.isCurrent()) return;
     window.dispatchEvent(new CustomEvent('vault:route-changed', { detail: { path, params } }));
+    this._restoreScroll(path);
   }
 
   render404(path) {

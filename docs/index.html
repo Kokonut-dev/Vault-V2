@@ -443,6 +443,8 @@
   </style>
 
   <!-- Main App Script -->
+  <button id="back-to-top" class="back-to-top" type="button" aria-label="Back to top" title="Back to top">↑</button>
+
   <script type="module">
     import { getApiBaseUrl, setApiBaseUrl } from './js/config.js';
     import { store } from './js/store.js';
@@ -787,10 +789,54 @@
         const el = document.getElementById('breadcrumb');
         if (!el) return;
         const path = e.detail?.path || '/';
-        if (ROUTE_TITLES[path]) el.textContent = ROUTE_TITLES[path];
-        else if (path.startsWith('/watch') || path.startsWith('/movie') || path.startsWith('/album')) el.textContent = 'Details';
-        else el.textContent = 'Vault';
+        if (ROUTE_TITLES[path]) {
+          el.textContent = ROUTE_TITLES[path];
+        } else if (path.startsWith('/watch') || path.startsWith('/movie') || path.startsWith('/album')) {
+          // QoL2: section › title breadcrumb (falls back to 'Details' when the
+          // item isn't in the loaded library yet, e.g. cold deep-links)
+          const id = decodeURIComponent(path.split('/').pop());
+          const item = (store.get('library') || []).find(i => String(i.id) === String(id));
+          const section = path.startsWith('/movie') ? 'Movies' : path.startsWith('/album') ? 'Albums' : 'Videos';
+          const sectionRoute = path.startsWith('/movie') ? '/movies' : path.startsWith('/album') ? '/music' : '/videos';
+          const label = item ? (path.startsWith('/album') ? (item.album || item.title) : item.title) : '';
+          if (label) {
+            const link = document.createElement('a');
+            link.className = 'breadcrumb-link';
+            link.setAttribute('data-route', sectionRoute);
+            link.href = sectionRoute;
+            link.textContent = section;
+            const sep = document.createElement('span');
+            sep.className = 'breadcrumb-sep';
+            sep.textContent = '›';
+            const current = document.createElement('span');
+            current.className = 'breadcrumb-current';
+            current.textContent = label;
+            current.title = label;
+            el.replaceChildren(link, sep, current);
+          } else {
+            el.textContent = 'Details';
+          }
+        } else {
+          el.textContent = 'Vault';
+        }
       });
+
+      // QoL4: back-to-top — appears on long scrolls, respects reduced motion
+      const backToTop = document.getElementById('back-to-top');
+      if (backToTop) {
+        let bttFrame = 0;
+        window.addEventListener('scroll', () => {
+          if (bttFrame) return;
+          bttFrame = requestAnimationFrame(() => {
+            backToTop.classList.toggle('visible', window.scrollY > 600);
+            bttFrame = 0;
+          });
+        }, { passive: true });
+        backToTop.addEventListener('click', () => {
+          const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+          window.scrollTo({ top: 0, behavior: reduce ? 'auto' : 'smooth' });
+        });
+      }
 
       window.addEventListener('vault:open-detail', (e) => {
         const item = e.detail?.item;
