@@ -437,12 +437,37 @@
   border-radius: var(--radius-xl);
   padding: 24px;
   box-shadow: var(--glass-shadow), var(--glass-ring), inset 0 1px 0 var(--glass-highlight);
+  transition: border-color var(--duration-normal) var(--ease-out),
+              transform var(--duration-normal) var(--ease-out),
+              box-shadow var(--duration-normal) var(--ease-out);
+}
+
+.settings-card:hover {
+  border-color: rgba(var(--glass-tint), 0.16);
+  transform: translateY(-2px);
+  box-shadow: var(--glass-shadow), var(--glass-ring), inset 0 1px 0 var(--glass-highlight),
+              0 14px 30px -18px rgba(0, 0, 0, 0.45);
 }
 
 .settings-card h3 {
+  display: flex;
+  align-items: center;
+  gap: 10px;
   font-size: 16px;
   font-weight: 700;
   margin-bottom: 16px;
+}
+
+.settings-card-icon {
+  display: inline-flex;
+  width: 30px;
+  height: 30px;
+  align-items: center;
+  justify-content: center;
+  background: var(--accent-muted);
+  border-radius: 9px;
+  font-size: 15px;
+  flex-shrink: 0;
 }
 
 /* ---------- Detail ---------- */
@@ -501,6 +526,11 @@
   font-weight: 500;
   color: var(--text-secondary);
   transition: all var(--duration-fast) var(--ease-out);
+}
+
+.view-toggle button:hover:not(.active) {
+  background: rgba(var(--glass-tint), 0.1);
+  color: var(--text-primary);
 }
 
 .view-toggle button.active {

@@ -59,6 +59,18 @@
   border-color: var(--border-strong);
 }
 
+.btn-danger {
+  background: rgba(var(--glass-tint), calc(var(--glass-fill) + 0.03));
+  color: var(--error);
+  border-color: rgba(239, 68, 68, 0.35);
+  box-shadow: inset 0 1px 0 var(--glass-highlight-soft);
+}
+
+.btn-danger:hover {
+  background: rgba(239, 68, 68, 0.12);
+  border-color: rgba(239, 68, 68, 0.55);
+}
+
 .btn-ghost {
   background: transparent;
   color: var(--text-secondary);
@@ -343,17 +355,25 @@
   gap: var(--space-md);
   padding: var(--space-sm) var(--space-md);
   align-items: center;
-  transition: background var(--duration-fast) var(--ease-out);
+  transition: background var(--duration-fast) var(--ease-out),
+              box-shadow var(--duration-fast) var(--ease-out);
   cursor: pointer;
   border-bottom: 1px solid rgba(var(--glass-tint), 0.05);
+}
+
+/* Row rhythm: gentle zebra (header is child 1, so items sit on 2..n) */
+.media-list-item:nth-child(even) {
+  background: rgba(var(--glass-tint), 0.03);
 }
 
 .media-list-item:last-child {
   border-bottom: none;
 }
 
-.media-list-item:hover {
+.media-list-item:hover,
+.media-list-item:focus-visible {
   background: rgba(var(--glass-tint), 0.07);
+  box-shadow: inset 2px 0 0 var(--accent);
 }
 
 .media-list-item-main {
@@ -537,6 +557,16 @@
   font-size: 14px;
   transition: all var(--duration-fast) var(--ease-out);
   width: 100%;
+}
+
+.form-select {
+  appearance: none;
+  -webkit-appearance: none;
+  padding-right: 36px;
+  cursor: pointer;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%238a8f98' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 14px center;
 }
 
 .form-input:focus,
