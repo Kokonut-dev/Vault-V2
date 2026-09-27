@@ -875,7 +875,7 @@ export class OnboardingManager {
         statusEl.innerHTML = `
           <div class="onboarding-success">
             ✓ Setup complete! Config saved.<br>
-            <span style="font-family:var(--font-mono); font-size:11px;">User: ${result.config.username} | Enablement: ${result.enablement ? 'true' : 'true'}</span>
+            <span style="font-family:var(--font-mono); font-size:11px;">User: ${result.config.username} | Enablement: ${result.enablement ? 'true' : 'false'}</span>
           </div>
         `;
       }

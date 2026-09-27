@@ -1,5 +1,59 @@
 # Changelog
 
+## [2.2.0] - 2026-09-27
+
+Seven-stage repository optimization (audit → build → perf → accessibility →
+UI → QoL → review). 15 commits on `arena/01a0dfb1-vault-v2`; every stage
+verified against the AUDIT.md §5 regression contract before the next began.
+
+### Performance — build, delivery, hot paths
+- **CSS: 13 render-blocking stylesheets → 1.** `scripts/build-css.js` concatenates + minifies the 12 sources into `vault.css` deterministically (same md5 every run): 114,992 B sources → 76,507 B min → **13,337 B gz / 12,904 B on the wire (brotli)** — vs 18.5 KB gz across 13 requests before.
+- **Compression middleware** (`server/middleware/compression.js`): brotli/zlib with proper `q`-value negotiation, SSE/Range/video exemptions, drain bridging — the Node server previously sent everything uncompressed.
+- **Static cache policy**: `max-age=3600, stale-while-revalidate=604800` for versioned assets, `no-cache` for `sw.js`/config/HTML; access-log token redaction (`token=[redacted]`).
+- **Backend data paths**: `writeJsonAtomic` (per-path write chain, temp+rename), sort-on-copy instead of mutating the master library array, WeakMap search haystack that self-invalidates, Range-aware transcode cache (206 on cached seeks), slice+decorate-sort on the library route.
+- **Frontend**: `api.getLibrary` auto-pagination (fetches all pages in parallel when no explicit page), view subscription lifecycle (`docs/js/utils/lifecycle.js` — no leaks/stale writes), theme-switch stack-overflow fixed (~10k dispatches → exactly 1 per switch), scoped theme-transition class, `will-change` removed (1 000+ GPU layers), stagger capped at n+13, grain z-index/inset aligned, intrinsic-size dual declarations, onboarding lazy-loaded (~8 KB gz off the critical path).
+- Tests: **0 → 24** (`node --test`: compression 18 + file serving 6); `scripts/syntax-check.js` green over 78 files.
+
+### Accessibility — WCAG AA in all four themes (C-1–C-8)
+- `scripts/contrast-check.js` (zero-dep, CI-ready): **baseline 14 FAIL/36 → 32/32 PASS**.
+- Hierarchy lifts: tertiary alphas per theme (AA with margin), secondary where under AA; light status colors darkened to AA; warm warning distinct from accent.
+- New accent roles per theme — `--accent-text`, `--accent-solid`, `--btn-accent-end`, `--on-accent`; ~20 usage swaps moved content off raw `--accent` (cold keeps bright cyan with a dark label; warm buttons deepen). Rating stars fixed (2.1:1 → AA on light).
+- Focus traps on modals/command palette/shortcuts panel (new `utils/focusTrap.js`), Escape + focus restore; skip-link target focusable; video seek slider with live ARIA; history progressbars; login grid `aria-pressed` + ✓ cue; coarse-pointer targets extended to 44 px; `prefers-reduced-motion` blocks untouched by design.
+
+### UI — sterile spots elevated, micro-interactions (C-9/C-10)
+- Playlists skeleton fixed (was a blank div), settings cards get icon chips + hover lift, upload drop zone states, list-row zebra + accent edge, 404 gains Search + quick links.
+- `.view-toggle` hover, custom select chevron, `.btn-danger`; native `confirm()`/`alert()` replaced by promise-based `components/confirmDialog.js` riding the trapped modal (delete uses one dialog + checkbox instead of two prompts).
+
+### QoL (Stage 6)
+- Sortable sticky list headers with ARIA + `<select>` sync; F-23 column collapse ≤640 px (library lists only).
+- `Movies/Albums/Videos › title` breadcrumbs with section links; per-path scroll restoration + back-to-top (reduced-motion aware).
+- Copy-to-clipboard (server URL, file path, grid pattern) via `utils/clipboard.js`.
+- SW `vault:update-available` → sticky Refresh toast; first-run theme follows `prefers-color-scheme`; history `<time datetime>` + full-stamp tooltip.
+
+### Fixed — pre-existing defects found and repaired
+- Library sort mutated the shared store array (view order leaked across renders) — fixed by sorting a copy.
+- Search over 1 000 items re-serialized the library per keystroke — cached haystack.
+- Theme switch recursion (`RangeError` swallowed by store try/catch) — idempotence guard.
+- `.skeleton-grid` referenced but defined nowhere; `aria-hidden` CSS rule hiding the grain overlay (2.1.0); sidebar active indicator clipped; mini-player/sidebar seam (2.1.0).
+- Onboarding setup-complete displayed `enablement` as always-`true` (ternary bug, found in final review).
+
+### Metrics (Stage 7 — measured in this environment)
+| Metric | Before | After |
+|---|---|---|
+| Render-blocking CSS requests | 13 (105.7 KB → 18.5 KB gz) | **1** (76.5 KB min → 13.3 KB gz, 12.9 KB wire br) |
+| Initial first-wave requests (est.) | ~29 | **~18** (1 HTML + config + vault + 15 shell modules) |
+| Initial JS shell | ~40–45 KB gz (onboarding eager) | **25.3 KB gz / 21.2 KB br** (onboarding lazy) |
+| Server compression | none | **brotli/gzip** negotiated, cached headers |
+| Server tests | 0 | **24/24** |
+| Token contrast (AA, 4 themes) | 14 FAIL / 36 | **32/32 PASS** |
+| Theme-switch event dispatches | ~10 000 + RangeError | **1** |
+| Dialog focus management | none | trapped + restored, Escape everywhere |
+| Syntax/lint coverage | none | **78 files** green (`npm run lint`) |
+
+Regression contract: AUDIT.md §5 (48 items) verified — static markers 38/38,
+server tests 24/24, deploy-workflow greps intact; interactive flows
+(playback/EQ/keyboard) code-reviewed, no removals anywhere in the series.
+
 ## [2.1.0] - 2026-09-26
 
 ### Fixed — the seam between the sidebar and the player
