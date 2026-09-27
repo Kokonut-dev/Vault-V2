@@ -16,6 +16,7 @@ import { getApiBaseUrl, setApiBaseUrl, getConfig } from './config.js';
 import { escapeHtml } from './utils/format.js';
 import { store } from './store.js';
 import { toast } from './components/toast.js';
+import { copyText } from './utils/clipboard.js';
 
 export class OnboardingManager {
   constructor() {
@@ -208,6 +209,11 @@ export class OnboardingManager {
         titleEl.textContent = 'Ready to Launch';
         subtitleEl.textContent = 'Review your settings and complete setup';
         body.innerHTML = this.renderReviewStep();
+        body.querySelector('#copy-grid-pattern')?.addEventListener('click', async () => {
+          const pattern = `[${this.data.gridPattern.join(', ')}]`;
+          if (await copyText(pattern)) toast.success('Grid pattern copied — store it somewhere safe');
+          else toast.error('Could not copy the pattern');
+        });
         nextBtn.textContent = 'Complete Setup ✨';
         nextBtn.disabled = false;
         secondaryBtn.style.display = 'inline-flex';
@@ -747,7 +753,7 @@ export class OnboardingManager {
           </div>
           <div class="onboarding-review-item">
             <span class="onboarding-review-label">Grid Pattern</span>
-            <span class="onboarding-review-value">${gridDisplay}</span>
+            <span class="onboarding-review-value">${gridDisplay} <button type="button" class="btn btn-ghost btn-sm" id="copy-grid-pattern" style="padding:2px 8px; font-size:11px;">⧉ Copy</button></span>
           </div>
           <div class="onboarding-review-item">
             <span class="onboarding-review-label">Theme</span>

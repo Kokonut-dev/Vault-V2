@@ -7,6 +7,7 @@ import { api } from '../api.js';
 import { toast } from '../components/toast.js';
 import { getApiBaseUrl, setApiBaseUrl } from '../config.js';
 import { renderEQPanel } from '../components/eqPanel.js';
+import { copyText } from '../utils/clipboard.js';
 
 export function renderSettings(container) {
   container.className = 'page';
@@ -67,6 +68,7 @@ export function renderSettings(container) {
           <label class="form-label">API Base URL</label>
           <div style="display:flex; gap:8px;">
             <input type="text" class="form-input" id="api-url" value="${getApiBaseUrl()}" style="flex:1;">
+            <button class="btn btn-secondary" id="copy-api-url" type="button">⧉ Copy</button>
             <button class="btn btn-secondary" id="save-api-url">Save</button>
           </div>
           <div style="font-size:11px; color:var(--text-tertiary); margin-top:4px;">Change if your server is on a different URL (e.g., Cloudflare Tunnel)</div>
@@ -184,6 +186,12 @@ export function renderSettings(container) {
   });
   
   // API URL
+  container.querySelector('#copy-api-url').addEventListener('click', async () => {
+    const url = container.querySelector('#api-url').value.trim();
+    if (await copyText(url)) toast.success('Server URL copied to clipboard');
+    else toast.error('Could not copy — select the URL and copy manually');
+  });
+
   container.querySelector('#save-api-url').addEventListener('click', () => {
     const url = container.querySelector('#api-url').value.trim().replace(/\/+$/, '');
     if (url) {
