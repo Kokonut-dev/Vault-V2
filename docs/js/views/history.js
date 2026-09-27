@@ -6,6 +6,7 @@ import { renderMediaList } from '../components/mediaList.js';
 import { formatRelativeTime, escapeHtml } from '../utils/format.js';
 import { api } from '../api.js';
 import { toast } from '../components/toast.js';
+import { confirmDialog } from '../components/confirmDialog.js';
 import { subscribeView } from '../utils/lifecycle.js';
 
 export function renderHistory(container) {
@@ -27,7 +28,13 @@ export function renderHistory(container) {
   const clearBtn = container.querySelector('#clear-history');
   
   clearBtn.addEventListener('click', async () => {
-    if (!confirm('Clear all history?')) return;
+    const { confirmed } = await confirmDialog({
+      title: 'Clear history',
+      message: 'Clear all watch history? This cannot be undone.',
+      confirmText: 'Clear all',
+      danger: true,
+    });
+    if (!confirmed) return;
     try {
       await api.clearHistory();
       store.set('history', [], true);

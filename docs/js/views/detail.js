@@ -5,6 +5,7 @@ import { store } from '../store.js';
 import { api } from '../api.js';
 import { formatTime, formatBytes, formatDate, formatBitrate, formatResolution, escapeHtml } from '../utils/format.js';
 import { toast } from '../components/toast.js';
+import { confirmDialog, alertDialog } from '../components/confirmDialog.js';
 
 export async function renderDetail(container, id) {
   container.className = 'page';
@@ -132,7 +133,10 @@ function renderVideoDetail(container, item) {
   container.querySelector('#more-info').addEventListener('click', async () => {
     try {
       const info = await api.getMediaInfo(item.id);
-      alert(JSON.stringify(info, null, 2));
+      await alertDialog({
+        title: 'Technical details',
+        contentHtml: `<pre style="max-height:50vh; overflow:auto; margin:0; padding:12px; background:rgba(var(--glass-tint),0.07); border:1px solid rgba(var(--glass-tint),0.1); border-radius:10px; font-size:12px; line-height:1.5; color:var(--text-secondary); white-space:pre-wrap; word-break:break-word;">${escapeHtml(JSON.stringify(info, null, 2))}</pre>`,
+      });
     } catch (err) {
       toast.error(err.message);
     }
@@ -141,8 +145,14 @@ function renderVideoDetail(container, item) {
   container.querySelector('#edit-btn').addEventListener('click', () => showEditModal(item));
   container.querySelector('#add-playlist').addEventListener('click', () => showAddToPlaylist(item));
   container.querySelector('#delete-btn').addEventListener('click', async () => {
-    if (!confirm(`Delete "${item.title}"?`)) return;
-    const deleteFile = confirm('Also delete file from disk?');
+    const { confirmed, checked: deleteFile } = await confirmDialog({
+      title: 'Delete media',
+      message: `Delete "${item.title}"?`,
+      confirmText: 'Delete',
+      danger: true,
+      checkbox: { label: 'Also delete the file from disk', checked: false },
+    });
+    if (!confirmed) return;
     try {
       await api.deleteItem(item.id, deleteFile);
       toast.success('Deleted');

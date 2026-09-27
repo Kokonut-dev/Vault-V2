@@ -140,9 +140,22 @@ export class Router {
         <div class="empty-state-icon" style="font-size:48px;">∅</div>
         <div class="empty-state-title" style="font-size:20px; font-weight:700; margin:12px 0;">Page not found</div>
         <div class="empty-state-message" style="color:var(--text-secondary); margin-bottom:20px;">The page <code>${this.escapeHtml(path)}</code> doesn't exist.</div>
-        <button class="btn btn-primary" type="button" data-route="/">Go Home</button>
+        <div style="display:flex; gap:10px; justify-content:center; flex-wrap:wrap; margin-bottom:16px;">
+          <button class="btn btn-primary" type="button" data-route="/">Go Home</button>
+          <button class="btn btn-secondary" type="button" id="not-found-search">⌕ Search library</button>
+        </div>
+        <div style="font-size:13px; color:var(--text-tertiary);">
+          Quick links:
+          <a href="/movies" data-route="/movies" style="color:var(--accent-text);">Movies</a> •
+          <a href="/music" data-route="/music" style="color:var(--accent-text);">Music</a> •
+          <a href="/videos" data-route="/videos" style="color:var(--accent-text);">Videos</a> •
+          <a href="/playlists" data-route="/playlists" style="color:var(--accent-text);">Playlists</a>
+        </div>
       </div>
     `;
+    viewContainer.querySelector('#not-found-search')?.addEventListener('click', () => {
+      window.dispatchEvent(new CustomEvent('vault:open-search'));
+    });
   }
 
   escapeHtml(str) {
