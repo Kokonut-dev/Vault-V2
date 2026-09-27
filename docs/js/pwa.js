@@ -4,7 +4,7 @@
 
 export function initPWA() {
   if (!('serviceWorker' in navigator)) {
-    console.log('[PWA] Service Worker not supported');
+    console.warn('[PWA] Service Worker not supported');
     return;
   }
 
@@ -22,15 +22,13 @@ export function initPWA() {
       const basePath = window.VAULT_CONFIG?.basePath || '/Vault-V2';
       const swPath = `${basePath}/sw.js`;
       const reg = await navigator.serviceWorker.register(swPath);
-      console.log('[PWA] Service Worker registered:', reg.scope);
 
       reg.addEventListener('updatefound', () => {
         const newWorker = reg.installing;
         newWorker.addEventListener('statechange', () => {
           if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
-            // New version available
+            // New version available — UI listens for this event
             window.dispatchEvent(new CustomEvent('vault:update-available'));
-            console.log('[PWA] New version available');
           }
         });
       });

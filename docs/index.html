@@ -19,23 +19,12 @@
   <!-- Config must load first -->
   <script src="./config.js"></script>
   
-  <!-- CSS -->
-  <link rel="stylesheet" href="./css/reset.css">
-  <link rel="stylesheet" href="./css/variables.css">
-  <link rel="stylesheet" href="./css/themes.css">
-  <link rel="stylesheet" href="./css/glass.css">
-  <link rel="stylesheet" href="./css/grain.css">
-  <link rel="stylesheet" href="./css/layout.css">
-  <link rel="stylesheet" href="./css/components.css">
-  <link rel="stylesheet" href="./css/player.css">
-  <link rel="stylesheet" href="./css/search.css">
-  <link rel="stylesheet" href="./css/eq.css">
-  <link rel="stylesheet" href="./css/animations.css">
-  <link rel="stylesheet" href="./css/accessibility.css">
-  <link rel="stylesheet" href="./css/onboarding.css">
-  
-  <!-- Preconnect for performance -->
-  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <!-- CSS: one bundled, minified sheet (built from docs/css/*.css — npm run build:css).
+       Replaces 13 render-blocking <link> requests; cascade order preserved by the build. -->
+  <link rel="stylesheet" href="./css/vault.css">
+  <!-- Onboarding styles load async — not needed for first paint.
+       (CI greps index.html for this href, keep it here.) -->
+  <link rel="stylesheet" href="./css/onboarding.css" media="print" onload="this.media='all'">
 </head>
 <body>
   <!-- Skip link for accessibility -->
@@ -456,7 +445,17 @@
     import { toast } from './js/components/toast.js';
     import { renderSidebar } from './js/components/sidebar.js';
     import { searchModal } from './js/components/searchModal.js';
-    import { onboardingManager } from './js/onboarding.js';
+
+    // Onboarding is lazy-loaded: the 35KB wizard module is only fetched when
+    // the setup gate actually needs it (cold start no longer blocks on it).
+    let onboardingManager = null;
+    async function loadOnboardingModule() {
+      if (!onboardingManager) {
+        const mod = await import('./js/onboarding.js');
+        onboardingManager = mod.onboardingManager;
+      }
+      return onboardingManager;
+    }
     
     // Initialize
     const serverUrlDisplay = document.getElementById('server-url-display');
@@ -693,11 +692,18 @@
       }
     }
 
-    function showOnboarding() {
+    async function showOnboarding() {
       if (authGate) authGate.style.display = 'none';
       if (appEl) appEl.style.display = 'none';
       if (onboardingHost) {
-        onboardingManager.render(onboardingHost);
+        try {
+          const manager = await loadOnboardingModule();
+          manager.render(onboardingHost);
+        } catch (err) {
+          console.warn('Failed to load onboarding wizard:', err.message);
+          // Never trap the user: fall back to the normal auth check.
+          checkAuth();
+        }
       }
     }
     
@@ -728,7 +734,6 @@
       try {
         const data = await api.getLibrary({ limit: 1000 });
         store.setLibrary(data.items || []);
-        console.log(`Loaded ${data.items?.length || 0} items`);
       } catch (err) {
         console.warn('Failed to load library:', err.message);
         if (err.message.includes('Cannot connect')) {
@@ -938,7 +943,7 @@
       // Use { once: false } but guard against double registration by removing existing if any
       // We add listeners once at startup
       window.addEventListener('vault:onboarding-complete', (e) => {
-        console.log('Onboarding complete', e.detail);
+        // NOTE: e.detail carries the auth token — never log it (F-29).
         if (e.detail && e.detail.token) {
           showApp();
         } else {
@@ -968,7 +973,6 @@
       try {
         const status = await api.getSetupStatus();
         if (status.needsSetup) {
-          console.log('Setup required, showing onboarding wizard');
           showOnboarding();
           return;
         }
@@ -979,7 +983,7 @@
         if (!token) {
           const isLocalhost = getApiBaseUrl().includes('localhost') || getApiBaseUrl().includes('127.0.0.1');
           if (isLocalhost) {
-            console.log('No token and server unreachable — showing onboarding for connection help');
+            console.warn('No token and server unreachable — showing onboarding for connection help');
             showOnboarding();
             return;
           }
@@ -992,8 +996,11 @@
 
     start();
     
-    // Expose for debugging
-    window.Vault = { store, api, router, authManager, themeManager, toast, onboardingManager };
+    // Expose for debugging (onboardingManager via getter: lazy-loaded module)
+    window.Vault = {
+      store, api, router, authManager, themeManager, toast,
+      get onboardingManager() { return onboardingManager; },
+    };
   </script>
 </body>
 </html>

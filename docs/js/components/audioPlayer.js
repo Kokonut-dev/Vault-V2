@@ -184,7 +184,6 @@ export function initAudioPlayer() {
     unlock: unlockAudio,
   };
 
-  console.log('[AudioPlayer] Initialized');
 }
 
 function handleAction(action, percent) {

@@ -276,7 +276,6 @@ export function initVideoPlayer() {
     if (e.key === 'Escape' && modal.classList.contains('active')) closePlayer();
   });
 
-  console.log('[VideoPlayer] Initialized');
 }
 
 export function openPlayer(item, { forceTranscode = false } = {}) {
