@@ -8,9 +8,11 @@ const https = require('https');
 
 const { loadConfig, getConfig } = require('./config');
 const createCorsMiddleware = require('./middleware/cors');
+const createCompression = require('./middleware/compression');
 const { authMiddleware } = require('./middleware/auth');
 const createRateLimiters = require('./middleware/rateLimiter');
 const { errorHandler, notFoundHandler } = require('./middleware/errorHandler');
+const { startCacheCleanupScheduler } = require('./services/transcoder');
 const libraryService = require('./services/library');
 const scannerService = require('./services/scanner');
 const logger = require('./utils/logger');
@@ -34,7 +36,21 @@ app.use(helmet({
 app.use(createCorsMiddleware());
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
-app.use(morgan('combined'));
+
+// Response compression (br > gzip > deflate) — zero-dependency middleware.
+// Media (video/audio), Range requests and SSE are explicitly untouched.
+app.use(createCompression());
+
+// Access log — same shape as morgan's 'combined' format, but auth tokens in
+// query strings are redacted: media URLs may carry ?token=<jwt> and those must
+// never be written to disk. (F-6)
+morgan.token('redacted-url', req => {
+  const raw = req.originalUrl || req.url || '';
+  return raw.replace(/([?&]token=)[^&\s"']+/gi, '$1[redacted]');
+});
+app.use(morgan(
+  ':remote-addr - :remote-user [:date[clf]] ":method :redacted-url HTTP/:http-version" :status :res[content-length] ":referrer" ":user-agent"'
+));
 
 // Rate limiters
 const { generalLimiter, authLimiter, uploadLimiter } = createRateLimiters();
@@ -129,7 +145,22 @@ app.get('/api/events', authMiddleware, (req, res) => {
 // Serve static frontend (same origin as API — required for playback without mixed-content)
 const docsPath = path.join(__dirname, '../docs');
 if (fs.existsSync(docsPath)) {
-  app.use(express.static(docsPath, { index: 'index.html', fallthrough: true }));
+  app.use(express.static(docsPath, {
+    index: 'index.html',
+    fallthrough: true,
+    setHeaders: (res, filePath) => {
+      const name = path.basename(filePath);
+      // Service worker + runtime config + HTML must always revalidate so
+      // deploys take effect immediately and SW updates are detected.
+      if (name === 'sw.js' || name === 'config.js' || /\.(html|json|webmanifest)$/i.test(name)) {
+        res.setHeader('Cache-Control', 'no-cache');
+        return;
+      }
+      // Everything else: 1h guaranteed-fresh, then serve stale while a
+      // background revalidation runs (fast repeat loads, never minutes stale).
+      res.setHeader('Cache-Control', 'public, max-age=3600, stale-while-revalidate=604800');
+    },
+  }));
   logger.info(`Serving static frontend from ${docsPath}`);
 }
 
@@ -189,6 +220,9 @@ function startServer() {
 }
 
 async function onServerStart() {
+  // Periodic transcode-cache cleanup — cleanupCache() was previously defined
+  // but never invoked, so stale transcodes grew without bound (F-8).
+  startCacheCleanupScheduler();
   try {
     // Initial scan
     logger.info('Starting initial library scan...');

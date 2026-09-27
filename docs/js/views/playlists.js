@@ -4,6 +4,8 @@
 import { store } from '../store.js';
 import { api } from '../api.js';
 import { toast } from '../components/toast.js';
+import { renderSkeletonGrid } from '../components/mediaGrid.js';
+import { confirmDialog } from '../components/confirmDialog.js';
 import { escapeHtml } from '../utils/format.js';
 
 export function renderPlaylists(container) {
@@ -29,7 +31,7 @@ export function renderPlaylists(container) {
   loadPlaylists();
   
   async function loadPlaylists() {
-    content.innerHTML = '<div class="skeleton-grid"></div>';
+    renderSkeletonGrid(content, 8);
     
     try {
       const data = await api.getPlaylists();
@@ -153,7 +155,13 @@ export function renderPlaylists(container) {
     
     content.querySelector('#back-btn').addEventListener('click', loadPlaylists);
     content.querySelector('#delete-pl').addEventListener('click', async () => {
-      if (!confirm(`Delete playlist "${playlist.name}"?`)) return;
+      const { confirmed } = await confirmDialog({
+        title: 'Delete playlist',
+        message: `Delete playlist "${playlist.name}"?`,
+        confirmText: 'Delete',
+        danger: true,
+      });
+      if (!confirmed) return;
       try {
         await api.deletePlaylist(playlist.id);
         toast.success('Playlist deleted');

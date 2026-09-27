@@ -117,6 +117,10 @@ export function initVideoPlayer() {
       if (played) played.style.width = `${percent}%`;
       if (thumb) thumb.style.left = `${percent}%`;
       if (currentTimeEl) currentTimeEl.textContent = formatTime(videoEl.currentTime);
+      if (progress) {
+        progress.setAttribute('aria-valuenow', String(Math.round(percent)));
+        progress.setAttribute('aria-valuetext', `${formatTime(videoEl.currentTime)} of ${formatTime(videoEl.duration || 0)}`);
+      }
       const now = Date.now();
       if (currentItem && now - lastProgressSave > 5000) {
         lastProgressSave = now;
@@ -276,7 +280,6 @@ export function initVideoPlayer() {
     if (e.key === 'Escape' && modal.classList.contains('active')) closePlayer();
   });
 
-  console.log('[VideoPlayer] Initialized');
 }
 
 export function openPlayer(item, { forceTranscode = false } = {}) {

@@ -14,9 +14,7 @@ export function renderHome(container) {
       <h1 class="page-title">Home</h1>
       <p class="page-subtitle">Welcome back, ${escapeHtml(store.get('user')?.username || 'user')} — here's what's new</p>
     </div>
-    <div id="home-content">
-      <div class="skeleton-grid"></div>
-    </div>
+    <div id="home-content"></div>
   `;
   
   const content = container.querySelector('#home-content');

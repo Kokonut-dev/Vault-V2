@@ -8,29 +8,21 @@ const logger = require('../utils/logger');
 router.get('/', (req, res) => {
   try {
     const { type, search, genre, year, sort, order, page, limit } = req.query;
-    let items = libraryService.getAll();
+    // F-14: always work on a copy — getAll() returns the live master array and
+    // the sort below used to mutate it, making response order depend on
+    // whatever a previous request left behind.
+    let items = libraryService.getAll().slice();
 
     // Filter by type
     if (type && type !== 'all') {
       items = items.filter(i => i.type === type);
     }
 
-    // Search
+    // Search — per-item haystacks are cached in the service (WeakMap),
+    // so this no longer rebuilds a joined lowercase string per item per call.
     if (search) {
       const q = search.toLowerCase();
-      items = items.filter(item => {
-        const haystack = [
-          item.title,
-          item.artist,
-          item.album,
-          item.genre,
-          item.year?.toString(),
-          item.description,
-          item.filename,
-          item.tags?.join(' '),
-        ].filter(Boolean).join(' ').toLowerCase();
-        return haystack.includes(q);
-      });
+      items = items.filter(item => libraryService.getSearchText(item).includes(q));
     }
 
     // Genre filter
@@ -50,21 +42,24 @@ router.get('/', (req, res) => {
       }
     }
 
-    // Sorting
+    // Sorting — decorate/sort/undecorate: each key is normalised once instead
+    // of toLowerCase() inside the comparator (~2n·log n calls on 1000 items).
     const sortField = sort || 'addedAt';
     const sortOrder = order === 'asc' ? 1 : -1;
-
-    items.sort((a, b) => {
-      let aVal = a[sortField];
-      let bVal = b[sortField];
-      if (aVal == null) aVal = '';
-      if (bVal == null) bVal = '';
-      if (typeof aVal === 'string') aVal = aVal.toLowerCase();
-      if (typeof bVal === 'string') bVal = bVal.toLowerCase();
-      if (aVal < bVal) return -1 * sortOrder;
-      if (aVal > bVal) return 1 * sortOrder;
-      return 0;
-    });
+    const sortKey = (item) => {
+      let v = item[sortField];
+      if (v == null) return '';
+      if (typeof v === 'string') return v.toLowerCase();
+      return v;
+    };
+    items = items
+      .map(item => ({ item, key: sortKey(item) }))
+      .sort((a, b) => {
+        if (a.key < b.key) return -1 * sortOrder;
+        if (a.key > b.key) return 1 * sortOrder;
+        return 0;
+      })
+      .map(entry => entry.item);
 
     // Pagination
     const pageNum = parseInt(page, 10) || 1;

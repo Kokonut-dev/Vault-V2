@@ -191,9 +191,39 @@ class ApiClient {
   }
 
   // Library
-  getLibrary(params = {}) {
-    const query = new URLSearchParams(params).toString();
-    return this.request(`/api/library?${query}`);
+  /**
+   * Fetch library items.
+   *
+   * - With an explicit `page`, behaves exactly like the server API (single
+   *   page response).
+   * - Without `page`, fetches EVERY page (the server caps each response at
+   *   `limit`) and returns the combined result — callers keep the old
+   *   `limit: 1000` contract but libraries larger than that are no longer
+   *   silently truncated (F-11).
+   */
+  async getLibrary(params = {}) {
+    const { page, limit = 50, ...rest } = params;
+    const buildQuery = (p) => {
+      const q = new URLSearchParams({ ...rest, limit: String(limit) });
+      if (p) q.set('page', String(p));
+      return q.toString();
+    };
+
+    if (page !== undefined) {
+      return this.request(`/api/library?${buildQuery(page)}`);
+    }
+
+    const first = await this.request(`/api/library?${buildQuery(1)}`);
+    const totalPages = first.totalPages || 1;
+    if (totalPages <= 1) return first;
+
+    const restPages = await Promise.all(
+      Array.from({ length: totalPages - 1 }, (_, i) =>
+        this.request(`/api/library?${buildQuery(i + 2)}`)
+      )
+    );
+    const items = [first.items || []].concat(restPages.map(r => r.items || [])).flat();
+    return { ...first, items, total: items.length, page: 1, totalPages: 1 };
   }
 
   getItem(id) {

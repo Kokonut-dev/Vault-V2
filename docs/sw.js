@@ -1,7 +1,7 @@
 /**
  * Vault Service Worker — PWA offline shell
  */
-const CACHE_NAME = 'vault-v2-shell-v1';
+const CACHE_NAME = 'vault-v2-shell-v2';
 const BASE_PATH = '/Vault-V2';
 
 const SHELL_ASSETS = [
@@ -10,18 +10,7 @@ const SHELL_ASSETS = [
   `${BASE_PATH}/config.js`,
   `${BASE_PATH}/manifest.json`,
   `${BASE_PATH}/favicon.svg`,
-  `${BASE_PATH}/css/reset.css`,
-  `${BASE_PATH}/css/variables.css`,
-  `${BASE_PATH}/css/themes.css`,
-  `${BASE_PATH}/css/glass.css`,
-  `${BASE_PATH}/css/grain.css`,
-  `${BASE_PATH}/css/layout.css`,
-  `${BASE_PATH}/css/components.css`,
-  `${BASE_PATH}/css/player.css`,
-  `${BASE_PATH}/css/search.css`,
-  `${BASE_PATH}/css/eq.css`,
-  `${BASE_PATH}/css/animations.css`,
-  `${BASE_PATH}/css/accessibility.css`,
+  `${BASE_PATH}/css/vault.css`,
   `${BASE_PATH}/css/onboarding.css`,
   `${BASE_PATH}/js/config.js`,
   `${BASE_PATH}/js/api.js`,

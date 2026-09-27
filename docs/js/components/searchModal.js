@@ -5,6 +5,7 @@ import { store } from '../store.js';
 import { api } from '../api.js';
 import { Fuse } from '../utils/fuse.js';
 import { router } from '../router.js';
+import { createFocusTrap } from '../utils/focusTrap.js';
 
 export class SearchModal {
   constructor() {
@@ -106,7 +107,8 @@ export class SearchModal {
     this.isOpen = true;
     this.container.classList.add('active');
     const input = this.container.querySelector('#search-input');
-    input.focus();
+    this.trap = createFocusTrap(this.container, { initialFocus: () => input });
+    this.trap.activate();
     input.select();
     this.showRecent();
   }
@@ -115,6 +117,10 @@ export class SearchModal {
     this.isOpen = false;
     this.container.classList.remove('active');
     this.selectedIndex = 0;
+    if (this.trap) {
+      this.trap.release();
+      this.trap = null;
+    }
     if (this.debounceTimer) {
       clearTimeout(this.debounceTimer);
       this.debounceTimer = null;

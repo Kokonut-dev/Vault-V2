@@ -4,6 +4,7 @@
 import { store } from '../store.js';
 import { renderMediaGrid, renderSkeletonGrid } from '../components/mediaGrid.js';
 import { renderMediaList } from '../components/mediaList.js';
+import { subscribeView, onUnmount } from '../utils/lifecycle.js';
 
 export function renderMovies(container) {
   container.className = 'page';
@@ -110,15 +111,43 @@ export function renderMovies(container) {
       renderMediaList(content, items, {
         onClick: open,
         onPlay: play,
+        sortField: sort === 'genre' ? 'artist' : sort,
+        sortOrder: order,
+        onSort: (field, next) => {
+          sort = field === 'artist' ? 'genre' : field;
+          order = next;
+          syncSortSelect();
+          render();
+        },
       });
     }
   }
+
+  // Keep the sort <select> truthful when a header sort picks a field the
+  // select has no option for — insert a dynamic option instead of lying.
+  function syncSortSelect() {
+    const value = `${sort}-${order}`;
+    sortSelect.querySelectorAll('option[data-dynamic]').forEach((o) => {
+      if (o.value !== value) o.remove();
+    });
+    if (![...sortSelect.options].some((o) => o.value === value)) {
+      const opt = document.createElement('option');
+      opt.value = value;
+      opt.dataset.dynamic = '1';
+      const labels = {'title': 'Title', 'artist': 'Artist', 'duration': 'Duration', 'year': 'Year', 'addedAt': 'Recently Added', 'rating': 'Rating', 'genre': 'Genre'};
+      opt.textContent = `${labels[sort] || sort} ${order === 'asc' ? '↑' : '↓'}`;
+      sortSelect.prepend(opt);
+    }
+    sortSelect.value = value;
+  }
+
   
   render();
   
   let renderTimer;
-  store.subscribe('library', () => {
+  subscribeView(store, 'library', () => {
     clearTimeout(renderTimer);
     renderTimer = setTimeout(render, 100);
   });
+  onUnmount(() => clearTimeout(renderTimer));
 }

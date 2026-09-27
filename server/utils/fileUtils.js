@@ -140,6 +140,107 @@ async function cleanCache(cacheDir, maxSizeMB) {
   }
 }
 
+// ---------------------------------------------------------------------------
+// F-15: non-blocking, crash-safe JSON persistence
+// ---------------------------------------------------------------------------
+
+// Per-file write chains — concurrent saves to the same path serialize instead
+// of racing on the temp file.
+const writeChains = new Map();
+
+/**
+ * Write JSON off the event loop and atomically: serialize to `<file>.tmp`,
+ * then rename over the target. A crash mid-write can no longer truncate
+ * library.json / playlists.json, and compact output (no `spaces: 2`) keeps
+ * large libraries small and fast to write.
+ *
+ * @param {string} filePath destination path
+ * @param {*} data JSON-serializable value
+ * @returns {Promise<void>} resolves when the file is durably replaced
+ */
+function writeJsonAtomic(filePath, data) {
+  const prev = writeChains.get(filePath) || Promise.resolve();
+  const next = prev
+    .then(async () => {
+      await fs.ensureDir(path.dirname(filePath));
+      const tmpPath = `${filePath}.tmp`;
+      await fs.writeJson(tmpPath, data); // compact: no spaces → smaller + faster
+      await fs.move(tmpPath, filePath, { overwrite: true });
+    })
+    .catch(err => {
+      // Keep the chain alive after a failure; surface via rethrow to callers.
+      throw err;
+    });
+  // Store the settled state so later writes proceed even after a failure.
+  writeChains.set(filePath, next.catch(() => {}));
+  return next;
+}
+
+/**
+ * Wait for every in-flight atomic write (any module) to settle.
+ * Called from libraryService.flush() on shutdown so nothing is lost.
+ */
+function flushWrites() {
+  return Promise.allSettled([...writeChains.values()]);
+}
+
+// ---------------------------------------------------------------------------
+// F-16: Range-aware file streaming (moved here from routes/media.js so the
+// transcode cache can reuse the exact same solid implementation).
+// ---------------------------------------------------------------------------
+
+function sendFileWithRange(req, res, filePath) {
+  const mime = require('mime-types');
+  const logger = require('./logger');
+  try {
+    const stat = fs.statSync(filePath);
+    const fileSize = stat.size;
+    const range = req.headers.range;
+    const contentType = mime.lookup(filePath) || 'application/octet-stream';
+
+    // Use setHeader (not writeHead) so CORS headers from middleware are preserved.
+    res.setHeader('Content-Type', contentType);
+    res.setHeader('Accept-Ranges', 'bytes');
+    res.setHeader('Cache-Control', 'private, max-age=0, must-revalidate');
+
+    const onStreamError = (stream) => {
+      stream.on('error', (err) => {
+        logger.error(`Stream error ${filePath}: ${err.message}`);
+        if (!res.headersSent) res.status(500).end();
+        else res.destroy();
+      });
+    };
+
+    if (range) {
+      const parts = range.replace(/bytes=/i, '').split('-');
+      let start = parseInt(parts[0], 10);
+      let end = parts[1] ? parseInt(parts[1], 10) : fileSize - 1;
+      if (Number.isNaN(start) || start < 0) start = 0;
+      if (Number.isNaN(end) || end >= fileSize) end = fileSize - 1;
+      if (start >= fileSize || start > end) {
+        res.setHeader('Content-Range', `bytes */${fileSize}`);
+        return res.status(416).end();
+      }
+      const chunkSize = end - start + 1;
+      res.status(206);
+      res.setHeader('Content-Range', `bytes ${start}-${end}/${fileSize}`);
+      res.setHeader('Content-Length', chunkSize);
+      const file = fs.createReadStream(filePath, { start, end });
+      onStreamError(file);
+      file.pipe(res);
+    } else {
+      res.status(200);
+      res.setHeader('Content-Length', fileSize);
+      const file = fs.createReadStream(filePath);
+      onStreamError(file);
+      file.pipe(res);
+    }
+  } catch (err) {
+    logger.error(`Failed to stream ${filePath}: ${err.message}`);
+    if (!res.headersSent) res.status(404).json({ error: 'File not found' });
+  }
+}
+
 module.exports = {
   getFileHash,
   ensureDir,
@@ -150,4 +251,7 @@ module.exports = {
   isMediaFile,
   parseMovieFilename,
   cleanCache,
+  writeJsonAtomic,
+  flushWrites,
+  sendFileWithRange,
 };

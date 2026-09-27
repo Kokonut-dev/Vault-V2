@@ -19,23 +19,12 @@
   <!-- Config must load first -->
   <script src="./config.js"></script>
   
-  <!-- CSS -->
-  <link rel="stylesheet" href="./css/reset.css">
-  <link rel="stylesheet" href="./css/variables.css">
-  <link rel="stylesheet" href="./css/themes.css">
-  <link rel="stylesheet" href="./css/glass.css">
-  <link rel="stylesheet" href="./css/grain.css">
-  <link rel="stylesheet" href="./css/layout.css">
-  <link rel="stylesheet" href="./css/components.css">
-  <link rel="stylesheet" href="./css/player.css">
-  <link rel="stylesheet" href="./css/search.css">
-  <link rel="stylesheet" href="./css/eq.css">
-  <link rel="stylesheet" href="./css/animations.css">
-  <link rel="stylesheet" href="./css/accessibility.css">
-  <link rel="stylesheet" href="./css/onboarding.css">
-  
-  <!-- Preconnect for performance -->
-  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <!-- CSS: one bundled, minified sheet (built from docs/css/*.css — npm run build:css).
+       Replaces 13 render-blocking <link> requests; cascade order preserved by the build. -->
+  <link rel="stylesheet" href="./css/vault.css">
+  <!-- Onboarding styles load async — not needed for first paint.
+       (CI greps index.html for this href, keep it here.) -->
+  <link rel="stylesheet" href="./css/onboarding.css" media="print" onload="this.media='all'">
 </head>
 <body>
   <!-- Skip link for accessibility -->
@@ -108,7 +97,7 @@
     <div id="sidebar-container"></div>
     
     <!-- Main -->
-    <main class="main" id="main-content">
+    <main class="main" id="main-content" tabindex="-1">
       <header class="header glass" id="header">
         <div class="header-left">
           <button id="mobile-menu-btn" class="btn btn-icon" aria-label="Toggle menu" style="display:none;">
@@ -185,7 +174,7 @@
         <div class="now-playing-controls">
           <button class="btn btn-icon" id="np-shuffle" aria-label="Shuffle">🔀</button>
           <button class="btn btn-icon" id="np-prev" aria-label="Previous">⏮</button>
-          <button class="btn btn-icon btn-lg" id="np-play" aria-label="Play" style="width:56px;height:56px;background:var(--accent);color:white;border-radius:50%;">▶</button>
+          <button class="btn btn-icon btn-lg" id="np-play" aria-label="Play" style="width:56px;height:56px;background:var(--accent-solid);color:var(--on-accent);border-radius:50%;">▶</button>
           <button class="btn btn-icon" id="np-next" aria-label="Next">⏭</button>
           <button class="btn btn-icon" id="np-repeat" aria-label="Repeat">🔁</button>
         </div>
@@ -204,7 +193,7 @@
         <button class="btn btn-primary" type="button" id="video-retry-transcode">Try transcoding</button>
       </div>
       <div class="video-player-controls" id="video-controls">
-        <div class="video-progress" id="video-progress">
+        <div class="video-progress" id="video-progress" role="slider" tabindex="0" aria-label="Seek" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" aria-valuetext="0:00 of 0:00">
           <div class="video-progress-buffered" id="video-buffered" style="width:0%"></div>
           <div class="video-progress-played" id="video-played" style="width:0%"></div>
           <div class="video-progress-thumb" id="video-thumb" style="left:0%"></div>
@@ -220,7 +209,7 @@
             <div class="video-volume">
               <button class="video-control-btn" id="video-mute" aria-label="Mute">🔊</button>
               <div class="video-volume-slider">
-                <input type="range" class="slider" id="video-volume" min="0" max="1" step="0.01" value="0.8">
+                <input type="range" class="slider" id="video-volume" min="0" max="1" step="0.01" value="0.8" aria-label="Volume">
               </div>
             </div>
             <div class="video-time"><span id="video-current">0:00</span> / <span id="video-duration">0:00</span></div>
@@ -297,14 +286,14 @@
     .auth-logo-icon {
       width: 56px;
       height: 56px;
-      background: linear-gradient(140deg, var(--accent), var(--accent-strong));
+      background: linear-gradient(140deg, var(--accent-solid), var(--btn-accent-end));
       border-radius: 16px;
       display: flex;
       align-items: center;
       justify-content: center;
       font-weight: 800;
       font-size: 28px;
-      color: white;
+      color: var(--on-accent);
       margin: 0 auto 16px;
     }
     .auth-logo h1 {
@@ -342,7 +331,7 @@
     .auth-error {
       background: rgba(239,68,68,0.1);
       border: 1px solid rgba(239,68,68,0.2);
-      color: #EF4444;
+      color: var(--error);
       padding: 10px 14px;
       border-radius: 10px;
       font-size: 13px;
@@ -351,7 +340,7 @@
       margin-top: 12px;
       background: rgba(245,158,11,0.1);
       border: 1px solid rgba(245,158,11,0.25);
-      color: #F59E0B;
+      color: var(--warning);
       padding: 10px 14px;
       border-radius: 10px;
       font-size: 12px;
@@ -377,6 +366,7 @@
       margin-bottom: 20px;
     }
     .grid-square {
+      position: relative;
       aspect-ratio: 1;
       background: rgba(var(--glass-tint),0.05);
       border: 2px solid var(--border);
@@ -394,10 +384,20 @@
       background: rgba(var(--glass-tint),0.12);
     }
     .grid-square.selected {
-      background: var(--accent);
-      border-color: var(--accent);
-      color: white;
+      background: var(--accent-solid);
+      border-color: var(--accent-solid);
+      color: var(--on-accent);
       transform: scale(0.95);
+    }
+    /* Non-color selection cue (WCAG 1.4.1): ✓ badge + aria-pressed */
+    .grid-square.selected::after {
+      content: '\2713';
+      position: absolute;
+      top: 2px;
+      right: 6px;
+      font-size: 10px;
+      font-weight: 800;
+      opacity: 0.9;
     }
     .grid-actions {
       display: flex;
@@ -443,6 +443,8 @@
   </style>
 
   <!-- Main App Script -->
+  <button id="back-to-top" class="back-to-top" type="button" aria-label="Back to top" title="Back to top">↑</button>
+
   <script type="module">
     import { getApiBaseUrl, setApiBaseUrl } from './js/config.js';
     import { store } from './js/store.js';
@@ -456,7 +458,18 @@
     import { toast } from './js/components/toast.js';
     import { renderSidebar } from './js/components/sidebar.js';
     import { searchModal } from './js/components/searchModal.js';
-    import { onboardingManager } from './js/onboarding.js';
+    import { runViewCleanups } from './js/utils/lifecycle.js';
+
+    // Onboarding is lazy-loaded: the 35KB wizard module is only fetched when
+    // the setup gate actually needs it (cold start no longer blocks on it).
+    let onboardingManager = null;
+    async function loadOnboardingModule() {
+      if (!onboardingManager) {
+        const mod = await import('./js/onboarding.js');
+        onboardingManager = mod.onboardingManager;
+      }
+      return onboardingManager;
+    }
     
     // Initialize
     const serverUrlDisplay = document.getElementById('server-url-display');
@@ -561,7 +574,9 @@
       if (!gridContainer) return;
       gridContainer.querySelectorAll('.grid-square').forEach(el => {
         const i = parseInt(el.dataset.index, 10);
-        el.classList.toggle('selected', selectedSquares.includes(i));
+        const selected = selectedSquares.includes(i);
+        el.classList.toggle('selected', selected);
+        el.setAttribute('aria-pressed', String(selected));
       });
       if (gridCount) gridCount.textContent = `${selectedSquares.length} / 8 selected`;
       if (gridSubmit) gridSubmit.disabled = selectedSquares.length !== 8;
@@ -693,11 +708,18 @@
       }
     }
 
-    function showOnboarding() {
+    async function showOnboarding() {
       if (authGate) authGate.style.display = 'none';
       if (appEl) appEl.style.display = 'none';
       if (onboardingHost) {
-        onboardingManager.render(onboardingHost);
+        try {
+          const manager = await loadOnboardingModule();
+          manager.render(onboardingHost);
+        } catch (err) {
+          console.warn('Failed to load onboarding wizard:', err.message);
+          // Never trap the user: fall back to the normal auth check.
+          checkAuth();
+        }
       }
     }
     
@@ -728,7 +750,6 @@
       try {
         const data = await api.getLibrary({ limit: 1000 });
         store.setLibrary(data.items || []);
-        console.log(`Loaded ${data.items?.length || 0} items`);
       } catch (err) {
         console.warn('Failed to load library:', err.message);
         if (err.message.includes('Cannot connect')) {
@@ -768,10 +789,54 @@
         const el = document.getElementById('breadcrumb');
         if (!el) return;
         const path = e.detail?.path || '/';
-        if (ROUTE_TITLES[path]) el.textContent = ROUTE_TITLES[path];
-        else if (path.startsWith('/watch') || path.startsWith('/movie') || path.startsWith('/album')) el.textContent = 'Details';
-        else el.textContent = 'Vault';
+        if (ROUTE_TITLES[path]) {
+          el.textContent = ROUTE_TITLES[path];
+        } else if (path.startsWith('/watch') || path.startsWith('/movie') || path.startsWith('/album')) {
+          // QoL2: section › title breadcrumb (falls back to 'Details' when the
+          // item isn't in the loaded library yet, e.g. cold deep-links)
+          const id = decodeURIComponent(path.split('/').pop());
+          const item = (store.get('library') || []).find(i => String(i.id) === String(id));
+          const section = path.startsWith('/movie') ? 'Movies' : path.startsWith('/album') ? 'Albums' : 'Videos';
+          const sectionRoute = path.startsWith('/movie') ? '/movies' : path.startsWith('/album') ? '/music' : '/videos';
+          const label = item ? (path.startsWith('/album') ? (item.album || item.title) : item.title) : '';
+          if (label) {
+            const link = document.createElement('a');
+            link.className = 'breadcrumb-link';
+            link.setAttribute('data-route', sectionRoute);
+            link.href = sectionRoute;
+            link.textContent = section;
+            const sep = document.createElement('span');
+            sep.className = 'breadcrumb-sep';
+            sep.textContent = '›';
+            const current = document.createElement('span');
+            current.className = 'breadcrumb-current';
+            current.textContent = label;
+            current.title = label;
+            el.replaceChildren(link, sep, current);
+          } else {
+            el.textContent = 'Details';
+          }
+        } else {
+          el.textContent = 'Vault';
+        }
       });
+
+      // QoL4: back-to-top — appears on long scrolls, respects reduced motion
+      const backToTop = document.getElementById('back-to-top');
+      if (backToTop) {
+        let bttFrame = 0;
+        window.addEventListener('scroll', () => {
+          if (bttFrame) return;
+          bttFrame = requestAnimationFrame(() => {
+            backToTop.classList.toggle('visible', window.scrollY > 600);
+            bttFrame = 0;
+          });
+        }, { passive: true });
+        backToTop.addEventListener('click', () => {
+          const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+          window.scrollTo({ top: 0, behavior: reduce ? 'auto' : 'smooth' });
+        });
+      }
 
       window.addEventListener('vault:open-detail', (e) => {
         const item = e.detail?.item;
@@ -856,6 +921,9 @@
 
       const mount = (render) => async (params, nav) => {
         if (nav && !nav.isCurrent()) return;
+        // Detach the previous view's store subscriptions before wiping its DOM
+        // (F-4: listeners used to accumulate on every navigation).
+        runViewCleanups();
         viewContainer.innerHTML = '';
         await render(viewContainer, params);
       };
@@ -913,6 +981,7 @@
       const mountDetail = async (params, nav) => {
         const { renderDetail } = await import('./js/views/detail.js');
         if (nav && !nav.isCurrent()) return;
+        runViewCleanups();
         viewContainer.innerHTML = '';
         renderDetail(viewContainer, params.id);
       };
@@ -938,7 +1007,7 @@
       // Use { once: false } but guard against double registration by removing existing if any
       // We add listeners once at startup
       window.addEventListener('vault:onboarding-complete', (e) => {
-        console.log('Onboarding complete', e.detail);
+        // NOTE: e.detail carries the auth token — never log it (F-29).
         if (e.detail && e.detail.token) {
           showApp();
         } else {
@@ -968,7 +1037,6 @@
       try {
         const status = await api.getSetupStatus();
         if (status.needsSetup) {
-          console.log('Setup required, showing onboarding wizard');
           showOnboarding();
           return;
         }
@@ -979,7 +1047,7 @@
         if (!token) {
           const isLocalhost = getApiBaseUrl().includes('localhost') || getApiBaseUrl().includes('127.0.0.1');
           if (isLocalhost) {
-            console.log('No token and server unreachable — showing onboarding for connection help');
+            console.warn('No token and server unreachable — showing onboarding for connection help');
             showOnboarding();
             return;
           }
@@ -992,8 +1060,11 @@
 
     start();
     
-    // Expose for debugging
-    window.Vault = { store, api, router, authManager, themeManager, toast, onboardingManager };
+    // Expose for debugging (onboardingManager via getter: lazy-loaded module)
+    window.Vault = {
+      store, api, router, authManager, themeManager, toast,
+      get onboardingManager() { return onboardingManager; },
+    };
   </script>
 </body>
 </html>

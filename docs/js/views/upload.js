@@ -36,8 +36,8 @@ export function renderUpload(container) {
       <div style="background:rgba(var(--glass-tint),0.05); border:1px solid rgba(var(--glass-tint),0.1); border-radius:16px; padding:24px;">
         <h3 id="upload-type-title" style="font-size:18px; font-weight:700; margin-bottom:16px;"></h3>
         
-        <div id="drop-zone" style="border:2px dashed var(--border); border-radius:12px; padding:40px; text-align:center; cursor:pointer; transition:all 0.2s;">
-          <div style="font-size:24px; margin-bottom:8px;">↑</div>
+        <div id="drop-zone">
+          <div id="drop-zone-arrow" style="font-size:24px; margin-bottom:8px;">↑</div>
           <div style="font-weight:600;">Drop files here or click to browse</div>
           <div style="font-size:12px; color:var(--text-secondary); margin-top:4px;">Support for batch upload</div>
           <input type="file" id="file-input" multiple style="display:none;">
@@ -78,9 +78,30 @@ export function renderUpload(container) {
         border-color: var(--accent);
         background: var(--accent-muted);
       }
+      #drop-zone {
+        border: 2px dashed var(--border-strong);
+        border-radius: 14px;
+        padding: 44px 24px;
+        text-align: center;
+        cursor: pointer;
+        background: rgba(var(--glass-tint), 0.03);
+        transition: border-color 0.2s ease-out, background 0.2s ease-out,
+                    box-shadow 0.2s ease-out;
+      }
+      #drop-zone:hover {
+        border-color: var(--accent);
+        background: rgba(var(--glass-tint), 0.06);
+      }
       #drop-zone.dragover {
         border-color: var(--accent);
         background: var(--accent-muted);
+        box-shadow: 0 0 0 4px var(--accent-muted);
+      }
+      #drop-zone-arrow {
+        transition: transform 0.25s var(--ease-out);
+      }
+      #drop-zone.dragover #drop-zone-arrow {
+        transform: translateY(-6px);
       }
     </style>
   `;

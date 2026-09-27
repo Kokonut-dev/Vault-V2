@@ -23,6 +23,7 @@ export function createMediaCard(item, options = {}) {
   const card = document.createElement('div');
   card.className = 'media-card';
   card.dataset.id = item.id;
+  card.dataset.type = item.type || 'movie'; // F-12: per-type intrinsic sizes in CSS
   card.setAttribute('role', 'button');
   card.setAttribute('tabindex', '0');
   card.setAttribute('aria-label', `${item.title} ${item.artist ? `by ${item.artist}` : ''}`);

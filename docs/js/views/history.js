@@ -6,6 +6,8 @@ import { renderMediaList } from '../components/mediaList.js';
 import { formatRelativeTime, escapeHtml } from '../utils/format.js';
 import { api } from '../api.js';
 import { toast } from '../components/toast.js';
+import { confirmDialog } from '../components/confirmDialog.js';
+import { subscribeView } from '../utils/lifecycle.js';
 
 export function renderHistory(container) {
   container.className = 'page';
@@ -26,7 +28,13 @@ export function renderHistory(container) {
   const clearBtn = container.querySelector('#clear-history');
   
   clearBtn.addEventListener('click', async () => {
-    if (!confirm('Clear all history?')) return;
+    const { confirmed } = await confirmDialog({
+      title: 'Clear history',
+      message: 'Clear all watch history? This cannot be undone.',
+      confirmText: 'Clear all',
+      danger: true,
+    });
+    if (!confirmed) return;
     try {
       await api.clearHistory();
       store.set('history', [], true);
@@ -73,6 +81,10 @@ export function renderHistory(container) {
     items.forEach(item => {
       const row = document.createElement('div');
       row.className = 'media-list-item';
+      const watchedDate = new Date(item.history.watchedAt);
+      const timeAttrs = Number.isNaN(watchedDate.getTime())
+        ? ''
+        : `datetime="${watchedDate.toISOString()}" title="${watchedDate.toLocaleString()}"`;
       row.innerHTML = `
         <div class="media-list-item-main">
           <div class="media-list-item-cover">
@@ -84,11 +96,11 @@ export function renderHistory(container) {
           </div>
         </div>
         <div>
-          <div class="progress" style="width:80px;">
+          <div class="progress" style="width:80px;" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${item.history.progress || 0}" aria-label="Watched">
             <div class="progress-bar" style="width:${item.history.progress || 0}%"></div>
           </div>
         </div>
-        <div style="font-size:12px; color:var(--text-secondary);">${formatRelativeTime(item.history.watchedAt)}</div>
+        <div style="font-size:12px; color:var(--text-secondary);"><time ${timeAttrs}>${formatRelativeTime(item.history.watchedAt)}</time></div>
         <div>
           <button class="btn btn-ghost btn-sm" data-id="${item.id}">Play</button>
         </div>
@@ -109,5 +121,5 @@ export function renderHistory(container) {
   }
   
   render();
-  store.subscribe('history', render);
+  subscribeView(store, 'history', render);
 }

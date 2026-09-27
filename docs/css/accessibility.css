@@ -24,8 +24,8 @@
   position: absolute;
   top: -40px;
   left: 0;
-  background: var(--accent);
-  color: white;
+  background: var(--accent-solid);
+  color: var(--on-accent);
   padding: 8px 16px;
   border-radius: 0 0 var(--radius-md) 0;
   font-weight: 600;
@@ -89,7 +89,13 @@ html {
   .btn,
   .nav-item,
   .media-card,
-  .video-control-btn {
+  .video-control-btn,
+  .search-trigger,
+  .view-toggle button,
+  .filter-chips .btn,
+  .eq-preset,
+  .toast-close,
+  .mini-player button {
     min-height: 44px;
     min-width: 44px;
   }
@@ -103,12 +109,12 @@ html {
 /* Color contrast — ensure AA */
 [data-theme="dark"] {
   --text-primary: rgba(255,255,255,0.92); /* 15.8:1 on #0A0A0A */
-  --text-secondary: rgba(255,255,255,0.6); /* 7.1:1 */
+  --text-secondary: rgba(255,255,255,0.62); /* 7.8:1 */
 }
 
 [data-theme="light"] {
   --text-primary: rgba(0,0,0,0.87); /* 15.8:1 on white */
-  --text-secondary: rgba(0,0,0,0.6); /* 7:1 */
+  --text-secondary: rgba(0,0,0,0.66); /* 8.7:1 */
 }
 
 /* Keyboard navigation indicators */

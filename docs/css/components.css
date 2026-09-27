@@ -30,8 +30,8 @@
 }
 
 .btn-primary {
-  background: linear-gradient(140deg, var(--accent), var(--accent-hover));
-  color: white;
+  background: linear-gradient(140deg, var(--accent-solid), var(--btn-accent-end));
+  color: var(--on-accent);
   border-color: transparent;
   box-shadow: 0 6px 18px var(--accent-muted), inset 0 1px 0 rgba(255, 255, 255, 0.28);
 }
@@ -57,6 +57,18 @@
 .btn-secondary:hover {
   background: rgba(var(--glass-tint), calc(var(--glass-fill) + 0.08));
   border-color: var(--border-strong);
+}
+
+.btn-danger {
+  background: rgba(var(--glass-tint), calc(var(--glass-fill) + 0.03));
+  color: var(--error);
+  border-color: rgba(239, 68, 68, 0.35);
+  box-shadow: inset 0 1px 0 var(--glass-highlight-soft);
+}
+
+.btn-danger:hover {
+  background: rgba(239, 68, 68, 0.12);
+  border-color: rgba(239, 68, 68, 0.55);
 }
 
 .btn-ghost {
@@ -117,7 +129,24 @@
   border: 1px solid rgba(var(--glass-tint), var(--glass-hairline));
   box-shadow: inset 0 1px 0 var(--glass-highlight-soft);
   content-visibility: auto;
+  /* F-12: remember the real rendered size once seen (auto <length>) so
+     off-screen cards don't make the scrollbar jump; the fixed values are
+     progressive-enhancement fallbacks for older engines. */
   contain-intrinsic-size: 180px 270px;
+  contain-intrinsic-size: auto 180px 270px;
+}
+
+/* Per-type estimates: music covers are square (1:1), video covers 16:9 —
+   previously all cards estimated 2:3 and music/video grids jumped while
+   scrolling. */
+.media-card[data-type="music"] {
+  contain-intrinsic-size: 180px 224px;
+  contain-intrinsic-size: auto 180px 224px;
+}
+
+.media-card[data-type="video"] {
+  contain-intrinsic-size: 180px 150px;
+  contain-intrinsic-size: auto 180px 150px;
 }
 
 .media-card:hover {
@@ -139,7 +168,9 @@
   height: 100%;
   object-fit: cover;
   transition: transform var(--duration-slow) var(--ease-out);
-  will-change: transform;
+  /* F-3: no will-change here — promoting every card image to its own
+     compositor layer meant 1 000+ GPU textures on large libraries. The
+     hover scale transition runs fine without it. */
 }
 
 .media-card:hover .media-card-cover img {
@@ -175,12 +206,12 @@
 .media-card-play {
   width: 52px;
   height: 52px;
-  background: var(--accent);
+  background: var(--accent-solid);
   border-radius: var(--radius-full);
   display: flex;
   align-items: center;
   justify-content: center;
-  color: white;
+  color: var(--on-accent);
   transform: translateY(8px) scale(0.92);
   transition: transform var(--duration-normal) var(--ease-out), box-shadow var(--duration-fast);
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.3);
@@ -300,6 +331,9 @@
   border: 1px solid rgba(var(--glass-tint), var(--glass-hairline));
   border-radius: var(--radius-lg);
   overflow: hidden;
+  /* clip keeps the rounded-corner masking but does NOT create a scroll
+     container, so the sticky header inside can pin to the viewport */
+  overflow: clip;
   background: rgba(var(--glass-tint), calc(var(--glass-fill) * 0.7));
   box-shadow: inset 0 1px 0 var(--glass-highlight-soft);
 }
@@ -316,6 +350,62 @@
   text-transform: uppercase;
   letter-spacing: 0.05em;
   color: var(--text-tertiary);
+  /* QoL3: head stays visible on long lists — pinned under the glass header */
+  position: sticky;
+  top: calc(var(--shell-gap) + var(--header-height) + var(--shell-gap));
+  z-index: 2;
+  background-clip: padding-box;
+}
+
+.media-list--library .media-list-header {
+  background-color: rgba(var(--glass-tint), 0.92);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+}
+
+.media-list-sort {
+  appearance: none;
+  background: transparent;
+  border: 0;
+  padding: 0;
+  margin: 0;
+  font: inherit;
+  letter-spacing: inherit;
+  text-transform: inherit;
+  color: inherit;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  transition: color var(--duration-fast) var(--ease-out);
+}
+
+.media-list-sort:hover {
+  color: var(--text-primary);
+}
+
+.media-list-sort.active {
+  color: var(--accent-text);
+}
+
+.media-list-sort .sort-ind {
+  font-size: 8px;
+  line-height: 1;
+}
+
+/* QoL/F-23: drop year + duration columns on small screens instead of
+   overflowing; scope to library lists so history's action column survives */
+@media (max-width: 640px) {
+  .media-list--library .media-list-header,
+  .media-list--library .media-list-item {
+    grid-template-columns: 1fr 110px;
+  }
+  .media-list--library .media-list-header > span:nth-child(n + 3),
+  .media-list--library .media-list-header > button:nth-child(n + 3),
+  .media-list--library .media-list-item > div:nth-child(n + 3) {
+    display: none;
+  }
 }
 
 .media-list-item {
@@ -324,17 +414,25 @@
   gap: var(--space-md);
   padding: var(--space-sm) var(--space-md);
   align-items: center;
-  transition: background var(--duration-fast) var(--ease-out);
+  transition: background var(--duration-fast) var(--ease-out),
+              box-shadow var(--duration-fast) var(--ease-out);
   cursor: pointer;
   border-bottom: 1px solid rgba(var(--glass-tint), 0.05);
+}
+
+/* Row rhythm: gentle zebra (header is child 1, so items sit on 2..n) */
+.media-list-item:nth-child(even) {
+  background: rgba(var(--glass-tint), 0.03);
 }
 
 .media-list-item:last-child {
   border-bottom: none;
 }
 
-.media-list-item:hover {
+.media-list-item:hover,
+.media-list-item:focus-visible {
   background: rgba(var(--glass-tint), 0.07);
+  box-shadow: inset 2px 0 0 var(--accent);
 }
 
 .media-list-item-main {
@@ -348,8 +446,8 @@
   width: 28px;
   height: 28px;
   border-radius: 50%;
-  background: var(--accent);
-  color: white;
+  background: var(--accent-solid);
+  color: var(--on-accent);
   font-size: 11px;
   display: flex;
   align-items: center;
@@ -518,6 +616,16 @@
   font-size: 14px;
   transition: all var(--duration-fast) var(--ease-out);
   width: 100%;
+}
+
+.form-select {
+  appearance: none;
+  -webkit-appearance: none;
+  padding-right: 36px;
+  cursor: pointer;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%238a8f98' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 14px center;
 }
 
 .form-input:focus,
@@ -736,7 +844,7 @@
 
 .badge-accent {
   background: var(--accent-muted);
-  color: var(--accent);
+  color: var(--accent-text);
 }
 
 .badge-success {
@@ -759,11 +867,11 @@
 }
 
 .rating-star.filled {
-  color: #F59E0B;
+  color: var(--warning); /* AA on every theme incl. light (2.1:1 for #F59E0B) */
 }
 
 .rating-star:hover {
-  color: #F59E0B;
+  color: var(--warning);
 }
 
 /* ---------- Progress bar ---------- */

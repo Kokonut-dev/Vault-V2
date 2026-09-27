@@ -4,7 +4,12 @@
   position: fixed;
   inset: 0;
   pointer-events: none;
-  z-index: 9998;
+  /* F-5: was z-index 9998 — above modals, toasts, auth gate and onboarding,
+     so grain painted over dialogs and the login screen. The app shell (.app)
+     is a z-index:1 stacking context, so 50 sits above page content but below
+     every body-level overlay (mini-player 120, modal 200, search 210,
+     toast 300, auth 400) — matching the documented z-index system. */
+  z-index: 50;
   opacity: var(--grain-opacity, 0.03);
   mix-blend-mode: overlay;
   background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E");
@@ -15,7 +20,10 @@
 .grain-overlay::after {
   content: '';
   position: absolute;
-  inset: -50%;
+  /* F-5: was inset:-50% — a 4× viewport layer re-composited forever.
+     1.44× viewport keeps the shake fully covered (keyframe deltas are ≤8% of
+     the element's own size) at a fraction of the blend area. */
+  inset: -10%;
   background-image: url("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADIAAAAyCAMAAAAp4XiDAAAAUVBMVEWFhYWDg4N3d3dtbW17e3t1dXWBgYGHh4d5eXlzc3OLi4ubm5uVlZWRkZGZmZlpaWmBgYGbGxsaWlpeXl5YWFhXV1dWVlZbW1tQUFBMTExJSUlDQ0NxcXFhYWFhYWFhYZvJ2aAAAAG3RSTlMAM2BggGBgYGCAgIDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMAAAABYktHRACIBR1IAAAACXBIWXMAAAsSAAALEgHS3X78AAAAB3RJTUUH6AYSETM3K5u4ZQAAABl0RVh0Q29tbWVudABDcmVhdGVkIHdpdGggR0lNUFeBDhcAAABYSURBVEjH7c9BCQAgDMBAjDD//7M2hC1YxJ3s7M7M7M7M7M7M7M7M7M7M7M7M7M7M7M7M7M7M7M7M7M7M7M7M7M7M7M7M7M7M7M7M7M7M7M7M7M7M7M7M7M7M7M7M7M4BvgAKvYD0AAAAAElFTkSuQmCC");
   opacity: 0.5;
   animation: grainShift 8s steps(10) infinite;
@@ -23,23 +31,24 @@
 
 @keyframes grainShift {
   0%, 100% { transform: translate(0, 0); }
-  10% { transform: translate(-5%, -10%); }
-  20% { transform: translate(-15%, 5%); }
-  30% { transform: translate(7%, -25%); }
-  40% { transform: translate(-5%, 25%); }
-  50% { transform: translate(-15%, 10%); }
-  60% { transform: translate(15%, 0%); }
-  70% { transform: translate(0%, 15%); }
-  80% { transform: translate(3%, -15%); }
-  90% { transform: translate(-10%, 10%); }
+  10% { transform: translate(-4%, -6%); }
+  20% { transform: translate(-8%, 3%); }
+  30% { transform: translate(5%, -8%); }
+  40% { transform: translate(-3%, 8%); }
+  50% { transform: translate(-7%, 5%); }
+  60% { transform: translate(8%, 0%); }
+  70% { transform: translate(0%, 7%); }
+  80% { transform: translate(3%, -7%); }
+  90% { transform: translate(-6%, 4%); }
 }
 
-/* Subtle static grain alternative (better performance) */
+/* Subtle static grain alternative (better performance) — same layer slot
+   as .grain-overlay (z 50): over content, under dialogs. */
 .grain-static {
   position: fixed;
   inset: 0;
   pointer-events: none;
-  z-index: 9998;
+  z-index: 50;
   opacity: var(--grain-opacity, 0.03);
   background-image: 
     repeating-linear-gradient(0deg, rgba(0,0,0,0.03) 0px, transparent 1px, transparent 2px, rgba(0,0,0,0.03) 3px),

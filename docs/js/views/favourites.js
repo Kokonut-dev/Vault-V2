@@ -3,6 +3,7 @@
  */
 import { store } from '../store.js';
 import { renderMediaGrid } from '../components/mediaGrid.js';
+import { subscribeView } from '../utils/lifecycle.js';
 
 export function renderFavourites(container) {
   container.className = 'page';
@@ -36,6 +37,6 @@ export function renderFavourites(container) {
   }
   
   render();
-  store.subscribe('favourites', render);
-  store.subscribe('library', render);
+  subscribeView(store, 'favourites', render);
+  subscribeView(store, 'library', render);
 }

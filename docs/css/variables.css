@@ -91,7 +91,7 @@
 
   --text-primary: rgba(255, 255, 255, 0.94);
   --text-secondary: rgba(255, 255, 255, 0.62);
-  --text-tertiary: rgba(255, 255, 255, 0.38);
+  --text-tertiary: rgba(255, 255, 255, 0.48);  /* AA 4.99:1 */
   --text-inverse: #08080B;
 
   --border: rgba(255, 255, 255, 0.09);
@@ -102,6 +102,12 @@
   --accent-hover: #6B4FE0;
   --accent-muted: rgba(124, 92, 255, 0.16);
   --accent-strong: #9B85FF;
+  /* Accent roles: -text = accent-colored text (4.6:1), -solid = filled accent
+     surfaces, btn-accent-end = gradient far stop, -on = content on solid */
+  --accent-text: #7C5CFF;
+  --accent-solid: #6B4FE0;
+  --btn-accent-end: #5B3AD0;
+  --on-accent: #FFFFFF;
 
   --success: #22C55E;
   --warning: #F59E0B;
@@ -148,8 +154,8 @@
   --bg-active: #E6E8EE;
 
   --text-primary: rgba(10, 10, 12, 0.92);
-  --text-secondary: rgba(10, 10, 12, 0.6);
-  --text-tertiary: rgba(10, 10, 12, 0.42);
+  --text-secondary: rgba(10, 10, 12, 0.66);
+  --text-tertiary: rgba(10, 10, 12, 0.58);   /* AA 4.88:1 */
   --text-inverse: #FFFFFF;
 
   --border: rgba(10, 12, 20, 0.09);
@@ -160,10 +166,16 @@
   --accent-hover: #5B3AD0;
   --accent-muted: rgba(109, 75, 224, 0.12);
   --accent-strong: #5334B8;
+  /* Accent roles: -text = accent-colored text (5.16:1), -solid = filled accent
+     surfaces, btn-accent-end = gradient far stop, -on = content on solid */
+  --accent-text: #6D4BE0;
+  --accent-solid: #6D4BE0;
+  --btn-accent-end: #5B3AD0;
+  --on-accent: #FFFFFF;
 
-  --success: #16A34A;
-  --warning: #D97706;
-  --error: #DC2626;
+  --success: #157A3B;   /* 4.97:1 on white */
+  --warning: #A8540B;   /* 4.89:1 on white */
+  --error: #C01818;     /* 5.69:1 on white */
   --info: #2563EB;
 
   --shadow-color: rgba(16, 20, 40, 0.1);
@@ -204,8 +216,8 @@
   --bg-active: #EBDCB9;
 
   --text-primary: #3D2B1F;
-  --text-secondary: rgba(61, 43, 31, 0.66);
-  --text-tertiary: rgba(61, 43, 31, 0.42);
+  --text-secondary: rgba(61, 43, 31, 0.78);
+  --text-tertiary: rgba(61, 43, 31, 0.68);   /* AA 4.66:1 */
   --text-inverse: #FFFDF7;
 
   --border: rgba(61, 43, 31, 0.11);
@@ -216,9 +228,15 @@
   --accent-hover: #B45309;
   --accent-muted: rgba(217, 119, 6, 0.14);
   --accent-strong: #92400E;
+  /* Accent roles: -text = accent-colored text (6.43:1), -solid = filled accent
+     surfaces (buttons deepen to meet AA with white), -on = content on solid */
+  --accent-text: #92400E;
+  --accent-solid: #B45309;
+  --btn-accent-end: #92400E;
+  --on-accent: #FFFFFF;
 
   --success: #15803D;
-  --warning: #B45309;
+  --warning: #92400E;   /* distinct from --accent, 7.09:1 on white */
   --error: #B91C1C;
   --info: #1D4ED8;
 
@@ -260,7 +278,7 @@
 
   --text-primary: #F1F5F9;
   --text-secondary: rgba(226, 232, 240, 0.66);
-  --text-tertiary: rgba(148, 163, 184, 0.7);
+  --text-tertiary: rgba(148, 163, 184, 0.76); /* AA 4.78:1 */
   --text-inverse: #070D18;
 
   --border: rgba(148, 163, 184, 0.14);
@@ -271,6 +289,12 @@
   --accent-hover: #06B6D4;
   --accent-muted: rgba(34, 211, 238, 0.14);
   --accent-strong: #67E8F9;
+  /* Accent roles: cyan is a light accent — text role = deep cyan companion
+     (10.76:1); solid fill keeps brand cyan with a dark label (10.76:1) */
+  --accent-text: #22D3EE;   /* current cold accent already passes at 10.76:1 */
+  --accent-solid: #22D3EE;
+  --btn-accent-end: #06B6D4;
+  --on-accent: #070D18;
 
   --success: #22C55E;
   --warning: #F59E0B;

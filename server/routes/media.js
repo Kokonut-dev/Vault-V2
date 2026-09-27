@@ -7,56 +7,9 @@ const libraryService = require('../services/library');
 const metadataService = require('../services/metadata');
 const thumbnailService = require('../services/thumbnail');
 const logger = require('../utils/logger');
-
-function sendFileWithRange(req, res, filePath) {
-  try {
-    const stat = fs.statSync(filePath);
-    const fileSize = stat.size;
-    const range = req.headers.range;
-    const contentType = mime.lookup(filePath) || 'application/octet-stream';
-
-    // Use setHeader (not writeHead) so CORS headers from middleware are preserved.
-    res.setHeader('Content-Type', contentType);
-    res.setHeader('Accept-Ranges', 'bytes');
-    res.setHeader('Cache-Control', 'private, max-age=0, must-revalidate');
-
-    const onStreamError = (stream) => {
-      stream.on('error', (err) => {
-        logger.error(`Stream error ${filePath}: ${err.message}`);
-        if (!res.headersSent) res.status(500).end();
-        else res.destroy();
-      });
-    };
-
-    if (range) {
-      const parts = range.replace(/bytes=/i, '').split('-');
-      let start = parseInt(parts[0], 10);
-      let end = parts[1] ? parseInt(parts[1], 10) : fileSize - 1;
-      if (Number.isNaN(start) || start < 0) start = 0;
-      if (Number.isNaN(end) || end >= fileSize) end = fileSize - 1;
-      if (start >= fileSize || start > end) {
-        res.setHeader('Content-Range', `bytes */${fileSize}`);
-        return res.status(416).end();
-      }
-      const chunkSize = end - start + 1;
-      res.status(206);
-      res.setHeader('Content-Range', `bytes ${start}-${end}/${fileSize}`);
-      res.setHeader('Content-Length', chunkSize);
-      const file = fs.createReadStream(filePath, { start, end });
-      onStreamError(file);
-      file.pipe(res);
-    } else {
-      res.status(200);
-      res.setHeader('Content-Length', fileSize);
-      const file = fs.createReadStream(filePath);
-      onStreamError(file);
-      file.pipe(res);
-    }
-  } catch (err) {
-    logger.error(`Failed to stream ${filePath}: ${err.message}`);
-    if (!res.headersSent) res.status(404).json({ error: 'File not found' });
-  }
-}
+// Shared Range-aware streaming helper (moved to utils so the transcode cache
+// route can reuse it — F-16).
+const { sendFileWithRange } = require('../utils/fileUtils');
 
 router.get('/stream/:id', (req, res) => {
   const item = libraryService.getById(req.params.id);

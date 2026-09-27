@@ -66,7 +66,9 @@ class Store {
       videoProgress: {},
 
       // UI
-      theme: localStorage.getItem('vault_theme') || 'dark',
+      // QoL: first run follows the OS preference; a saved theme always wins.
+      theme: localStorage.getItem('vault_theme')
+        || (window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark'),
       glassIntensity: safeInt('vault_glass', 20),
       grainIntensity: safeInt('vault_grain', 15),
       sidebarCollapsed: localStorage.getItem('vault_sidebar_collapsed') === 'true',

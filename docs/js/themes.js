@@ -25,7 +25,23 @@ export class ThemeManager {
 
   setTheme(theme) {
     if (!this.themes.includes(theme)) theme = 'dark';
-    document.documentElement.setAttribute('data-theme', theme);
+    // Idempotence guard: store.set('theme') re-emits into the 'theme'
+    // subscriber above, which called back into setTheme — previously that
+    // recursed until the stack overflowed (the store's try/catch swallowed
+    // the RangeError) and re-dispatched vault:theme-changed thousands of
+    // times per switch. Return early when everything already matches.
+    const root = document.documentElement;
+    if (root.getAttribute('data-theme') === theme && store.get('theme') === theme) return;
+
+    // F-2: scope universal transitions to the switch itself (themes.css) —
+    // the class is removed shortly after the fade settles.
+    root.setAttribute('data-theme', theme);
+    root.classList.add('theme-transition');
+    clearTimeout(this._themeTransitionTimer);
+    this._themeTransitionTimer = setTimeout(() => {
+      root.classList.remove('theme-transition');
+    }, 500);
+
     store.set('theme', theme, true);
     localStorage.setItem('vault_theme', theme);
     // Dispatch event
