@@ -6,6 +6,7 @@ import { renderMediaList } from '../components/mediaList.js';
 import { formatRelativeTime, escapeHtml } from '../utils/format.js';
 import { api } from '../api.js';
 import { toast } from '../components/toast.js';
+import { subscribeView } from '../utils/lifecycle.js';
 
 export function renderHistory(container) {
   container.className = 'page';
@@ -109,5 +110,5 @@ export function renderHistory(container) {
   }
   
   render();
-  store.subscribe('history', render);
+  subscribeView(store, 'history', render);
 }

@@ -445,6 +445,7 @@
     import { toast } from './js/components/toast.js';
     import { renderSidebar } from './js/components/sidebar.js';
     import { searchModal } from './js/components/searchModal.js';
+    import { runViewCleanups } from './js/utils/lifecycle.js';
 
     // Onboarding is lazy-loaded: the 35KB wizard module is only fetched when
     // the setup gate actually needs it (cold start no longer blocks on it).
@@ -861,6 +862,9 @@
 
       const mount = (render) => async (params, nav) => {
         if (nav && !nav.isCurrent()) return;
+        // Detach the previous view's store subscriptions before wiping its DOM
+        // (F-4: listeners used to accumulate on every navigation).
+        runViewCleanups();
         viewContainer.innerHTML = '';
         await render(viewContainer, params);
       };
@@ -918,6 +922,7 @@
       const mountDetail = async (params, nav) => {
         const { renderDetail } = await import('./js/views/detail.js');
         if (nav && !nav.isCurrent()) return;
+        runViewCleanups();
         viewContainer.innerHTML = '';
         renderDetail(viewContainer, params.id);
       };

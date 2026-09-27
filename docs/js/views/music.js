@@ -6,6 +6,7 @@ import { renderMediaGrid } from '../components/mediaGrid.js';
 import { renderMediaList } from '../components/mediaList.js';
 import { api } from '../api.js';
 import { escapeHtml } from '../utils/format.js';
+import { subscribeView, onUnmount } from '../utils/lifecycle.js';
 
 export function renderMusic(container) {
   container.className = 'page';
@@ -242,8 +243,9 @@ export function renderMusic(container) {
   render();
   // Debounce library subscription to avoid thrashing
   let renderTimeout;
-  store.subscribe('library', () => {
+  subscribeView(store, 'library', () => {
     clearTimeout(renderTimeout);
     renderTimeout = setTimeout(render, 100);
   });
+  onUnmount(() => clearTimeout(renderTimeout));
 }

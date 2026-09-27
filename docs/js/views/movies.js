@@ -4,6 +4,7 @@
 import { store } from '../store.js';
 import { renderMediaGrid, renderSkeletonGrid } from '../components/mediaGrid.js';
 import { renderMediaList } from '../components/mediaList.js';
+import { subscribeView, onUnmount } from '../utils/lifecycle.js';
 
 export function renderMovies(container) {
   container.className = 'page';
@@ -117,8 +118,9 @@ export function renderMovies(container) {
   render();
   
   let renderTimer;
-  store.subscribe('library', () => {
+  subscribeView(store, 'library', () => {
     clearTimeout(renderTimer);
     renderTimer = setTimeout(render, 100);
   });
+  onUnmount(() => clearTimeout(renderTimer));
 }
