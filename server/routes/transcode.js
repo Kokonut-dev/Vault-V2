@@ -5,6 +5,7 @@ const path = require('path');
 const libraryService = require('../services/library');
 const transcoderService = require('../services/transcoder');
 const logger = require('../utils/logger');
+const { sendFileWithRange } = require('../utils/fileUtils');
 
 router.get('/audio/:id', (req, res) => {
   const item = libraryService.getById(req.params.id);
@@ -28,15 +29,12 @@ router.get('/:id', (req, res) => {
 
   const { quality = '720p', format = 'mp4', audioCodec = 'aac' } = req.query;
 
-  // Check cache first
+  // Check cache first — serve through the shared Range-aware helper so
+  // seeking in a cached transcode returns proper 206 responses (F-16).
   const cachePath = transcoderService.getCachePath(item.id, quality, format);
   if (fs.existsSync(cachePath)) {
     logger.info(`Serving cached transcode: ${cachePath}`);
-    const stat = fs.statSync(cachePath);
-    res.setHeader('Content-Type', 'video/mp4');
-    res.setHeader('Content-Length', stat.size);
-    res.setHeader('Accept-Ranges', 'bytes');
-    return fs.createReadStream(cachePath).pipe(res);
+    return sendFileWithRange(req, res, cachePath);
   }
 
   // Stream transcode

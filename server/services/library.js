@@ -2,6 +2,7 @@ const fs = require('fs-extra');
 const path = require('path');
 const { getConfig } = require('../config');
 const logger = require('../utils/logger');
+const { writeJsonAtomic } = require('../utils/fileUtils');
 
 const LIBRARY_PATH = path.join(__dirname, '../data/library.json');
 const FAVOURITES_PATH = path.join(__dirname, '../data/favourites.json');
@@ -26,6 +27,17 @@ let saveTimers = {
   playlists: null,
   history: null,
 };
+
+// In-flight async writes — flush() awaits these on shutdown (F-15).
+const pendingWrites = new Set();
+
+function trackWrite(name, filePath, data) {
+  const p = writeJsonAtomic(filePath, data)
+    .catch(err => logger.error(`Failed to save ${name}:`, err.message))
+    .finally(() => pendingWrites.delete(p));
+  pendingWrites.add(p);
+  return p;
+}
 
 function rebuildIndexes() {
   idMap.clear();
@@ -60,12 +72,9 @@ function loadLibrary() {
 }
 
 function saveLibraryImmediate() {
-  try {
-    fs.ensureDirSync(path.dirname(LIBRARY_PATH));
-    fs.writeJsonSync(LIBRARY_PATH, library, { spaces: 2 });
-  } catch (err) {
-    logger.error('Failed to save library:', err.message);
-  }
+  // F-15: async + atomic (tmp file + rename), compact JSON — never blocks
+  // the event loop the way writeJsonSync did.
+  return trackWrite('library', LIBRARY_PATH, library);
 }
 
 function saveLibrary() {
@@ -91,12 +100,7 @@ function loadFavourites() {
 }
 
 function saveFavouritesImmediate() {
-  try {
-    fs.ensureDirSync(path.dirname(FAVOURITES_PATH));
-    fs.writeJsonSync(FAVOURITES_PATH, favourites, { spaces: 2 });
-  } catch (err) {
-    logger.error('Failed to save favourites:', err.message);
-  }
+  return trackWrite('favourites', FAVOURITES_PATH, favourites);
 }
 
 function saveFavourites() {
@@ -121,12 +125,7 @@ function loadPlaylists() {
 }
 
 function savePlaylistsImmediate() {
-  try {
-    fs.ensureDirSync(path.dirname(PLAYLISTS_PATH));
-    fs.writeJsonSync(PLAYLISTS_PATH, playlists, { spaces: 2 });
-  } catch (err) {
-    logger.error('Failed to save playlists:', err.message);
-  }
+  return trackWrite('playlists', PLAYLISTS_PATH, playlists);
 }
 
 function savePlaylists() {
@@ -151,12 +150,7 @@ function loadHistory() {
 }
 
 function saveHistoryImmediate() {
-  try {
-    fs.ensureDirSync(path.dirname(HISTORY_PATH));
-    fs.writeJsonSync(HISTORY_PATH, history, { spaces: 2 });
-  } catch (err) {
-    logger.error('Failed to save history:', err.message);
-  }
+  return trackWrite('history', HISTORY_PATH, history);
 }
 
 function saveHistory() {
@@ -254,19 +248,15 @@ function removeItem(id) {
   return true;
 }
 
-function search(query, type = 'all') {
-  let items = getByType(type);
-  if (!query) return items;
-  const q = query.toLowerCase();
-  // Pre-filter with includes for speed, avoid building haystack for every item if possible
-  return items.filter(item => {
-    // Fast path checks
-    if (item.title && item.title.toLowerCase().includes(q)) return true;
-    if (item.artist && item.artist.toLowerCase().includes(q)) return true;
-    if (item.album && item.album.toLowerCase().includes(q)) return true;
-    if (item.filename && item.filename.toLowerCase().includes(q)) return true;
-    // Full haystack fallback
-    const haystack = [
+// F-14: per-item search text is cached (WeakMap) — item objects are replaced
+// on update, so the cache self-invalidates. Search and the library route both
+// use this instead of rebuilding a haystack per item per request.
+const searchTextCache = new WeakMap();
+
+function getSearchText(item) {
+  let text = searchTextCache.get(item);
+  if (text === undefined) {
+    text = [
       item.title,
       item.artist,
       item.album,
@@ -276,8 +266,16 @@ function search(query, type = 'all') {
       item.filename,
       item.tags?.join(' '),
     ].filter(Boolean).join(' ').toLowerCase();
-    return haystack.includes(q);
-  });
+    searchTextCache.set(item, text);
+  }
+  return text;
+}
+
+function search(query, type = 'all') {
+  let items = getByType(type);
+  if (!query) return items;
+  const q = query.toLowerCase();
+  return items.filter(item => getSearchText(item).includes(q));
 }
 
 function getStats() {
@@ -412,24 +410,34 @@ function clearHistory() {
   return true;
 }
 
-// Flush all debounced saves (for shutdown)
-function flush() {
+// Flush all debounced saves (for shutdown) — F-15: writes are async now,
+// so flush awaits both the debounced payloads and any in-flight writes.
+async function flush() {
   if (saveTimers.library) {
     clearTimeout(saveTimers.library);
+    saveTimers.library = null;
     saveLibraryImmediate();
   }
   if (saveTimers.favourites) {
     clearTimeout(saveTimers.favourites);
+    saveTimers.favourites = null;
     saveFavouritesImmediate();
   }
   if (saveTimers.playlists) {
     clearTimeout(saveTimers.playlists);
+    saveTimers.playlists = null;
     savePlaylistsImmediate();
   }
   if (saveTimers.history) {
     clearTimeout(saveTimers.history);
+    saveTimers.history = null;
     saveHistoryImmediate();
   }
+  await Promise.allSettled([...pendingWrites]);
+  // Also wait for chains owned by other modules (e.g. authService's
+  // bruteforce records) so shutdown persistence is complete.
+  const { flushWrites } = require('../utils/fileUtils');
+  await flushWrites();
 }
 
 module.exports = {
@@ -444,6 +452,7 @@ module.exports = {
   updateItem,
   removeItem,
   search,
+  getSearchText,
   getStats,
   getGenres,
   getFavourites,

@@ -4,6 +4,7 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const { getConfig } = require('../config');
 const logger = require('../utils/logger');
+const { writeJsonAtomic } = require('../utils/fileUtils');
 
 const BRUTEFORCE_PATH = path.join(__dirname, '../data/bruteforce.json');
 let attempts = new Map();
@@ -28,12 +29,16 @@ function loadAttempts() {
 }
 
 function saveAttempts() {
+  // F-15: async + atomic; libraryService.flush() awaits all file chains on
+  // shutdown, so failed-attempt records still survive restarts.
   try {
-    fs.ensureDirSync(path.dirname(BRUTEFORCE_PATH));
     const obj = Object.fromEntries(attempts);
-    fs.writeJsonSync(BRUTEFORCE_PATH, obj, { spaces: 2 });
+    return writeJsonAtomic(BRUTEFORCE_PATH, obj).catch(err => {
+      logger.warn('Failed to save bruteforce data:', err.message);
+    });
   } catch (err) {
     logger.warn('Failed to save bruteforce data:', err.message);
+    return Promise.resolve();
   }
 }
 
