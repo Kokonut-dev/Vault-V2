@@ -1,7 +1,10 @@
 # Dependencies
 node_modules/
-package-lock.json
+# Lock-file policy (F-30): npm is the project package manager — the
+# package-lock.json IS committed so installs are reproducible across
+# machines and CI. Alternative package-manager locks stay ignored.
 yarn.lock
+pnpm-lock.yaml
 
 # Server runtime data
 server/data/
