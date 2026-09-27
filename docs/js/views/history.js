@@ -85,7 +85,7 @@ export function renderHistory(container) {
           </div>
         </div>
         <div>
-          <div class="progress" style="width:80px;">
+          <div class="progress" style="width:80px;" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${item.history.progress || 0}" aria-label="Watched">
             <div class="progress-bar" style="width:${item.history.progress || 0}%"></div>
           </div>
         </div>

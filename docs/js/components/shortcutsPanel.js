@@ -2,6 +2,7 @@
  * Keyboard shortcuts panel — triggered by ? key
  */
 import { KEYBOARD_SHORTCUTS } from '../utils/constants.js';
+import { createFocusTrap } from '../utils/focusTrap.js';
 
 export function initShortcutsPanel() {
   const backdrop = document.createElement('div');
@@ -36,7 +37,14 @@ export function initShortcutsPanel() {
   
   document.body.appendChild(backdrop);
   
-  const close = () => backdrop.classList.remove('active');
+  let trap = null;
+  const close = () => {
+    backdrop.classList.remove('active');
+    if (trap) {
+      trap.release();
+      trap = null;
+    }
+  };
   
   backdrop.addEventListener('click', (e) => {
     if (e.target === backdrop) close();
@@ -47,6 +55,10 @@ export function initShortcutsPanel() {
   
   window.addEventListener('vault:show-shortcuts', () => {
     backdrop.classList.add('active');
+    trap = createFocusTrap(backdrop, {
+      initialFocus: () => backdrop.querySelector('#shortcuts-close'),
+    });
+    trap.activate();
   });
   
   window.addEventListener('vault:escape', () => {
