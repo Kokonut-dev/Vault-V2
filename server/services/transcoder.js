@@ -98,6 +98,11 @@ function transcodeVideo(inputPath, outputPath, options = {}) {
       })
       .on('end', () => {
         logger.info(`Transcoding finished: ${outputPath}`);
+        // Post-transcode sweep: keep the cache within its size cap as soon as
+        // new content lands (the periodic scheduler also runs every 6h).
+        cleanupCache().catch(err =>
+          logger.warn(`[Transcoder] post-transcode cache cleanup failed: ${err.message}`)
+        );
         resolve(outputPath);
       });
 
@@ -235,6 +240,33 @@ async function cleanupCache() {
   await cleanCache(config.media.transcoding.cacheDir, config.media.transcoding.cacheMaxSizeMB);
 }
 
+// ---------------------------------------------------------------------------
+// Cache cleanup scheduling (F-8)
+// cleanCache() enforced the size cap but was never invoked anywhere, so
+// stale transcodes could grow without bound. Schedule it at startup and then
+// periodically; transcodeVideo() also triggers a sweep after each run.
+// ---------------------------------------------------------------------------
+const CLEANUP_INTERVAL_MS = 6 * 60 * 60 * 1000; // every 6 hours
+let cleanupTimer = null;
+
+function startCacheCleanupScheduler({ intervalMs = CLEANUP_INTERVAL_MS, runOnStart = true } = {}) {
+  if (cleanupTimer) return; // idempotent — safe to call more than once
+  const run = () => {
+    cleanupCache().catch(err => logger.warn(`[Transcoder] cache cleanup failed: ${err.message}`));
+  };
+  if (runOnStart) run();
+  cleanupTimer = setInterval(run, intervalMs);
+  if (typeof cleanupTimer.unref === 'function') cleanupTimer.unref(); // never hold the process open
+  logger.info(`[Transcoder] cache cleanup scheduled (every ${Math.round(intervalMs / 60000)} min)`);
+}
+
+function stopCacheCleanupScheduler() {
+  if (cleanupTimer) {
+    clearInterval(cleanupTimer);
+    cleanupTimer = null;
+  }
+}
+
 module.exports = {
   getCachePath,
   shouldTranscode,
@@ -242,4 +274,6 @@ module.exports = {
   transcodeStream,
   transcodeAudioStream,
   cleanupCache,
+  startCacheCleanupScheduler,
+  stopCacheCleanupScheduler,
 };
