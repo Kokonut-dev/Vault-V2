@@ -2,6 +2,7 @@
  * Generic modal helper
  */
 import { createFocusTrap } from '../utils/focusTrap.js';
+import { icon } from '../utils/icons.js';
 
 export function createModal({ title, content, onClose }) {
   const backdrop = document.createElement('div');
@@ -10,7 +11,7 @@ export function createModal({ title, content, onClose }) {
     <div class="modal" role="dialog" aria-modal="true" aria-label="${title}">
       <div class="modal-header">
         <div class="modal-title">${title}</div>
-        <button class="modal-close" aria-label="Close dialog">✕</button>
+        <button class="modal-close" aria-label="Close dialog">${icon('x', { size: 16 })}</button>
       </div>
       <div class="modal-body">${content}</div>
     </div>

@@ -2,8 +2,9 @@
  * Media Card component
  */
 import { api } from '../api.js';
-import { formatTime, truncate, escapeHtml } from '../utils/format.js';
+import { formatTime, truncate, escapeHtml, escapeAttr } from '../utils/format.js';
 import { lazyLoadElement } from '../utils/lazyLoad.js';
+import { icon } from '../utils/icons.js';
 
 function defaultPlay(item) {
   if (item.type === 'music') {
@@ -41,9 +42,9 @@ export function createMediaCard(item, options = {}) {
   card.innerHTML = `
     <div class="media-card-cover ${coverType}">
       <img data-src="${coverUrl}" alt="${escapeHtml(item.title)}" loading="lazy">
-      <div class="media-card-placeholder" aria-hidden="true">${isMusic ? '♫' : isVideo ? '▶' : '▣'}</div>
+      <div class="media-card-placeholder" aria-hidden="true">${icon(isMusic ? 'music' : isVideo ? 'video' : 'film', { size: 34 })}</div>
       <div class="media-card-overlay">
-        <button class="media-card-play" type="button" aria-label="Play ${escapeHtml(item.title)}">▶</button>
+        <button class="media-card-play" type="button" aria-label="Play ${escapeAttr(item.title)}">${icon('play', { size: 20 })}</button>
       </div>
       ${hasProgress ? `<div class="media-card-progress"><div class="media-card-progress-bar" style="width:${progress}%"></div></div>` : ''}
       ${item.duration ? `<div class="media-card-duration">${formatTime(item.duration)}</div>` : ''}
@@ -82,6 +83,10 @@ export function createMediaCard(item, options = {}) {
   });
 
   card.addEventListener('keydown', (e) => {
+    // Only when the card itself is focused. Without this guard the event from
+    // the nested play button bubbles up here, gets preventDefault()-ed and the
+    // keyboard user can never activate that button with Space/Enter.
+    if (e.target !== card) return;
     if (e.key === 'Enter' || e.key === ' ') {
       e.preventDefault();
       if (onClick) onClick(item, e);

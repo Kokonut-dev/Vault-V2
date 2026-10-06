@@ -4,6 +4,7 @@
 import { store } from '../store.js';
 import { api } from '../api.js';
 import { formatTime } from '../utils/format.js';
+import { setIcon } from '../utils/icons.js';
 
 export function initMiniPlayer() {
   const miniPlayer = document.getElementById('mini-player');
@@ -63,8 +64,14 @@ export function initMiniPlayer() {
   }
   
   function updatePlayState(isPlaying) {
-    miniPlayBtn.textContent = isPlaying ? '⏸' : '▶';
-    npPlayBtn.textContent = isPlaying ? '⏸' : '▶';
+    // Icons are inline SVGs (utils/icons.js) — swap the glyph, keep the label.
+    setIcon(miniPlayBtn, isPlaying ? 'pause' : 'play', { size: 16 });
+    setIcon(npPlayBtn, isPlaying ? 'pause' : 'play', { size: 22 });
+  }
+
+  function syncMuteIcon() {
+    const muted = store.get('isMuted') || store.get('volume') === 0;
+    setIcon(miniMuteBtn, muted ? 'volume-x' : 'volume-2', { size: 16 });
   }
   
   function updateProgress(currentTime, duration, progress) {
@@ -109,20 +116,20 @@ export function initMiniPlayer() {
       const vol = parseFloat(e.target.value);
       store.set('volume', vol, true);
       store.set('isMuted', vol === 0);
-      if (miniMuteBtn) miniMuteBtn.textContent = vol === 0 ? '🔇' : '🔊';
+      syncMuteIcon();
     });
   }
   if (miniMuteBtn) {
     miniMuteBtn.addEventListener('click', () => {
       window.dispatchEvent(new CustomEvent('vault:player-action', { detail: { action: 'mute' } }));
-      const muted = store.get('isMuted');
-      miniMuteBtn.textContent = muted ? '🔇' : '🔊';
+      syncMuteIcon();
     });
   }
   store.subscribe('volume', (vol) => {
     if (miniVolume && document.activeElement !== miniVolume) miniVolume.value = vol;
-    if (miniMuteBtn) miniMuteBtn.textContent = vol === 0 || store.get('isMuted') ? '🔇' : '🔊';
+    syncMuteIcon();
   });
+  store.subscribe('isMuted', syncMuteIcon);
   
   nowPlayingClose.addEventListener('click', () => {
     nowPlaying.classList.remove('active');
@@ -153,20 +160,17 @@ export function initMiniPlayer() {
     window.dispatchEvent(new CustomEvent('vault:player-action', { detail: { action: 'seekPercent', percent } }));
   });
   
-  // SVG icon templates
-  const SVG_SHUFFLE = `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 3 21 3 21 8"/><line x1="4" y1="20" x2="21" y2="3"/><polyline points="21 16 21 21 16 21"/><line x1="15" y1="15" x2="21" y2="21"/><line x1="4" y1="4" x2="9" y2="9"/></svg>`;
-  const SVG_REPEAT = `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>`;
-  const SVG_REPEAT_ONE = `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/><text x="12" y="15" text-anchor="middle" fill="currentColor" stroke="none" font-size="10" font-weight="700" font-family="var(--font-sans, sans-serif)">1</text></svg>`;
-
+  // Shuffle / repeat glyphs come from the shared icon set (utils/icons.js) —
+  // the accent-coloured "on" state is the only player-specific part.
   function updateShuffleUI(shuffle) {
     if (!npShuffleBtn) return;
-    npShuffleBtn.innerHTML = SVG_SHUFFLE;
+    setIcon(npShuffleBtn, 'shuffle', { size: 18 });
     npShuffleBtn.style.color = shuffle ? 'var(--accent)' : '';
   }
 
   function updateRepeatUI(repeat) {
     if (!npRepeatBtn) return;
-    npRepeatBtn.innerHTML = repeat === 'one' ? SVG_REPEAT_ONE : SVG_REPEAT;
+    setIcon(npRepeatBtn, repeat === 'one' ? 'repeat-1' : 'repeat', { size: 18 });
     npRepeatBtn.style.color = repeat !== 'off' ? 'var(--accent)' : '';
     npRepeatBtn.style.opacity = repeat === 'off' ? '0.5' : '1';
   }
@@ -181,6 +185,7 @@ export function initMiniPlayer() {
   updatePlayState(store.get('isPlaying'));
   updateShuffleUI(store.get('shuffle'));
   updateRepeatUI(store.get('repeat'));
+  syncMuteIcon();
 }
 
 let visualizerRaf = null;

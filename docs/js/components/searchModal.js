@@ -6,6 +6,7 @@ import { api } from '../api.js';
 import { Fuse } from '../utils/fuse.js';
 import { router } from '../router.js';
 import { createFocusTrap } from '../utils/focusTrap.js';
+import { icon } from '../utils/icons.js';
 
 export class SearchModal {
   constructor() {
@@ -30,13 +31,13 @@ export class SearchModal {
     backdrop.innerHTML = `
       <div class="search-modal glass" role="dialog" aria-modal="true" aria-label="Search">
         <div class="search-input-wrapper">
-          <span class="search-icon">⌕</span>
+          <span class="search-icon" aria-hidden="true">${icon('search', { size: 20 })}</span>
           <input type="text" class="search-input" id="search-input" placeholder="Search movies, music, videos..." autocomplete="off" spellcheck="false">
           <span class="search-shortcut">ESC</span>
         </div>
         <div class="search-results" id="search-results">
           <div class="search-empty">
-            <div class="search-empty-icon">⌕</div>
+            <div class="search-empty-icon" aria-hidden="true">${icon('search', { size: 20 })}</div>
             <div>Start typing to search your library</div>
             <div style="font-size:12px; margin-top:8px; opacity:0.6;">Searches titles, artists, albums, genres, years</div>
           </div>
@@ -162,7 +163,7 @@ export class SearchModal {
     if (this.results.length === 0) {
       resultsContainer.innerHTML = `
         <div class="search-empty">
-          <div class="search-empty-icon">∅</div>
+          <div class="search-empty-icon" aria-hidden="true">${icon('search-x', { size: 20 })}</div>
           <div>No results for "${this.escape(query)}"</div>
           <div style="font-size:12px; margin-top:8px; opacity:0.6;">Try different keywords or check spelling</div>
         </div>
@@ -229,7 +230,7 @@ export class SearchModal {
     if (recent.length === 0 && history.length === 0) {
       resultsContainer.innerHTML = `
         <div class="search-empty">
-          <div class="search-empty-icon">⌕</div>
+          <div class="search-empty-icon" aria-hidden="true">${icon('search', { size: 20 })}</div>
           <div>Start typing to search</div>
           <div style="font-size:12px; margin-top:8px; opacity:0.6;">Recent searches will appear here</div>
         </div>
@@ -245,7 +246,7 @@ export class SearchModal {
           <div class="search-section-title">Recent Searches</div>
           ${recent.slice(0, 5).map(q => `
             <div class="search-recent-item" data-query="${this.escape(q)}">
-              <span>◷</span> ${this.escape(q)}
+              <span aria-hidden="true">${icon('history', { size: 14 })}</span> ${this.escape(q)}
             </div>
           `).join('')}
         </div>

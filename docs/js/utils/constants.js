@@ -30,6 +30,8 @@ export const EQ_PRESETS = {
 
 export const EQ_FREQUENCIES = [32, 64, 125, 250, 500, 1000, 2000, 4000, 8000, 16000];
 
+// `key` values are literal keyboard legends (OS glyphs for modifier/arrow
+// keys) — they are text, not icons, so they are not part of utils/icons.js.
 export const KEYBOARD_SHORTCUTS = {
   global: [
     { key: '⌥+Space / Alt+Space', desc: 'Open global search' },

@@ -8,6 +8,7 @@ import { toast } from '../components/toast.js';
 import { getApiBaseUrl, setApiBaseUrl } from '../config.js';
 import { renderEQPanel } from '../components/eqPanel.js';
 import { copyText } from '../utils/clipboard.js';
+import { icon } from '../utils/icons.js';
 
 export function renderSettings(container) {
   container.className = 'page';
@@ -20,7 +21,7 @@ export function renderSettings(container) {
     <div class="settings-grid">
       <!-- Appearance -->
       <div class="settings-card">
-        <h3><span class="settings-card-icon" aria-hidden="true">🎨</span>Appearance</h3>
+        <h3><span class="settings-card-icon" aria-hidden="true">${icon('palette', { size: 17 })}</span>Appearance</h3>
         
         <div class="form-group">
           <label class="form-label">Theme</label>
@@ -37,7 +38,7 @@ export function renderSettings(container) {
       
       <!-- Playback -->
       <div class="settings-card">
-        <h3><span class="settings-card-icon" aria-hidden="true">▶</span>Playback</h3>
+        <h3><span class="settings-card-icon" aria-hidden="true">${icon('play', { size: 17 })}</span>Playback</h3>
         
         <div class="form-group">
           <label class="form-label">Default Volume: <span id="vol-value">${Math.round(store.get('volume') * 100)}%</span></label>
@@ -62,13 +63,13 @@ export function renderSettings(container) {
       
       <!-- Server -->
       <div class="settings-card">
-        <h3><span class="settings-card-icon" aria-hidden="true">🗄</span>Server</h3>
+        <h3><span class="settings-card-icon" aria-hidden="true">${icon('database', { size: 17 })}</span>Server</h3>
         
         <div class="form-group">
           <label class="form-label">API Base URL</label>
           <div style="display:flex; gap:8px;">
             <input type="text" class="form-input" id="api-url" value="${getApiBaseUrl()}" style="flex:1;">
-            <button class="btn btn-secondary" id="copy-api-url" type="button">⧉ Copy</button>
+            <button class="btn btn-secondary" id="copy-api-url" type="button">${icon('copy', { size: 16 })}<span>Copy</span></button>
             <button class="btn btn-secondary" id="save-api-url">Save</button>
           </div>
           <div style="font-size:11px; color:var(--text-tertiary); margin-top:4px;">Change if your server is on a different URL (e.g., Cloudflare Tunnel)</div>
@@ -84,7 +85,7 @@ export function renderSettings(container) {
       
       <!-- Security -->
       <div class="settings-card">
-        <h3><span class="settings-card-icon" aria-hidden="true">🔒</span>Security</h3>
+        <h3><span class="settings-card-icon" aria-hidden="true">${icon('shield', { size: 17 })}</span>Security</h3>
         
         <div class="form-group">
           <label class="form-label">Change Credentials</label>
@@ -102,12 +103,12 @@ export function renderSettings(container) {
       
       <!-- About -->
       <div class="settings-card">
-        <h3><span class="settings-card-icon" aria-hidden="true">ℹ️</span>About Vault</h3>
+        <h3><span class="settings-card-icon" aria-hidden="true">${icon('info', { size: 17 })}</span>About Vault</h3>
         <div style="font-size:13px; color:var(--text-secondary); line-height:1.6;">
           <p style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;"><strong>Vault v2.0.0</strong><span class="badge badge-accent">self-hosted</span></p>
           <p style="margin-top:8px;">A premium self-hosted personal media server — built with vanilla JS, Web Audio API, and Node.js. Supports all major audio/video codecs with on-the-fly transcoding.</p>
           <p style="margin-top:8px;">Themes: Dark, Light, Warm, Cold • Glassmorphism • Film Grain • 10-band EQ • Global Search</p>
-          <p style="margin-top:12px;"><a href="https://github.com/Kokonut-dev/Vault-V2" target="_blank" rel="noopener" style="color:var(--accent-text); font-weight:600; text-decoration:none;">GitHub Repository <span aria-hidden="true">↗</span></a></p>
+          <p style="margin-top:12px;"><a href="https://github.com/Kokonut-dev/Vault-V2" target="_blank" rel="noopener" style="color:var(--accent-text); font-weight:600; text-decoration:none;">GitHub Repository ${icon('external-link', { size: 14, className: 'icon icon-inline' })}</a></p>
         </div>
       </div>
     </div>

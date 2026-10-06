@@ -7,12 +7,13 @@ import { formatTime, formatBytes, formatDate, formatBitrate, formatResolution, e
 import { toast } from '../components/toast.js';
 import { confirmDialog, alertDialog } from '../components/confirmDialog.js';
 import { copyText } from '../utils/clipboard.js';
+import { icon, setIcon } from '../utils/icons.js';
 
 export async function renderDetail(container, id) {
   container.className = 'page';
   container.innerHTML = `
     <div style="display:flex; align-items:center; gap:12px; margin-bottom:24px;">
-      <button class="btn btn-secondary btn-sm" id="back-btn">← Back</button>
+      <button class="btn btn-secondary btn-sm" id="back-btn">${icon('arrow-left', { size: 16 })}<span>Back</span></button>
       <div class="skeleton skeleton-text" style="width:200px; height:20px;"></div>
     </div>
     <div class="skeleton" style="height:400px; border-radius:16px;"></div>
@@ -28,7 +29,7 @@ export async function renderDetail(container, id) {
     } catch (err) {
       container.innerHTML = `
         <div class="empty-state">
-          <div class="empty-state-icon">∅</div>
+          <div class="empty-state-icon">${icon('search-x', { size: 30 })}</div>
           <div class="empty-state-title">Item not found</div>
           <div class="empty-state-message">${err.message}</div>
           <button class="btn btn-secondary" id="back-btn2">Go Back</button>
@@ -57,7 +58,7 @@ export async function renderDetail(container, id) {
 function renderVideoDetail(container, item) {
   container.innerHTML = `
     <div style="display:flex; align-items:center; gap:12px; margin-bottom:24px;">
-      <button class="btn btn-secondary btn-sm" id="back-btn">← Back</button>
+      <button class="btn btn-secondary btn-sm" id="back-btn">${icon('arrow-left', { size: 16 })}<span>Back</span></button>
       <span style="color:var(--text-tertiary); font-size:13px;">${item.type} • ${item.year || ''}</span>
     </div>
     
@@ -67,8 +68,8 @@ function renderVideoDetail(container, item) {
           <img src="${api.getThumbnailUrl(item.id)}" alt="${escapeHtml(item.title)}" style="width:100%;height:100%;object-fit:cover;" onerror="this.style.display='none'">
         </div>
         <div style="display:flex; gap:8px; margin-top:16px;">
-          <button class="btn btn-primary" id="play-btn" style="flex:1;">▶ Play</button>
-          <button class="btn btn-secondary" id="fav-btn">${store.get('favourites').includes(item.id) ? '♥' : '♡'}</button>
+          <button class="btn btn-primary" id="play-btn" style="flex:1;">${icon('play', { size: 18 })}<span>Play</span></button>
+          <button class="btn btn-secondary" id="fav-btn" aria-label="${store.get('favourites').includes(item.id) ? 'Remove from favourites' : 'Add to favourites'}" aria-pressed="${store.get('favourites').includes(item.id)}">${icon(store.get('favourites').includes(item.id) ? 'heart-filled' : 'heart', { size: 18 })}</button>
         </div>
       </div>
       
@@ -79,7 +80,7 @@ function renderVideoDetail(container, item) {
           ${item.genre ? `<span>${escapeHtml(item.genre)}</span>` : ''}
           ${item.duration ? `<span>${formatTime(item.duration)}</span>` : ''}
           ${item.resolution ? `<span>${item.resolution}</span>` : ''}
-          ${item.rating ? `<span>★ ${item.rating}</span>` : ''}
+          ${item.rating ? `<span style="display:inline-flex; align-items:center; gap:4px;">${icon('star-filled', { size: 14 })}${item.rating}</span>` : ''}
         </div>
         
         ${item.description ? `<p style="color:var(--text-secondary); line-height:1.6; margin-bottom:24px;">${escapeHtml(item.description)}</p>` : ''}
@@ -91,7 +92,7 @@ function renderVideoDetail(container, item) {
               <div>File: ${escapeHtml(item.filename)}</div>
               <div>Size: ${formatBytes(item.fileSize)}</div>
               <div>Codec: ${item.videoCodec || ''} / ${item.audioCodec || ''}</div>
-              <div>Path: ${escapeHtml(item.path)} <button type="button" class="btn btn-ghost btn-sm" id="copy-path" style="padding:2px 8px; font-size:11px; margin-left:6px;">⧉ Copy</button></div>
+              <div>Path: ${escapeHtml(item.path)} <button type="button" class="btn btn-ghost btn-sm" id="copy-path" style="padding:2px 8px; font-size:11px; margin-left:6px;">${icon('copy', { size: 13 })}<span>Copy</span></button></div>
               ${item.subtitles?.length ? `<div>Subtitles: ${item.subtitles.length}</div>` : ''}
             </div>
             <button class="btn btn-ghost btn-sm" id="more-info" style="margin-top:8px;">Technical Details</button>
@@ -122,8 +123,11 @@ function renderVideoDetail(container, item) {
     window.dispatchEvent(new CustomEvent('vault:open-video', { detail: { item } }));
   });
   container.querySelector('#fav-btn').addEventListener('click', async (e) => {
+    const btn = e.currentTarget;
     const isFav = store.toggleFavourite(item.id);
-    e.target.textContent = isFav ? '♥' : '♡';
+    setIcon(btn, isFav ? 'heart-filled' : 'heart', { size: 18 });
+    btn.setAttribute('aria-pressed', String(isFav));
+    btn.setAttribute('aria-label', isFav ? 'Remove from favourites' : 'Add to favourites');
     try {
       if (isFav) await api.addFavourite(item.id);
       else await api.removeFavourite(item.id);
@@ -179,7 +183,7 @@ function renderMusicDetail(container, item) {
   
   container.innerHTML = `
     <div style="display:flex; align-items:center; gap:12px; margin-bottom:24px;">
-      <button class="btn btn-secondary btn-sm" id="back-btn">← Back</button>
+      <button class="btn btn-secondary btn-sm" id="back-btn">${icon('arrow-left', { size: 16 })}<span>Back</span></button>
       <span style="color:var(--text-tertiary); font-size:13px;">${isAlbumView ? 'Album' : 'Track'}</span>
     </div>
     
@@ -195,9 +199,9 @@ function renderMusicDetail(container, item) {
         <div style="font-size:18px; color:var(--text-secondary); margin-top:8px; margin-bottom:24px;">${escapeHtml(item.artist || '')} ${item.year ? `• ${item.year}` : ''}</div>
         
         <div style="display:flex; gap:12px; margin-bottom:24px;">
-          <button class="btn btn-primary" id="play-btn">▶ Play ${isAlbumView ? 'Album' : ''}</button>
-          <button class="btn btn-secondary" id="shuffle-btn">🔀 Shuffle</button>
-          <button class="btn btn-secondary" id="fav-btn">${store.get('favourites').includes(item.id) ? '♥' : '♡'}</button>
+          <button class="btn btn-primary" id="play-btn">${icon('play', { size: 18 })}<span>Play ${isAlbumView ? 'Album' : ''}</span></button>
+          <button class="btn btn-secondary" id="shuffle-btn">${icon('shuffle', { size: 18 })}<span>Shuffle</span></button>
+          <button class="btn btn-secondary" id="fav-btn" aria-label="${store.get('favourites').includes(item.id) ? 'Remove from favourites' : 'Add to favourites'}" aria-pressed="${store.get('favourites').includes(item.id)}">${icon(store.get('favourites').includes(item.id) ? 'heart-filled' : 'heart', { size: 18 })}</button>
         </div>
         
         <div id="track-list"></div>
@@ -230,8 +234,11 @@ function renderMusicDetail(container, item) {
   });
   
   container.querySelector('#fav-btn').addEventListener('click', async (e) => {
+    const btn = e.currentTarget;
     const isFav = store.toggleFavourite(item.id);
-    e.target.textContent = isFav ? '♥' : '♡';
+    setIcon(btn, isFav ? 'heart-filled' : 'heart', { size: 18 });
+    btn.setAttribute('aria-pressed', String(isFav));
+    btn.setAttribute('aria-label', isFav ? 'Remove from favourites' : 'Add to favourites');
     try {
       if (isFav) await api.addFavourite(item.id);
       else await api.removeFavourite(item.id);
@@ -244,7 +251,7 @@ function showEditModal(item) {
   backdrop.className = 'modal-backdrop active';
   backdrop.innerHTML = `
     <div class="modal">
-      <div class="modal-header"><div class="modal-title">Edit Metadata</div><button class="modal-close">✕</button></div>
+      <div class="modal-header"><div class="modal-title">Edit Metadata</div><button class="modal-close" aria-label="Close dialog">${icon('x', { size: 16 })}</button></div>
       <div class="modal-body">
         <div class="form-group"><label class="form-label">Title</label><input type="text" class="form-input" id="edit-title" value="${escapeHtml(item.title)}"></div>
         <div class="form-group"><label class="form-label">Genre</label><input type="text" class="form-input" id="edit-genre" value="${escapeHtml(item.genre || '')}"></div>
@@ -292,7 +299,7 @@ function showAddToPlaylist(item) {
   backdrop.className = 'modal-backdrop active';
   backdrop.innerHTML = `
     <div class="modal">
-      <div class="modal-header"><div class="modal-title">Add to Playlist</div><button class="modal-close">✕</button></div>
+      <div class="modal-header"><div class="modal-title">Add to Playlist</div><button class="modal-close" aria-label="Close dialog">${icon('x', { size: 16 })}</button></div>
       <div class="modal-body" id="playlist-list">Loading...</div>
       <div class="modal-footer"><button class="btn btn-secondary" id="pl-cancel">Cancel</button></div>
     </div>

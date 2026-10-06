@@ -3,6 +3,7 @@
  */
 import { createMediaCard } from './mediaCard.js';
 import { escapeHtml } from '../utils/format.js';
+import { icon } from '../utils/icons.js';
 
 export function renderMediaGrid(container, items, options = {}) {
   const { onPlay, onClick, emptyMessage = 'No items found' } = options;
@@ -12,7 +13,7 @@ export function renderMediaGrid(container, items, options = {}) {
   if (!items || items.length === 0) {
     container.innerHTML = `
       <div class="empty-state">
-        <div class="empty-state-icon">◫</div>
+        <div class="empty-state-icon">${icon('layout-grid', { size: 30 })}</div>
         <div class="empty-state-title">Nothing here yet</div>
         <div class="empty-state-message">${escapeHtml(emptyMessage)}</div>
       </div>

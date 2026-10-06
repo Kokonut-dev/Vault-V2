@@ -17,6 +17,7 @@ import { escapeHtml } from './utils/format.js';
 import { store } from './store.js';
 import { toast } from './components/toast.js';
 import { copyText } from './utils/clipboard.js';
+import { icon, setIconLabel } from './utils/icons.js';
 
 export class OnboardingManager {
   constructor() {
@@ -86,12 +87,12 @@ export class OnboardingManager {
           
           <div class="onboarding-footer">
             <div class="onboarding-footer-left">
-              <button class="btn btn-ghost btn-sm" id="onboarding-back" style="display:none;">← Back</button>
+              <button class="btn btn-ghost btn-sm" id="onboarding-back" style="display:none;">${icon('arrow-left', { size: 16 })}<span>Back</span></button>
               <button class="onboarding-skip" id="onboarding-skip" style="display:none;">Skip to login</button>
             </div>
             <div class="onboarding-footer-right">
               <button class="btn btn-secondary btn-sm" id="onboarding-secondary" style="display:none;"></button>
-              <button class="btn btn-primary" id="onboarding-next">Get Started →</button>
+              <button class="btn btn-primary" id="onboarding-next"><span>Get Started</span>${icon('arrow-right', { size: 16 })}</button>
             </div>
           </div>
         </div>
@@ -158,14 +159,14 @@ export class OnboardingManager {
 
     // Reset secondary button
     secondaryBtn.style.display = 'none';
-    secondaryBtn.textContent = '';
+    secondaryBtn.replaceChildren();
 
     switch (this.currentStep) {
       case 1:
         titleEl.textContent = 'Welcome to Vault';
         subtitleEl.textContent = 'Your premium self-hosted personal media server for movies, music, and videos';
         body.innerHTML = this.renderWelcome();
-        nextBtn.textContent = 'Get Started →';
+        setIconLabel(nextBtn, 'arrow-right', 'Get Started', { size: 16, position: 'end' });
         nextBtn.disabled = false;
         break;
 
@@ -173,7 +174,7 @@ export class OnboardingManager {
         titleEl.textContent = 'Connect to Server';
         subtitleEl.textContent = 'Vault needs a local server to manage your media library';
         body.innerHTML = this.renderServerConnection();
-        nextBtn.textContent = 'Test & Continue →';
+        setIconLabel(nextBtn, 'arrow-right', 'Test & Continue', { size: 16, position: 'end' });
         nextBtn.disabled = false;
         this.bindServerStep();
         break;
@@ -182,7 +183,7 @@ export class OnboardingManager {
         titleEl.textContent = 'Create Admin Account';
         subtitleEl.textContent = 'Set up your administrator credentials';
         body.innerHTML = this.renderAdminAccount();
-        nextBtn.textContent = 'Continue →';
+        setIconLabel(nextBtn, 'arrow-right', 'Continue', { size: 16, position: 'end' });
         nextBtn.disabled = false;
         this.bindAccountStep();
         break;
@@ -191,7 +192,7 @@ export class OnboardingManager {
         titleEl.textContent = 'Security Grid';
         subtitleEl.textContent = 'Choose 8 secret squares — your second authentication factor';
         body.innerHTML = this.renderGridStep();
-        nextBtn.textContent = 'Continue →';
+        setIconLabel(nextBtn, 'arrow-right', 'Continue', { size: 16, position: 'end' });
         nextBtn.disabled = this.data.gridPattern.length !== 8;
         this.bindGridStep();
         break;
@@ -200,7 +201,7 @@ export class OnboardingManager {
         titleEl.textContent = 'Media & Preferences';
         subtitleEl.textContent = 'Configure your library and appearance';
         body.innerHTML = this.renderMediaStep();
-        nextBtn.textContent = 'Continue →';
+        setIconLabel(nextBtn, 'arrow-right', 'Continue', { size: 16, position: 'end' });
         nextBtn.disabled = false;
         this.bindMediaStep();
         break;
@@ -214,7 +215,7 @@ export class OnboardingManager {
           if (await copyText(pattern)) toast.success('Grid pattern copied — store it somewhere safe');
           else toast.error('Could not copy the pattern');
         });
-        nextBtn.textContent = 'Complete Setup ✨';
+        setIconLabel(nextBtn, 'sparkles', 'Complete Setup', { size: 16 });
         nextBtn.disabled = false;
         secondaryBtn.style.display = 'inline-flex';
         secondaryBtn.textContent = 'Back to Review';
@@ -237,21 +238,21 @@ export class OnboardingManager {
         
         <div class="onboarding-features">
           <div class="onboarding-feature">
-            <div class="onboarding-feature-icon">🔒</div>
+            <div class="onboarding-feature-icon">${icon('shield', { size: 17 })}</div>
             <div class="onboarding-feature-text">
               <strong>Two-Factor Security</strong>
               <span>Password + secret grid pattern protects your vault</span>
             </div>
           </div>
           <div class="onboarding-feature">
-            <div class="onboarding-feature-icon">🎬</div>
+            <div class="onboarding-feature-icon">${icon('film', { size: 17 })}</div>
             <div class="onboarding-feature-text">
               <strong>All Formats Supported</strong>
               <span>Movies, music, videos with on-the-fly transcoding</span>
             </div>
           </div>
           <div class="onboarding-feature">
-            <div class="onboarding-feature-icon">✨</div>
+            <div class="onboarding-feature-icon">${icon('sparkles', { size: 17 })}</div>
             <div class="onboarding-feature-text">
               <strong>Premium Experience</strong>
               <span>Glassmorphism, themes, EQ, and powerful search</span>
@@ -291,8 +292,8 @@ export class OnboardingManager {
           ${needsSetup !== null ? `
             <div class="${needsSetup ? 'onboarding-success' : 'onboarding-error'}" style="margin-top:8px;">
               ${needsSetup
-          ? `✓ Server reachable — <strong>setup required</strong>. No config.json found, you'll create it next.`
-          : `⚠ Server already configured (user: ${this.setupStatus.current?.username || 'unknown'}). You can skip to login or re-configure.`}
+          ? `${icon('check-circle', { size: 14, className: 'icon icon-inline' })} Server reachable — <strong>setup required</strong>. No config.json found, you'll create it next.`
+          : `${icon('alert-triangle', { size: 14, className: 'icon icon-inline' })} Server already configured (user: ${this.setupStatus.current?.username || 'unknown'}). You can skip to login or re-configure.`}
             </div>
           ` : `
             <div class="onboarding-hint" style="margin-top:8px;">
@@ -356,7 +357,7 @@ export class OnboardingManager {
 
     const url = input.value.trim().replace(/\/$/, '');
     if (!url) {
-      statusEl.innerHTML = `<div class="connection-test error"><span>⚠</span> Please enter a server URL</div>`;
+      statusEl.innerHTML = `<div class="connection-test error">${icon('alert-triangle', { size: 14, className: 'icon icon-inline' })} Please enter a server URL</div>`;
       return;
     }
 
@@ -378,7 +379,7 @@ export class OnboardingManager {
       this.isConnected = true;
       statusEl.innerHTML = `
         <div class="connection-test success">
-          <span>✓</span> Connected — ${health.library?.total || 0} items, v${health.version || '2.0.0'}
+          ${icon('check-circle', { size: 14, className: 'icon icon-inline' })} Connected — ${health.library?.total || 0} items, v${health.version || '2.0.0'}
           ${setupStatus ? `<br><span style="margin-left:16px;">Setup: ${setupStatus.needsSetup ? 'required' : 'complete'}</span>` : ''}
         </div>
       `;
@@ -388,8 +389,8 @@ export class OnboardingManager {
       if (setupStatus && existingBox) {
         existingBox.className = setupStatus.needsSetup ? 'onboarding-success' : 'onboarding-error';
         existingBox.innerHTML = setupStatus.needsSetup
-          ? `✓ Server reachable — <strong>setup required</strong>. No config.json found, you'll create it next.`
-          : `⚠ Server already configured (user: ${setupStatus.current?.username || 'unknown'}). You can skip to login or re-configure.`;
+          ? `${icon('check-circle', { size: 14, className: 'icon icon-inline' })} Server reachable — <strong>setup required</strong>. No config.json found, you'll create it next.`
+          : `${icon('alert-triangle', { size: 14, className: 'icon icon-inline' })} Server already configured (user: ${setupStatus.current?.username || 'unknown'}). You can skip to login or re-configure.`;
 
         // Show skip button
         const skipBtn = document.getElementById('onboarding-skip');
@@ -401,7 +402,7 @@ export class OnboardingManager {
       this.isConnected = false;
       statusEl.innerHTML = `
         <div class="connection-test error">
-          <span>✕</span> Cannot connect: ${err.message}<br>
+          ${icon('alert-circle', { size: 14, className: 'icon icon-inline' })} Cannot connect: ${err.message}<br>
           <span style="margin-left:16px; opacity:0.8;">Make sure server is running: cd server && npm start</span>
         </div>
       `;
@@ -580,7 +581,7 @@ export class OnboardingManager {
       if (nextBtn) nextBtn.disabled = this.data.gridPattern.length !== 8;
 
       if (this.data.gridPattern.length === 8) {
-        if (errorEl) errorEl.innerHTML = `<div class="onboarding-success">✓ Pattern set: [${this.data.gridPattern.join(', ')}]</div>`;
+        if (errorEl) errorEl.innerHTML = `<div class="onboarding-success">${icon('check-circle', { size: 14, className: 'icon icon-inline' })} Pattern set: [${this.data.gridPattern.join(', ')}]</div>`;
       } else {
         if (errorEl) errorEl.innerHTML = '';
       }
@@ -735,7 +736,7 @@ export class OnboardingManager {
 
     return `
       <div class="onboarding-step active">
-        <div class="onboarding-complete-icon">✓</div>
+        <div class="onboarding-complete-icon">${icon('check', { size: 40, strokeWidth: 2.5 })}</div>
         <h3 style="text-align:center; font-size:16px; font-weight:700; margin-bottom:16px;">Review Your Setup</h3>
         
         <div class="onboarding-review">
@@ -753,7 +754,7 @@ export class OnboardingManager {
           </div>
           <div class="onboarding-review-item">
             <span class="onboarding-review-label">Grid Pattern</span>
-            <span class="onboarding-review-value">${gridDisplay} <button type="button" class="btn btn-ghost btn-sm" id="copy-grid-pattern" style="padding:2px 8px; font-size:11px;">⧉ Copy</button></span>
+            <span class="onboarding-review-value">${gridDisplay} <button type="button" class="btn btn-ghost btn-sm" id="copy-grid-pattern" style="padding:2px 8px; font-size:11px;">${icon('copy', { size: 12 })}<span>Copy</span></button></span>
           </div>
           <div class="onboarding-review-item">
             <span class="onboarding-review-label">Theme</span>
@@ -874,7 +875,7 @@ export class OnboardingManager {
       if (statusEl) {
         statusEl.innerHTML = `
           <div class="onboarding-success">
-            ✓ Setup complete! Config saved.<br>
+            ${icon('check-circle', { size: 14, className: 'icon icon-inline' })} Setup complete! Config saved.<br>
             <span style="font-family:var(--font-mono); font-size:11px;">User: ${result.config.username} | Enablement: ${result.enablement ? 'true' : 'false'}</span>
           </div>
         `;
@@ -890,10 +891,10 @@ export class OnboardingManager {
       localStorage.setItem('vault_theme', this.data.theme);
       document.documentElement.setAttribute('data-theme', this.data.theme);
 
-      toast.success('Vault setup complete! Welcome 🎉');
+      toast.success('Vault setup complete! Welcome');
 
       if (nextBtn) {
-        nextBtn.textContent = 'Enter Vault →';
+        setIconLabel(nextBtn, 'arrow-right', 'Enter Vault', { size: 16, position: 'end' });
         nextBtn.disabled = false;
       }
 
@@ -911,11 +912,11 @@ export class OnboardingManager {
 
     } catch (err) {
       if (statusEl) {
-        statusEl.innerHTML = `<div class="onboarding-error">✕ Setup failed: ${escapeHtml(err.message)}</div>`;
+        statusEl.innerHTML = `<div class="onboarding-error">${icon('alert-circle', { size: 14, className: 'icon icon-inline' })} Setup failed: ${escapeHtml(err.message)}</div>`;
       }
       if (nextBtn) {
         nextBtn.disabled = false;
-        nextBtn.textContent = 'Retry Setup ✨';
+        setIconLabel(nextBtn, 'sparkles', 'Retry Setup', { size: 16 });
       }
       toast.error(`Setup failed: ${escapeHtml(err.message)}`);
     }

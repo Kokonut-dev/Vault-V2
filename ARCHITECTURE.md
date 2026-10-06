@@ -71,7 +71,7 @@ Vault is a split architecture:
 - `js/api.js` — fetch wrapper with auth, error handling, retry.
 - `js/components/*` — sidebar, search modal, video player, audio player, EQ, etc.
 - `js/views/*` — home, movies, music, videos, playlists, upload, settings, detail pages.
-- `js/utils/*` — fuzzy search (Fuse.js vendored or CDN), formatters, keyboard shortcuts, lazy loader, etc.
+- `js/utils/*` — fuzzy search (Fuse.js vendored or CDN), formatters, keyboard shortcuts, lazy loader, icon set (`icons.js` — every UI glyph is an inline SVG from one registry), etc.
 - `css/*` — themes, components, glass, grain, animations.
 
 ### Back-end Architecture (Node.js)
@@ -144,7 +144,7 @@ Vault-V2/
 │   │   ├── api.js
 │   │   ├── themes.js
 │   │   ├── effects.js              # Glass + grain sliders
-│   │   ├── keyboard.js             # Shortcuts
+│   │   ├── keyboard.js             # Global key layer (never steals typing)
 │   │   ├── pwa.js
 │   │   ├── components/
 │   │   │   ├── sidebar.js
@@ -177,6 +177,7 @@ Vault-V2/
 │   │   └── utils/
 │   │       ├── fuse.js             # Vendored Fuse.js (fuzzy search)
 │   │       ├── format.js           # Time, size, etc.
+│   │       ├── icons.js            # Inline SVG icon set (single source of artwork)
 │   │       ├── lazyLoad.js         # IntersectionObserver
 │   │       ├── validators.js
 │   │       └── constants.js
@@ -228,7 +229,11 @@ Vault-V2/
 │       └── deploy.yml              # GitHub Pages deploy
 └── scripts/
     ├── setup.js                    # Interactive setup for server config
-    └── generate-cert.js            # mkcert helper
+    ├── generate-cert.js            # mkcert helper
+    ├── build-css.js                # 12 CSS sources → docs/css/vault.css
+    ├── syntax-check.js             # Parses every JS file (zero-dep)
+    ├── contrast-check.js           # WCAG AA check on the theme tokens
+    └── keyboard-check.js           # Global key layer regression suite
 ```
 
 ---

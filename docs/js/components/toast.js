@@ -1,6 +1,7 @@
 /**
  * Toast notifications
  */
+import { icon } from '../utils/icons.js';
 
 class ToastManager {
   constructor() {
@@ -25,20 +26,21 @@ class ToastManager {
     const toast = document.createElement('div');
     toast.className = `toast ${type}`;
     
-    const icons = {
-      success: '✓',
-      error: '✕',
-      info: 'ℹ',
-      warning: '⚠',
+    // Status icon per toast type — inline SVG, tinted by the .toast.<type> rule.
+    const iconNames = {
+      success: 'check',
+      error: 'x',
+      info: 'info',
+      warning: 'alert-triangle',
     };
 
     toast.innerHTML = `
-      <div class="toast-icon">${icons[type] || 'ℹ'}</div>
+      <div class="toast-icon" aria-hidden="true">${icon(iconNames[type] || 'info', { size: 16, strokeWidth: 2 })}</div>
       <div class="toast-content">
         ${title ? `<div class="toast-title">${this.escape(title)}</div>` : ''}
         <div class="toast-message">${this.escape(message)}</div>
       </div>
-      <button class="toast-close" aria-label="Close">✕</button>
+      <button class="toast-close" aria-label="Close">${icon('x', { size: 14 })}</button>
     `;
 
     this.container.appendChild(toast);
