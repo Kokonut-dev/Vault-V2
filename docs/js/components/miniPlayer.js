@@ -141,20 +141,11 @@ export function initMiniPlayer() {
   });
   
   npShuffleBtn.addEventListener('click', () => {
-    const shuffle = !store.get('shuffle');
-    store.set('shuffle', shuffle, true);
-    npShuffleBtn.style.color = shuffle ? 'var(--accent)' : '';
+    window.dispatchEvent(new CustomEvent('vault:player-action', { detail: { action: 'shuffle' } }));
   });
   
   npRepeatBtn.addEventListener('click', () => {
-    const modes = ['off', 'all', 'one'];
-    const current = store.get('repeat');
-    const idx = modes.indexOf(current);
-    const next = modes[(idx + 1) % modes.length];
-    store.set('repeat', next, true);
-    npRepeatBtn.textContent = next === 'one' ? '🔂' : next === 'all' ? '🔁' : '🔁';
-    npRepeatBtn.style.color = next !== 'off' ? 'var(--accent)' : '';
-    npRepeatBtn.style.opacity = next === 'off' ? '0.5' : '1';
+    window.dispatchEvent(new CustomEvent('vault:player-action', { detail: { action: 'repeat' } }));
   });
   
   nowPlayingSlider.addEventListener('input', (e) => {
@@ -162,18 +153,34 @@ export function initMiniPlayer() {
     window.dispatchEvent(new CustomEvent('vault:player-action', { detail: { action: 'seekPercent', percent } }));
   });
   
+  // SVG icon templates
+  const SVG_SHUFFLE = `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 3 21 3 21 8"/><line x1="4" y1="20" x2="21" y2="3"/><polyline points="21 16 21 21 16 21"/><line x1="15" y1="15" x2="21" y2="21"/><line x1="4" y1="4" x2="9" y2="9"/></svg>`;
+  const SVG_REPEAT = `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>`;
+  const SVG_REPEAT_ONE = `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/><text x="12" y="15" text-anchor="middle" fill="currentColor" stroke="none" font-size="10" font-weight="700" font-family="var(--font-sans, sans-serif)">1</text></svg>`;
+
+  function updateShuffleUI(shuffle) {
+    if (!npShuffleBtn) return;
+    npShuffleBtn.innerHTML = SVG_SHUFFLE;
+    npShuffleBtn.style.color = shuffle ? 'var(--accent)' : '';
+  }
+
+  function updateRepeatUI(repeat) {
+    if (!npRepeatBtn) return;
+    npRepeatBtn.innerHTML = repeat === 'one' ? SVG_REPEAT_ONE : SVG_REPEAT;
+    npRepeatBtn.style.color = repeat !== 'off' ? 'var(--accent)' : '';
+    npRepeatBtn.style.opacity = repeat === 'off' ? '0.5' : '1';
+  }
+
+  // Subscribe to store changes so UI stays in sync from any source (click, keyboard, etc.)
+  store.subscribe('shuffle', updateShuffleUI);
+  store.subscribe('repeat', updateRepeatUI);
+
   // Initial state
   const currentTrack = store.get('currentTrack');
   if (currentTrack) updateTrackInfo(currentTrack);
   updatePlayState(store.get('isPlaying'));
-  
-  // Shuffle/repeat UI
-  if (store.get('shuffle')) npShuffleBtn.style.color = 'var(--accent)';
-  if (store.get('repeat') !== 'off') {
-    npRepeatBtn.style.color = 'var(--accent)';
-  } else {
-    npRepeatBtn.style.opacity = '0.5';
-  }
+  updateShuffleUI(store.get('shuffle'));
+  updateRepeatUI(store.get('repeat'));
 }
 
 let visualizerRaf = null;
