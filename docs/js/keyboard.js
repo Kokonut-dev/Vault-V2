@@ -1,7 +1,55 @@
 /**
  * Keyboard shortcuts manager
+ *
+ * One global keydown handler. Decision order, and why:
+ *
+ *   1. Alt/Cmd+Space opens search — the one chord allowed while typing, because
+ *      it never produces a character.
+ *   2. Escape always broadcasts on `vault:escape` (modals, palette, panels).
+ *   3. Text entry wins. Inside a text field every other keystroke belongs to
+ *      that field; we don't preventDefault and we don't dispatch anything.
+ *      (Fixed: the Space = play/pause shortcut used to run with an input
+ *      focused, so spaces could not be typed into the upload metadata fields —
+ *      title / artist / genre / description — or any other input. Only
+ *      `#search-input` was special-cased.)
+ *   4. A focused control owns its keys: Space/Enter activate a focused button
+ *      or link, arrows drive a focused slider/select.
+ *   5. Ctrl/Cmd/Alt chords belong to the browser/OS: Cmd+P print, Cmd+S save,
+ *      Cmd+R reload, Ctrl+N new window, etc.
+ *   6. Player shortcuts fire only while a player is genuinely on screen.
+ *      (Fixed: the check matched the always-present `.video-player` node inside
+ *      the hidden video modal, so `s`, `n`, `c`, `f`, `m`… hijacked keystrokes
+ *      on every page even with nothing playing.)
  */
-import { store } from './store.js';
+
+const TEXT_ENTRY_TYPES = new Set([
+  'text', 'search', 'url', 'tel', 'email', 'password', 'number',
+  'date', 'datetime-local', 'month', 'week', 'time',
+]);
+
+// Space/Enter "click" these — the browser has to see the keystroke.
+const ACTIVATABLE_TAGS = new Set(['button', 'summary']);
+const ACTIVATABLE_ROLES = new Set([
+  'button', 'link', 'checkbox', 'radio', 'switch', 'menuitem', 'option', 'tab',
+]);
+const ACTIVATABLE_INPUT_TYPES = new Set([
+  'checkbox', 'radio', 'button', 'submit', 'reset', 'image', 'color', 'file',
+]);
+
+// Arrows/Home/End drive these natively — steering a volume slider or a
+// <select> must not double-fire the app's media shortcuts.
+// Deliberately NOT role="slider": #video-progress is one, it has no key
+// handler of its own, and the arrows/digits here are what seek it.
+const NAV_KEYS = new Set([
+  'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight',
+  'Home', 'End', 'PageUp', 'PageDown',
+]);
+const NAV_TAGS = new Set(['select']);
+
+const TEXT_ROLES = new Set(['textbox', 'searchbox', 'combobox', 'spinbutton']);
+
+const tagName = (el) => (el && el.tagName ? el.tagName.toLowerCase() : '');
+const attr = (el, name) => (el && typeof el.getAttribute === 'function' ? el.getAttribute(name) : null);
 
 export class KeyboardManager {
   constructor() {
@@ -13,14 +61,6 @@ export class KeyboardManager {
 
   init() {
     document.addEventListener('keydown', this.handleKeyDown.bind(this));
-    
-    // Detect if user is typing in input
-    this.isTyping = () => {
-      const active = document.activeElement;
-      if (!active) return false;
-      const tag = active.tagName.toLowerCase();
-      return tag === 'input' || tag === 'textarea' || tag === 'select' || active.isContentEditable;
-    };
   }
 
   register(keys, callback, options = {}) {
@@ -38,44 +78,91 @@ export class KeyboardManager {
     return keys;
   }
 
+  /** True when the element consumes plain characters (alt text fields). */
+  isTyping(el = document.activeElement) {
+    if (!el) return false;
+    if (el.isContentEditable) return true;
+    const tag = tagName(el);
+    if (tag === 'textarea' || tag === 'select') return true;
+    if (tag === 'input') {
+      const type = (attr(el, 'type') || 'text').toLowerCase();
+      return TEXT_ENTRY_TYPES.has(type);
+    }
+    return TEXT_ROLES.has(attr(el, 'role'));
+  }
+
+  /**
+   * True when the focused element is the one that should react to this key.
+   * Space/Enter on a button (and arrow keys on a slider/select) are the
+   * control's own interaction — the global layer steps aside.
+   */
+  controlOwns(e) {
+    const el = e.target;
+    if (!el || typeof el.getAttribute !== 'function') return false;
+    const tag = tagName(el);
+    if (tag === 'body' || tag === 'html' || !tag) return false;
+
+    if (e.key === ' ' || e.key === 'Enter') {
+      if (ACTIVATABLE_TAGS.has(tag)) return true;
+      if (tag === 'a' && el.hasAttribute && el.hasAttribute('href')) return true;
+      if (tag === 'input') {
+        const type = (attr(el, 'type') || 'text').toLowerCase();
+        if (ACTIVATABLE_INPUT_TYPES.has(type)) return true;
+      }
+      if (ACTIVATABLE_ROLES.has(attr(el, 'role'))) return true;
+    }
+
+    if (NAV_KEYS.has(e.key)) {
+      if (NAV_TAGS.has(tag)) return true;
+      if (tag === 'input' && (attr(el, 'type') || '').toLowerCase() === 'range') return true;
+    }
+
+    return false;
+  }
+
+  /** A player that should react to media keys is actually on screen. */
+  hasActivePlayer() {
+    return !!document.querySelector('#video-modal.active, #mini-player.active, #now-playing.active');
+  }
+
   handleKeyDown(e) {
     if (!this.enabled) return;
+    if (e.defaultPrevented) return; // a handler closer to the target used it
 
-    // Global search: Alt+Space / Option+Space
+    // 1. Global search — works from inside text fields (types no character)
     if ((e.altKey || e.metaKey) && e.code === 'Space') {
       e.preventDefault();
       window.dispatchEvent(new CustomEvent('vault:open-search'));
       return;
     }
 
-    // ? to show shortcuts (when not typing)
-    if (e.key === '?' && !this.isTyping()) {
-      e.preventDefault();
-      window.dispatchEvent(new CustomEvent('vault:show-shortcuts'));
-      return;
-    }
-
-    // Escape
+    // 2. Escape always bubbles out to modals / panes
     if (e.key === 'Escape') {
       window.dispatchEvent(new CustomEvent('vault:escape'));
       return;
     }
 
-    // Don't handle other shortcuts when typing, except space for player
-    if (this.isTyping()) {
-      // Allow space for player when not in text input? Check if input is search
-      if (e.code === 'Space' && document.activeElement.id !== 'search-input') {
-        // Let player handle it
-      } else {
-        return;
-      }
+    // 3. Typing wins — hand the keystroke back to the field untouched
+    if (this.isTyping()) return;
+
+    // 4. A focused control keeps its own keys
+    if (this.controlOwns(e)) return;
+
+    // 5. Browser/OS chords are not ours
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
+
+    // 6. `?` opens the shortcuts panel
+    if (e.key === '?') {
+      e.preventDefault();
+      window.dispatchEvent(new CustomEvent('vault:show-shortcuts'));
+      return;
     }
 
-    // Sequence handling for G then H etc.
-    if (e.key.toLowerCase() === 'g' && !e.ctrlKey && !e.metaKey && !e.altKey) {
+    // 7. "G then H/M/U/V/P/F/S" navigation
+    if (e.key.toLowerCase() === 'g') {
       this.sequence = ['g'];
       clearTimeout(this.sequenceTimer);
-      this.sequenceTimer = setTimeout(() => this.sequence = [], 1000);
+      this.sequenceTimer = setTimeout(() => { this.sequence = []; }, 1000);
       return;
     }
 
@@ -100,7 +187,19 @@ export class KeyboardManager {
       this.sequence = [];
     }
 
-    // Player shortcuts
+    // 8. Player shortcuts — only when a player is open
+    if (!this.hasActivePlayer()) return;
+
+    // 0-9 seek to 0%-90% (this branch used to be unreachable: digits were
+    // never in the player key map below)
+    if (/^[0-9]$/.test(e.key)) {
+      e.preventDefault();
+      window.dispatchEvent(new CustomEvent('vault:player-action', {
+        detail: { action: 'seekPercent', percent: parseInt(e.key, 10) * 10 },
+      }));
+      return;
+    }
+
     const playerKeys = {
       ' ': 'playPause',
       k: 'playPause',
@@ -122,32 +221,18 @@ export class KeyboardManager {
 
     const lowerKey = e.key.toLowerCase();
     const code = e.code.toLowerCase();
+    const action = playerKeys[lowerKey] || playerKeys[code];
+    if (!action) return;
 
-    if (playerKeys[lowerKey] || playerKeys[code]) {
-      // Only if player is active or video is focused
-      const hasPlayer = document.querySelector('.video-player, .mini-player.active, .now-playing.active');
-      if (hasPlayer) {
-        const action = playerKeys[lowerKey] || playerKeys[code];
-        
-        // Handle Shift+N for previous
-        if (lowerKey === 'n' && e.shiftKey) {
-          e.preventDefault();
-          window.dispatchEvent(new CustomEvent('vault:player-action', { detail: { action: 'prev' } }));
-          return;
-        }
-
-        // Number keys 0-9 for seek percentage
-        if (/^[0-9]$/.test(e.key)) {
-          e.preventDefault();
-          const percent = parseInt(e.key, 10) * 10;
-          window.dispatchEvent(new CustomEvent('vault:player-action', { detail: { action: 'seekPercent', percent } }));
-          return;
-        }
-
-        e.preventDefault();
-        window.dispatchEvent(new CustomEvent('vault:player-action', { detail: { action } }));
-      }
+    // Shift+N = previous
+    if (lowerKey === 'n' && e.shiftKey) {
+      e.preventDefault();
+      window.dispatchEvent(new CustomEvent('vault:player-action', { detail: { action: 'prev' } }));
+      return;
     }
+
+    e.preventDefault();
+    window.dispatchEvent(new CustomEvent('vault:player-action', { detail: { action } }));
   }
 
   disable() {

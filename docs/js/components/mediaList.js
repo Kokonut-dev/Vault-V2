@@ -97,6 +97,9 @@ export function renderMediaList(container, items, options = {}) {
     });
     
     row.addEventListener('keydown', (e) => {
+      // Row-focused only — a Space/Enter on the nested .media-list-play button
+      // must reach that button, not be swallowed here (see mediaCard.js).
+      if (e.target !== row) return;
       if (e.key === 'Enter' || e.key === ' ') {
         e.preventDefault();
         row.click();

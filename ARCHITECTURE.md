@@ -144,7 +144,7 @@ Vault-V2/
 │   │   ├── api.js
 │   │   ├── themes.js
 │   │   ├── effects.js              # Glass + grain sliders
-│   │   ├── keyboard.js             # Shortcuts
+│   │   ├── keyboard.js             # Global key layer (never steals typing)
 │   │   ├── pwa.js
 │   │   ├── components/
 │   │   │   ├── sidebar.js
@@ -229,7 +229,11 @@ Vault-V2/
 │       └── deploy.yml              # GitHub Pages deploy
 └── scripts/
     ├── setup.js                    # Interactive setup for server config
-    └── generate-cert.js            # mkcert helper
+    ├── generate-cert.js            # mkcert helper
+    ├── build-css.js                # 12 CSS sources → docs/css/vault.css
+    ├── syntax-check.js             # Parses every JS file (zero-dep)
+    ├── contrast-check.js           # WCAG AA check on the theme tokens
+    └── keyboard-check.js           # Global key layer regression suite
 ```
 
 ---

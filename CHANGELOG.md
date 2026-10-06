@@ -1,11 +1,11 @@
 # Changelog
 
-## [Unreleased] — Icon system: emoji + dingbats → inline SVG
-
-Every UI glyph that was an emoji (🎬 ♫ 🔒 ✨ …) or a font-dependent dingbat
-(⌕ ≡ ◷ ∅ ⧉ ▲ ⛶ ↑ ✕ …) is now an inline stroke SVG from a single registry.
+## [Unreleased]
 
 ### Added
+- **Icon system: emoji + dingbats → inline SVG.** Every UI glyph that was an
+  emoji (🎬 ♫ 🔒 ✨ …) or a font-dependent dingbat (⌕ ≡ ◷ ∅ ⧉ ▲ ⛶ ↑ ✕ …) is now
+  an inline stroke SVG from a single registry.
 - **`docs/js/utils/icons.js`** — 55-icon set on the 24×24 Lucide grid, exposed as
   `icon(name, opts)` (template strings), `iconEl()` (live element), `setIcon()`
   (runtime glyph swaps), `setIconLabel()` (icon + text button) and
@@ -14,6 +14,31 @@ Every UI glyph that was an emoji (🎬 ♫ 🔒 ✨ …) or a font-dependent din
   extra request, and never carry a second accessible name.
 - `index.html` boots through `hydrateIcons()`; `docs/js/utils/icons.js` added to
   the service-worker shell (cache bumped `vault-v2-shell-v2` → `v3`).
+- **`scripts/keyboard-check.js`** (`npm run test:keyboard`) — 22 zero-dependency
+  checks driving the real `docs/js/keyboard.js` through a DOM stand-in, no
+  browser or npm install required. It fails on the pre-fix handler (13 of its
+  cases) and passes now; run it with `scripts/syntax-check.js` when touching the
+  global key layer.
+
+### Fixed
+- **Space could not be typed into any form field.** The global shortcut layer
+  handled `Space` → play/pause ahead of text entry (only `#search-input` was
+  special-cased), so upload metadata — title, artist, album, genre, description
+  — plus settings/onboarding inputs, swallowed every space. Typing now always
+  wins; player keys only run while a player is open.
+- **Media shortcuts fired with nothing playing.** The player probe matched the
+  always-present `.video-player` node inside the hidden video modal, so `s`,
+  `n`, `c`, `f`, `m`, `p`, `t`, `r`, `j`, `l`, `k` — and now `0`-`9` seeking,
+  which was previously unreachable dead code — hijacked keystrokes on every
+  page. The probe now checks for a genuinely visible player
+  (`#video-modal.active`, `#mini-player.active`, `#now-playing.active`).
+- **Space/Enter on a card's play button opened the detail view instead of
+  playing.** The card/row keydown handler ran on bubbled events from the nested
+  `.media-card-play` / `.media-list-play` button and `preventDefault()`-ed them;
+  both handlers now ignore events whose target is not the card/row itself.
+- Browser/OS chords (`Cmd+P`, `Cmd+S`, `Cmd+R`, `Ctrl+N`) are no longer
+  swallowed by player shortcuts, and a focused control keeps its own keys
+  (Space on a button/checkbox, arrows on a slider or `<select>`).
 
 ### Changed
 - Replaced emoji/dingbats in: header (menu, search, theme, shortcuts), mini

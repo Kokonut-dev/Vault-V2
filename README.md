@@ -162,7 +162,8 @@ Supported formats: `.mp4, .mkv, .webm, .avi, .mov, .mp3, .flac, .wav, .ogg, .opu
 **Keyboard shortcuts:**
 - `Alt + Space` (Mac: `Option + Space`) → Global search
 - `?` → Show all shortcuts
-- `Space` → Play/Pause (when player focused)
+- `Space` / `K` → Play/Pause (only while a player is open — text fields always keep their spaces)
+- `←` / `→` / `↑` / `↓` → Seek ±10s / volume, `0`-`9` → seek to 0%-90%
 - `← →` → Seek 10s, `↑ ↓` → Volume
 
 ---

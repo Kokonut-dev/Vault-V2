@@ -83,6 +83,10 @@ export function createMediaCard(item, options = {}) {
   });
 
   card.addEventListener('keydown', (e) => {
+    // Only when the card itself is focused. Without this guard the event from
+    // the nested play button bubbles up here, gets preventDefault()-ed and the
+    // keyboard user can never activate that button with Space/Enter.
+    if (e.target !== card) return;
     if (e.key === 'Enter' || e.key === ' ') {
       e.preventDefault();
       if (onClick) onClick(item, e);
