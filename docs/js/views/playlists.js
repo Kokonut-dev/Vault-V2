@@ -7,6 +7,7 @@ import { toast } from '../components/toast.js';
 import { renderSkeletonGrid } from '../components/mediaGrid.js';
 import { confirmDialog } from '../components/confirmDialog.js';
 import { escapeHtml } from '../utils/format.js';
+import { icon } from '../utils/icons.js';
 
 export function renderPlaylists(container) {
   container.className = 'page';
@@ -41,7 +42,7 @@ export function renderPlaylists(container) {
       if (playlists.length === 0) {
         content.innerHTML = `
           <div class="empty-state">
-            <div class="empty-state-icon">≡</div>
+            <div class="empty-state-icon">${icon('list', { size: 30 })}</div>
             <div class="empty-state-title">No playlists yet</div>
             <div class="empty-state-message">Create your first playlist to organize your media</div>
             <button class="btn btn-primary" id="empty-create">Create Playlist</button>
@@ -58,8 +59,8 @@ export function renderPlaylists(container) {
         const card = document.createElement('div');
         card.className = 'media-card';
         card.innerHTML = `
-          <div class="media-card-cover" style="background:rgba(var(--glass-tint),0.05); display:flex; align-items:center; justify-content:center; font-size:32px;">
-            ${pl.type === 'collection' ? '◫' : '♫'}
+          <div class="media-card-cover" style="background:rgba(var(--glass-tint),0.05); display:flex; align-items:center; justify-content:center;">
+            ${icon(pl.type === 'collection' ? 'layout-grid' : 'music', { size: 32 })}
           </div>
           <div class="media-card-info">
             <div class="media-card-title">${escapeHtml(pl.name)}</div>
@@ -82,7 +83,7 @@ export function renderPlaylists(container) {
       <div class="modal">
         <div class="modal-header">
           <div class="modal-title">Create Playlist</div>
-          <button class="modal-close">✕</button>
+          <button class="modal-close" aria-label="Close dialog">${icon('x', { size: 16 })}</button>
         </div>
         <div class="modal-body">
           <div class="form-group">
@@ -140,7 +141,7 @@ export function renderPlaylists(container) {
     // Simple detail view
     content.innerHTML = `
       <div style="margin-bottom:24px;">
-        <button class="btn btn-secondary btn-sm" id="back-btn">← Back</button>
+        <button class="btn btn-secondary btn-sm" id="back-btn">${icon('arrow-left', { size: 16 })}<span>Back</span></button>
       </div>
       <div style="background:rgba(var(--glass-tint),0.05); border-radius:16px; padding:24px; margin-bottom:24px;">
         <h2 style="font-size:24px; font-weight:700; margin-bottom:8px;">${escapeHtml(playlist.name)}</h2>

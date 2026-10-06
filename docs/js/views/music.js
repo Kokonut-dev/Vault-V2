@@ -7,6 +7,7 @@ import { renderMediaList } from '../components/mediaList.js';
 import { api } from '../api.js';
 import { escapeHtml } from '../utils/format.js';
 import { subscribeView, onUnmount } from '../utils/lifecycle.js';
+import { icon } from '../utils/icons.js';
 
 export function renderMusic(container) {
   container.className = 'page';
@@ -176,6 +177,8 @@ export function renderMusic(container) {
       opt.value = value;
       opt.dataset.dynamic = '1';
       const labels = {'title': 'Title', 'artist': 'Artist', 'album': 'Album', 'duration': 'Duration', 'year': 'Year', 'addedAt': 'Recently Added'};
+      // Native <option> can't hold an SVG — the arrow is a text affordance
+      // for the sort direction, not an icon slot (see utils/icons.js).
       opt.textContent = `${labels[sort] || sort} ${order === 'asc' ? '↑' : '↓'}`;
       sortSelect.prepend(opt);
     }
@@ -227,7 +230,7 @@ export function renderMusic(container) {
       card.innerHTML = `
         <div class="media-card-cover music">
           <img src="${api.getCoverUrl(cover.id)}" alt="" onerror="this.style.display='none'">
-          <div class="media-card-overlay"><div class="media-card-play">▶</div></div>
+          <div class="media-card-overlay"><div class="media-card-play">${icon('play', { size: 20 })}</div></div>
         </div>
         <div class="media-card-info">
           <div class="media-card-title">${escapeHtml(album)}</div>

@@ -100,19 +100,17 @@
     <main class="main" id="main-content" tabindex="-1">
       <header class="header glass" id="header">
         <div class="header-left">
-          <button id="mobile-menu-btn" class="btn btn-icon" aria-label="Toggle menu" style="display:none;">
-            ☰
-          </button>
+          <button id="mobile-menu-btn" class="btn btn-icon" aria-label="Toggle menu" style="display:none;" data-icon="menu" data-icon-size="18"></button>
           <div id="breadcrumb" class="breadcrumb"></div>
         </div>
         <div class="header-right">
           <button id="search-trigger" class="search-trigger" aria-label="Open search">
-            <span>⌕</span>
+            <span data-icon="search" data-icon-size="18"></span>
             <span>Search</span>
             <kbd>⌥ Space</kbd>
           </button>
-          <button id="theme-toggle" class="btn btn-icon" aria-label="Toggle theme">◐</button>
-          <button id="shortcuts-btn" class="btn btn-icon" aria-label="Keyboard shortcuts">?</button>
+          <button id="theme-toggle" class="btn btn-icon" aria-label="Toggle theme" title="Toggle theme" data-icon="contrast" data-icon-size="18"></button>
+          <button id="shortcuts-btn" class="btn btn-icon" aria-label="Keyboard shortcuts" title="Keyboard shortcuts" data-icon="keyboard" data-icon-size="18"></button>
         </div>
       </header>
       
@@ -136,13 +134,13 @@
       <div class="mini-player-artist" id="mini-artist"></div>
     </div>
     <div class="mini-player-controls">
-      <button class="btn btn-icon" id="mini-prev" aria-label="Previous">⏮</button>
-      <button class="btn btn-icon" id="mini-play" aria-label="Play/Pause">▶</button>
-      <button class="btn btn-icon" id="mini-next" aria-label="Next">⏭</button>
-      <button class="btn btn-icon" id="mini-expand" aria-label="Expand">⛶</button>
+      <button class="btn btn-icon" id="mini-prev" aria-label="Previous track" data-icon="skip-back" data-icon-size="16"></button>
+      <button class="btn btn-icon" id="mini-play" aria-label="Play/Pause" data-icon="play" data-icon-size="16"></button>
+      <button class="btn btn-icon" id="mini-next" aria-label="Next track" data-icon="skip-forward" data-icon-size="16"></button>
+      <button class="btn btn-icon" id="mini-expand" aria-label="Expand player" data-icon="maximize" data-icon-size="16"></button>
     </div>
     <div class="mini-player-volume">
-      <button class="btn btn-icon" id="mini-mute" aria-label="Mute">🔊</button>
+      <button class="btn btn-icon" id="mini-mute" aria-label="Mute" data-icon="volume-2" data-icon-size="16"></button>
       <input type="range" class="slider" id="mini-volume" min="0" max="1" step="0.01" value="0.8" aria-label="Volume">
     </div>
   </div>
@@ -150,9 +148,9 @@
   <!-- Now Playing Fullscreen -->
   <div id="now-playing" class="now-playing">
     <div class="now-playing-header">
-      <button class="btn btn-icon" id="now-playing-close" aria-label="Close">✕</button>
+      <button class="btn btn-icon" id="now-playing-close" aria-label="Close now playing" data-icon="x" data-icon-size="18"></button>
       <div style="font-weight:600;">Now Playing</div>
-      <button class="btn btn-icon" id="now-playing-queue" aria-label="Queue">≡</button>
+      <button class="btn btn-icon" id="now-playing-queue" aria-label="Queue" title="Queue" data-icon="list" data-icon-size="18"></button>
     </div>
     <div class="now-playing-content">
       <div class="now-playing-art" id="now-playing-art">
@@ -172,11 +170,11 @@
           </div>
         </div>
         <div class="now-playing-controls">
-          <button class="btn btn-icon" id="np-shuffle" aria-label="Shuffle"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 3 21 3 21 8"/><line x1="4" y1="20" x2="21" y2="3"/><polyline points="21 16 21 21 16 21"/><line x1="15" y1="15" x2="21" y2="21"/><line x1="4" y1="4" x2="9" y2="9"/></svg></button>
-          <button class="btn btn-icon" id="np-prev" aria-label="Previous">⏮</button>
-          <button class="btn btn-icon btn-lg" id="np-play" aria-label="Play" style="width:56px;height:56px;background:var(--accent-solid);color:var(--on-accent);border-radius:50%;">▶</button>
-          <button class="btn btn-icon" id="np-next" aria-label="Next">⏭</button>
-          <button class="btn btn-icon" id="np-repeat" aria-label="Repeat"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg></button>
+          <button class="btn btn-icon" id="np-shuffle" aria-label="Shuffle" title="Shuffle" data-icon="shuffle" data-icon-size="18"></button>
+          <button class="btn btn-icon" id="np-prev" aria-label="Previous track" data-icon="skip-back" data-icon-size="20"></button>
+          <button class="btn btn-icon btn-lg" id="np-play" aria-label="Play" style="width:56px;height:56px;background:var(--accent-solid);color:var(--on-accent);border-radius:50%;" data-icon="play" data-icon-size="22"></button>
+          <button class="btn btn-icon" id="np-next" aria-label="Next track" data-icon="skip-forward" data-icon-size="20"></button>
+          <button class="btn btn-icon" id="np-repeat" aria-label="Repeat" title="Repeat" data-icon="repeat" data-icon-size="18"></button>
         </div>
         <div id="lyrics-container" class="lyrics" style="display:none;"></div>
         <div id="queue-container" class="queue" style="display:none;"></div>
@@ -204,10 +202,10 @@
         </div>
         <div class="video-controls-row">
           <div class="video-controls-left">
-            <button class="video-control-btn primary" id="video-play" aria-label="Play">▶</button>
-            <button class="video-control-btn" id="video-next" aria-label="Next">⏭</button>
+            <button class="video-control-btn primary" id="video-play" aria-label="Play" data-icon="play" data-icon-size="20"></button>
+            <button class="video-control-btn" id="video-next" aria-label="Next episode" data-icon="skip-forward" data-icon-size="18"></button>
             <div class="video-volume">
-              <button class="video-control-btn" id="video-mute" aria-label="Mute">🔊</button>
+              <button class="video-control-btn" id="video-mute" aria-label="Mute" data-icon="volume-2" data-icon-size="18"></button>
               <div class="video-volume-slider">
                 <input type="range" class="slider" id="video-volume" min="0" max="1" step="0.01" value="0.8" aria-label="Volume">
               </div>
@@ -215,13 +213,13 @@
             <div class="video-time"><span id="video-current">0:00</span> / <span id="video-duration">0:00</span></div>
           </div>
           <div class="video-controls-right">
-            <button class="video-control-btn" id="video-captions" aria-label="Captions">CC</button>
-            <button class="video-control-btn" id="video-eq" aria-label="EQ">EQ</button>
+            <button class="video-control-btn" id="video-captions" aria-label="Captions" title="Captions" data-icon="captions" data-icon-size="18"></button>
+            <button class="video-control-btn" id="video-eq" aria-label="Equalizer" title="Equalizer" data-icon="sliders" data-icon-size="18"></button>
             <button class="video-control-btn" id="video-speed" aria-label="Speed">1x</button>
-            <button class="video-control-btn" id="video-theatre" aria-label="Theatre">T</button>
-            <button class="video-control-btn" id="video-pip" aria-label="PiP">P</button>
-            <button class="video-control-btn" id="video-fullscreen" aria-label="Fullscreen">⛶</button>
-            <button class="video-control-btn" id="video-close" aria-label="Close">✕</button>
+            <button class="video-control-btn" id="video-theatre" aria-label="Theatre mode" title="Theatre mode" data-icon="theatre" data-icon-size="18"></button>
+            <button class="video-control-btn" id="video-pip" aria-label="Picture in picture" title="Picture in picture" data-icon="picture-in-picture" data-icon-size="18"></button>
+            <button class="video-control-btn" id="video-fullscreen" aria-label="Fullscreen" data-icon="maximize" data-icon-size="18"></button>
+            <button class="video-control-btn" id="video-close" aria-label="Close player" data-icon="x" data-icon-size="18"></button>
           </div>
         </div>
       </div>
@@ -245,7 +243,7 @@
   <!-- Connection status -->
   <div id="connection-status" class="connection-status" style="display:none;">
     <div class="connection-status-content">
-      <span>⚠</span>
+      <span data-icon="wifi-off" data-icon-size="18"></span>
       <span>Server disconnected — retrying...</span>
       <button id="retry-connection" class="btn btn-sm btn-primary">Retry</button>
     </div>
@@ -389,14 +387,19 @@
       color: var(--on-accent);
       transform: scale(0.95);
     }
-    /* Non-color selection cue (WCAG 1.4.1): ✓ badge + aria-pressed */
+    /* Non-color selection cue (WCAG 1.4.1): check badge + aria-pressed.
+       Masked inline SVG rather than a ✓ font glyph, which only some system
+       fonts carry and which scales with font-size instead of the box. */
     .grid-square.selected::after {
-      content: '\2713';
+      content: '';
       position: absolute;
-      top: 2px;
-      right: 6px;
-      font-size: 10px;
-      font-weight: 800;
+      top: 3px;
+      right: 5px;
+      width: 11px;
+      height: 11px;
+      background-color: currentColor;
+      -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='3.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M20 6 9 17l-5-5'/%3E%3C/svg%3E") center / contain no-repeat;
+      mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='3.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M20 6 9 17l-5-5'/%3E%3C/svg%3E") center / contain no-repeat;
       opacity: 0.9;
     }
     .grid-actions {
@@ -443,7 +446,7 @@
   </style>
 
   <!-- Main App Script -->
-  <button id="back-to-top" class="back-to-top" type="button" aria-label="Back to top" title="Back to top">↑</button>
+  <button id="back-to-top" class="back-to-top" type="button" aria-label="Back to top" title="Back to top" data-icon="arrow-up" data-icon-size="18"></button>
 
   <script type="module">
     import { getApiBaseUrl, setApiBaseUrl } from './js/config.js';
@@ -459,6 +462,7 @@
     import { renderSidebar } from './js/components/sidebar.js';
     import { searchModal } from './js/components/searchModal.js';
     import { runViewCleanups } from './js/utils/lifecycle.js';
+    import { icon, hydrateIcons } from './js/utils/icons.js';
 
     // Onboarding is lazy-loaded: the 35KB wizard module is only fetched when
     // the setup gate actually needs it (cold start no longer blocks on it).
@@ -471,6 +475,11 @@
       return onboardingManager;
     }
     
+    // Inline the icon set into every [data-icon] slot in this document
+    // (docs/js/utils/icons.js) — the app shell is still hidden behind the auth
+    // gate at this point, so there is no flash of empty buttons.
+    hydrateIcons();
+
     // Initialize
     const serverUrlDisplay = document.getElementById('server-url-display');
     const changeServerBtn = document.getElementById('change-server-btn');
@@ -502,7 +511,7 @@
       const base = getApiBaseUrl();
       if (api.isMixedContent(base)) {
         box.innerHTML = `
-          <strong>⚠ This server URL will be blocked.</strong> Browsers block HTTP media on HTTPS pages
+          <strong>${icon('alert-triangle', { size: 16, className: 'icon icon-inline' })} This server URL will be blocked.</strong> Browsers block HTTP media on HTTPS pages
           (only <code>localhost</code> is allowed).<br>
           Fixes: use <code>http://localhost:4000</code> if Vault runs on this computer,
           or give the server HTTPS (<code>npm run generate-cert</code> in <code>server/</code>,

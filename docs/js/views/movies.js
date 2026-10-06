@@ -135,6 +135,8 @@ export function renderMovies(container) {
       opt.value = value;
       opt.dataset.dynamic = '1';
       const labels = {'title': 'Title', 'artist': 'Artist', 'duration': 'Duration', 'year': 'Year', 'addedAt': 'Recently Added', 'rating': 'Rating', 'genre': 'Genre'};
+      // Native <option> can't hold an SVG — the arrow is a text affordance
+      // for the sort direction, not an icon slot (see utils/icons.js).
       opt.textContent = `${labels[sort] || sort} ${order === 'asc' ? '↑' : '↓'}`;
       sortSelect.prepend(opt);
     }

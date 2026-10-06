@@ -4,7 +4,8 @@
 import { api } from '../api.js';
 import { toast } from '../components/toast.js';
 import { store } from '../store.js';
-import { escapeHtml } from '../utils/format.js';
+import { escapeHtml, escapeAttr } from '../utils/format.js';
+import { icon } from '../utils/icons.js';
 
 export function renderUpload(container) {
   container.className = 'page';
@@ -16,17 +17,17 @@ export function renderUpload(container) {
     
     <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap:16px; margin-bottom:32px;">
       <button class="upload-type-card" data-type="movie">
-        <div style="font-size:32px;">🎬</div>
+        <div>${icon('film', { size: 32 })}</div>
         <div style="font-weight:700; margin-top:8px;">Movie / Series</div>
         <div style="font-size:12px; color:var(--text-secondary); margin-top:4px;">MP4, MKV, AVI, etc.</div>
       </button>
       <button class="upload-type-card" data-type="music">
-        <div style="font-size:32px;">♫</div>
+        <div>${icon('music', { size: 32 })}</div>
         <div style="font-weight:700; margin-top:8px;">Music</div>
         <div style="font-size:12px; color:var(--text-secondary); margin-top:4px;">MP3, FLAC, WAV, etc.</div>
       </button>
       <button class="upload-type-card" data-type="video">
-        <div style="font-size:32px;">▶</div>
+        <div>${icon('video', { size: 32 })}</div>
         <div style="font-weight:700; margin-top:8px;">Video</div>
         <div style="font-size:12px; color:var(--text-secondary); margin-top:4px;">General videos</div>
       </button>
@@ -37,7 +38,7 @@ export function renderUpload(container) {
         <h3 id="upload-type-title" style="font-size:18px; font-weight:700; margin-bottom:16px;"></h3>
         
         <div id="drop-zone">
-          <div id="drop-zone-arrow" style="font-size:24px; margin-bottom:8px;">↑</div>
+          <div id="drop-zone-arrow" style="margin-bottom:8px;">${icon('upload-cloud', { size: 28 })}</div>
           <div style="font-weight:600;">Drop files here or click to browse</div>
           <div style="font-size:12px; color:var(--text-secondary); margin-top:4px;">Support for batch upload</div>
           <input type="file" id="file-input" multiple style="display:none;">
@@ -210,7 +211,7 @@ export function renderUpload(container) {
           <div style="font-weight:500; font-size:13px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${escapeHtml(file.name)}</div>
           <div style="font-size:11px; color:var(--text-secondary);">${(file.size / 1024 / 1024).toFixed(2)} MB</div>
         </div>
-        <button class="btn btn-ghost btn-sm" data-idx="${idx}">✕</button>
+        <button class="btn btn-ghost btn-sm" data-idx="${idx}" aria-label="Remove ${escapeAttr(file.name)}">${icon('x', { size: 14 })}</button>
       </div>
     `).join('');
     

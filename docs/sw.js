@@ -1,7 +1,7 @@
 /**
  * Vault Service Worker — PWA offline shell
  */
-const CACHE_NAME = 'vault-v2-shell-v2';
+const CACHE_NAME = 'vault-v2-shell-v3';
 const BASE_PATH = '/Vault-V2';
 
 const SHELL_ASSETS = [
@@ -22,6 +22,7 @@ const SHELL_ASSETS = [
   `${BASE_PATH}/js/effects.js`,
   `${BASE_PATH}/js/keyboard.js`,
   `${BASE_PATH}/js/pwa.js`,
+  `${BASE_PATH}/js/utils/icons.js`,
 ];
 
 self.addEventListener('install', (event) => {

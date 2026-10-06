@@ -2,8 +2,9 @@
  * Media Card component
  */
 import { api } from '../api.js';
-import { formatTime, truncate, escapeHtml } from '../utils/format.js';
+import { formatTime, truncate, escapeHtml, escapeAttr } from '../utils/format.js';
 import { lazyLoadElement } from '../utils/lazyLoad.js';
+import { icon } from '../utils/icons.js';
 
 function defaultPlay(item) {
   if (item.type === 'music') {
@@ -41,9 +42,9 @@ export function createMediaCard(item, options = {}) {
   card.innerHTML = `
     <div class="media-card-cover ${coverType}">
       <img data-src="${coverUrl}" alt="${escapeHtml(item.title)}" loading="lazy">
-      <div class="media-card-placeholder" aria-hidden="true">${isMusic ? '♫' : isVideo ? '▶' : '▣'}</div>
+      <div class="media-card-placeholder" aria-hidden="true">${icon(isMusic ? 'music' : isVideo ? 'video' : 'film', { size: 34 })}</div>
       <div class="media-card-overlay">
-        <button class="media-card-play" type="button" aria-label="Play ${escapeHtml(item.title)}">▶</button>
+        <button class="media-card-play" type="button" aria-label="Play ${escapeAttr(item.title)}">${icon('play', { size: 20 })}</button>
       </div>
       ${hasProgress ? `<div class="media-card-progress"><div class="media-card-progress-bar" style="width:${progress}%"></div></div>` : ''}
       ${item.duration ? `<div class="media-card-duration">${formatTime(item.duration)}</div>` : ''}

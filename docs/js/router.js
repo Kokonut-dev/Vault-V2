@@ -4,6 +4,7 @@
  * unhandled promise rejections, missing /home alias.
  */
 import { getBasePath } from './config.js';
+import { icon } from './utils/icons.js';
 
 export class Router {
   constructor() {
@@ -158,12 +159,12 @@ export class Router {
     if (!viewContainer) return;
     viewContainer.innerHTML = `
       <div class="empty-state" style="padding:60px 20px; text-align:center;">
-        <div class="empty-state-icon" style="font-size:48px;">∅</div>
+        <div class="empty-state-icon">${icon('file-question', { size: 32 })}</div>
         <div class="empty-state-title" style="font-size:20px; font-weight:700; margin:12px 0;">Page not found</div>
         <div class="empty-state-message" style="color:var(--text-secondary); margin-bottom:20px;">The page <code>${this.escapeHtml(path)}</code> doesn't exist.</div>
         <div style="display:flex; gap:10px; justify-content:center; flex-wrap:wrap; margin-bottom:16px;">
           <button class="btn btn-primary" type="button" data-route="/">Go Home</button>
-          <button class="btn btn-secondary" type="button" id="not-found-search">⌕ Search library</button>
+          <button class="btn btn-secondary" type="button" id="not-found-search">${icon('search', { size: 16 })}<span>Search library</span></button>
         </div>
         <div style="font-size:13px; color:var(--text-tertiary);">
           Quick links:

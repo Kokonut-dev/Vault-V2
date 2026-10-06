@@ -3,6 +3,7 @@
  */
 import { api } from '../api.js';
 import { formatTime, formatBytes, formatDate, escapeHtml } from '../utils/format.js';
+import { icon } from '../utils/icons.js';
 
 export function renderMediaList(container, items, options = {}) {
   const { onPlay, onClick, sortField = 'title', sortOrder = 'asc', onSort } = options;
@@ -12,7 +13,7 @@ export function renderMediaList(container, items, options = {}) {
   if (!items || items.length === 0) {
     container.innerHTML = `
       <div class="empty-state">
-        <div class="empty-state-icon">≡</div>
+        <div class="empty-state-icon">${icon('list', { size: 30 })}</div>
         <div class="empty-state-title">No items</div>
         <div class="empty-state-message">Try adjusting your filters or add some media</div>
       </div>
@@ -36,7 +37,7 @@ export function renderMediaList(container, items, options = {}) {
     if (!onSort) return `<span>${label}</span>`;
     const active = sortField === field;
     const state = active ? (sortOrder === 'asc' ? 'ascending' : 'descending') : 'unsorted';
-    const ind = active ? (sortOrder === 'asc' ? '▲' : '▼') : '';
+    const ind = active ? icon(sortOrder === 'asc' ? 'chevron-up' : 'chevron-down', { size: 12, strokeWidth: 2.5 }) : '';
     return `<button type="button" class="media-list-sort${active ? ' active' : ''}" data-field="${field}" aria-label="Sort by ${label} — currently ${state}">${label}<span class="sort-ind" aria-hidden="true">${ind}</span></button>`;
   }).join('');
   if (onSort) {
@@ -64,7 +65,7 @@ export function renderMediaList(container, items, options = {}) {
     
     row.innerHTML = `
       <div class="media-list-item-main">
-        <button class="media-list-play" type="button" aria-label="Play">▶</button>
+        <button class="media-list-play" type="button" aria-label="Play">${icon('play', { size: 13 })}</button>
         <div class="media-list-item-cover">
           <img src="${item.type === 'music' ? api.getCoverUrl(item.id) : api.getThumbnailUrl(item.id)}" alt="" loading="lazy" onerror="this.style.display='none'">
         </div>

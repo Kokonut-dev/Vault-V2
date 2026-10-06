@@ -8,6 +8,7 @@ import { api } from '../api.js';
 import { toast } from '../components/toast.js';
 import { confirmDialog } from '../components/confirmDialog.js';
 import { subscribeView } from '../utils/lifecycle.js';
+import { icon } from '../utils/icons.js';
 
 export function renderHistory(container) {
   container.className = 'page';
@@ -55,7 +56,7 @@ export function renderHistory(container) {
     if (history.length === 0) {
       content.innerHTML = `
         <div class="empty-state">
-          <div class="empty-state-icon">◷</div>
+          <div class="empty-state-icon">${icon('history', { size: 30 })}</div>
           <div class="empty-state-title">No history yet</div>
           <div class="empty-state-message">Your watched and listened items will appear here</div>
         </div>
@@ -102,7 +103,7 @@ export function renderHistory(container) {
         </div>
         <div style="font-size:12px; color:var(--text-secondary);"><time ${timeAttrs}>${formatRelativeTime(item.history.watchedAt)}</time></div>
         <div>
-          <button class="btn btn-ghost btn-sm" data-id="${item.id}">Play</button>
+          <button class="btn btn-ghost btn-sm" data-id="${item.id}">${icon('play', { size: 14 })}<span>Play</span></button>
         </div>
       `;
       

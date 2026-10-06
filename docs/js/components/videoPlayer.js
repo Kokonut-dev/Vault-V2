@@ -8,6 +8,7 @@ import { api } from '../api.js';
 import { formatTime, escapeHtml } from '../utils/format.js';
 import { toast } from './toast.js';
 import { showEQModal } from './eqPanel.js';
+import { setIcon } from '../utils/icons.js';
 
 let videoEl = null;
 let isTheatre = false;
@@ -87,13 +88,13 @@ export function initVideoPlayer() {
   });
 
   videoEl.addEventListener('play', () => {
-    if (playBtn) playBtn.textContent = '⏸';
+    if (playBtn) setIcon(playBtn, 'pause', { size: 20 });
     player?.classList.remove('paused');
     clearError();
   });
 
   videoEl.addEventListener('pause', () => {
-    if (playBtn) playBtn.textContent = '▶';
+    if (playBtn) setIcon(playBtn, 'play', { size: 20 });
     player?.classList.add('paused');
   });
 
@@ -157,15 +158,20 @@ export function initVideoPlayer() {
     if (videoEl.duration) videoEl.currentTime = percent * videoEl.duration;
   });
 
+  const syncMuteIcon = () => {
+    if (!muteBtn) return;
+    setIcon(muteBtn, videoEl.muted || videoEl.volume === 0 ? 'volume-x' : 'volume-2', { size: 18 });
+  };
+
   muteBtn?.addEventListener('click', () => {
     videoEl.muted = !videoEl.muted;
-    muteBtn.textContent = videoEl.muted ? '🔇' : '🔊';
+    syncMuteIcon();
   });
 
   volumeSlider?.addEventListener('input', (e) => {
     videoEl.volume = parseFloat(e.target.value);
     videoEl.muted = false;
-    if (muteBtn) muteBtn.textContent = videoEl.volume === 0 ? '🔇' : '🔊';
+    syncMuteIcon();
   });
 
   fullscreenBtn?.addEventListener('click', () => {
@@ -179,6 +185,7 @@ export function initVideoPlayer() {
   document.addEventListener('fullscreenchange', () => {
     isFullscreen = !!document.fullscreenElement;
     player?.classList.toggle('fullscreen', isFullscreen);
+    if (fullscreenBtn) setIcon(fullscreenBtn, isFullscreen ? 'minimize' : 'maximize', { size: 18 });
   });
 
   theatreBtn?.addEventListener('click', () => {
@@ -244,7 +251,7 @@ export function initVideoPlayer() {
         break;
       case 'mute':
         videoEl.muted = !videoEl.muted;
-        if (muteBtn) muteBtn.textContent = videoEl.muted ? '🔇' : '🔊';
+        syncMuteIcon();
         break;
       case 'fullscreen':
         fullscreenBtn?.click();
@@ -279,6 +286,8 @@ export function initVideoPlayer() {
   window.addEventListener('keydown', (e) => {
     if (e.key === 'Escape' && modal.classList.contains('active')) closePlayer();
   });
+
+  syncMuteIcon();
 
 }
 

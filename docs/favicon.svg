@@ -1,4 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <!-- Vault mark — a stroked V path (no <text>, so it renders identically
+       everywhere, including launchers/renderers without a system font). -->
   <rect width="64" height="64" rx="16" fill="#7C5CFF"/>
-  <text x="50%" y="54%" dominant-baseline="middle" text-anchor="middle" font-family="system-ui, sans-serif" font-weight="800" font-size="32" fill="white">V</text>
+  <path d="M20.5 21.5 32 43.5l11.5-22" fill="none" stroke="#FFFFFF" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>
 </svg>

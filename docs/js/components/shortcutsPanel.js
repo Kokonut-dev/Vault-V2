@@ -3,6 +3,7 @@
  */
 import { KEYBOARD_SHORTCUTS } from '../utils/constants.js';
 import { createFocusTrap } from '../utils/focusTrap.js';
+import { icon } from '../utils/icons.js';
 
 export function initShortcutsPanel() {
   const backdrop = document.createElement('div');
@@ -12,7 +13,7 @@ export function initShortcutsPanel() {
     <div class="modal" style="max-width:600px;">
       <div class="modal-header">
         <div class="modal-title">Keyboard Shortcuts</div>
-        <button class="modal-close" id="shortcuts-close">✕</button>
+        <button class="modal-close" id="shortcuts-close" aria-label="Close">${icon('x', { size: 16 })}</button>
       </div>
       <div class="modal-body">
         ${Object.entries(KEYBOARD_SHORTCUTS).map(([section, shortcuts]) => `

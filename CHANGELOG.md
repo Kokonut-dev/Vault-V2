@@ -1,5 +1,42 @@
 # Changelog
 
+## [Unreleased] — Icon system: emoji + dingbats → inline SVG
+
+Every UI glyph that was an emoji (🎬 ♫ 🔒 ✨ …) or a font-dependent dingbat
+(⌕ ≡ ◷ ∅ ⧉ ▲ ⛶ ↑ ✕ …) is now an inline stroke SVG from a single registry.
+
+### Added
+- **`docs/js/utils/icons.js`** — 55-icon set on the 24×24 Lucide grid, exposed as
+  `icon(name, opts)` (template strings), `iconEl()` (live element), `setIcon()`
+  (runtime glyph swaps), `setIconLabel()` (icon + text button) and
+  `hydrateIcons()` (fills `[data-icon]` slots in static markup). All artwork is
+  `stroke: currentColor` + `aria-hidden`, so icons follow the theme, cost no
+  extra request, and never carry a second accessible name.
+- `index.html` boots through `hydrateIcons()`; `docs/js/utils/icons.js` added to
+  the service-worker shell (cache bumped `vault-v2-shell-v2` → `v3`).
+
+### Changed
+- Replaced emoji/dingbats in: header (menu, search, theme, shortcuts), mini
+  player + Now Playing (prev/play/pause/next/expand/mute/shuffle/repeat incl.
+  repeat-one), video player (play/pause/mute/fullscreen ⇄ minimize, captions,
+  EQ, theatre, PiP, next, close), sidebar nav + collapse arrows, toast status
+  icons + close, media cards/list (play, placeholder covers, sort indicators),
+  search palette (input, empty, no-results, recent), empty states across
+  home/library/history/playlists/detail/404, favourites (outline ⇄ filled
+  heart), rating star, copy buttons, upload flow (media-type cards, drop zone,
+  file removal), settings section chips + external-link, and all 8 onboarding
+  steps (feature icons, connection statuses, footer nav, complete badge).
+- `metaGrid`, `searchModal`, `sidebar`, `detail`, `settings`, `upload`,
+  `onboarding` etc. now emit icon markup through the shared helper instead of
+  hand-written SVG strings (the duplicated shuffle/repeat markup in
+  `index.html` + `miniPlayer.js` is gone).
+- Check badges (login grid + onboarding grid) are masked inline SVG instead of
+  `content: '✓'`, so they no longer depend on a system font carrying the glyph.
+- `favicon.svg` V-mark is now a stroked `<path>` rather than `<text>` — identical
+  rendering everywhere (launchers/tools without system-ui fonts included).
+- Favourite buttons gained `aria-pressed` + a stateful `aria-label`; the
+  fullscreen control now reflects state; attribute labels use `escapeAttr()`.
+
 ## [2.2.0] - 2026-09-27
 
 Seven-stage repository optimization (audit → build → perf → accessibility →

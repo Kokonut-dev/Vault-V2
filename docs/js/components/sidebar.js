@@ -3,22 +3,24 @@
  */
 import { store } from '../store.js';
 import { router } from '../router.js';
+import { icon, setIcon } from '../utils/icons.js';
 
+// `icon` values are keys into docs/js/utils/icons.js — never glyphs.
 const NAV_ITEMS = [
   { section: 'Library', items: [
-    { id: 'home', label: 'Home', icon: '⌂', route: '/' },
-    { id: 'movies', label: 'Movies & Series', icon: '🎬', route: '/movies' },
-    { id: 'music', label: 'Music', icon: '♫', route: '/music' },
-    { id: 'videos', label: 'Videos', icon: '▶', route: '/videos' },
+    { id: 'home', label: 'Home', icon: 'home', route: '/' },
+    { id: 'movies', label: 'Movies & Series', icon: 'film', route: '/movies' },
+    { id: 'music', label: 'Music', icon: 'music', route: '/music' },
+    { id: 'videos', label: 'Videos', icon: 'video', route: '/videos' },
   ]},
   { section: 'Your Collection', items: [
-    { id: 'playlists', label: 'Playlists', icon: '≡', route: '/playlists' },
-    { id: 'favourites', label: 'Favourites', icon: '♥', route: '/favourites' },
-    { id: 'history', label: 'History', icon: '◷', route: '/history' },
+    { id: 'playlists', label: 'Playlists', icon: 'list', route: '/playlists' },
+    { id: 'favourites', label: 'Favourites', icon: 'heart', route: '/favourites' },
+    { id: 'history', label: 'History', icon: 'history', route: '/history' },
   ]},
   { section: 'Manage', items: [
-    { id: 'upload', label: 'Upload', icon: '↑', route: '/upload' },
-    { id: 'settings', label: 'Settings', icon: '⚙', route: '/settings' },
+    { id: 'upload', label: 'Upload', icon: 'upload', route: '/upload' },
+    { id: 'settings', label: 'Settings', icon: 'settings', route: '/settings' },
   ]},
 ];
 
@@ -59,7 +61,7 @@ export function renderSidebar(container) {
                role="link"
                tabindex="0"
                aria-current="${isActivePath(currentPath, item.route) ? 'page' : 'false'}">
-              <span class="nav-icon">${item.icon}</span>
+              <span class="nav-icon">${icon(item.icon, { size: 18 })}</span>
               <span class="nav-label">${item.label}</span>
             </a>
           `).join('')}
@@ -68,7 +70,7 @@ export function renderSidebar(container) {
     </nav>
     <div class="sidebar-footer">
       <button class="sidebar-toggle" id="sidebar-toggle" type="button" aria-label="Toggle sidebar">
-        <span>${isCollapsed ? '→' : '←'}</span>
+        <span>${icon(isCollapsed ? 'chevron-right' : 'chevron-left', { size: 16 })}</span>
         <span class="nav-label" style="margin-left:8px;">${isCollapsed ? 'Expand' : 'Collapse'}</span>
       </button>
       <button class="btn btn-ghost btn-sm" id="logout-btn" type="button" style="width:100%;">
@@ -98,7 +100,7 @@ export function renderSidebar(container) {
     if (appEl) appEl.classList.toggle('sidebar-collapsed', collapsed);
     const label = sidebar.querySelector('#sidebar-toggle .nav-label');
     const arrow = sidebar.querySelector('#sidebar-toggle span');
-    if (arrow) arrow.textContent = collapsed ? '→' : '←';
+    if (arrow) setIcon(arrow, collapsed ? 'chevron-right' : 'chevron-left', { size: 16 });
     if (label) label.textContent = collapsed ? 'Expand' : 'Collapse';
   });
 

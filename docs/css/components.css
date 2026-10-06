@@ -4,6 +4,21 @@
    chrome (sidebar, header, dock, modals) pays for backdrop-filter.
    ============================================================ */
 
+/* ---------- Icons ----------
+   Every icon is an inline SVG from docs/js/utils/icons.js drawn with
+   `stroke: currentColor`, so it inherits the colour of whatever contains it
+   (theme-aware, no webfont, no sprite request). `.icon-inline` is for icons
+   that sit inside a run of text — without it the baseline drops. */
+.icon {
+  display: block;
+  flex-shrink: 0;
+}
+
+.icon-inline {
+  display: inline-block;
+  vertical-align: -0.15em;
+}
+
 /* ---------- Buttons ---------- */
 .btn {
   display: inline-flex;

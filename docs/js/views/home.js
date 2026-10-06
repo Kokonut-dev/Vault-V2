@@ -6,6 +6,7 @@ import { api } from '../api.js';
 import { renderMediaGrid, renderSkeletonGrid } from '../components/mediaGrid.js';
 import { router } from '../router.js';
 import { formatRelativeTime, escapeHtml } from '../utils/format.js';
+import { icon } from '../utils/icons.js';
 
 export function renderHome(container) {
   container.className = 'page';
@@ -115,7 +116,7 @@ async function loadHomeContent(container) {
           <div style="font-weight:700; font-size:18px; margin-bottom:4px;">${escapeHtml(randomPick.title)}</div>
           <div style="color:var(--text-secondary); font-size:14px; margin-bottom:12px;">${escapeHtml(randomPick.artist || randomPick.genre || '')} ${randomPick.year ? `• ${randomPick.year}` : ''}</div>
           <div style="display:flex; gap:8px; flex-wrap:wrap;">
-            <button class="btn btn-primary" id="play-random">Play Now</button>
+            <button class="btn btn-primary" id="play-random">${icon('play', { size: 16 })}<span>Play Now</span></button>
             <button class="btn btn-secondary" id="open-random">Details</button>
           </div>
         </div>
@@ -141,7 +142,7 @@ async function loadHomeContent(container) {
   if (library.length === 0) {
     container.innerHTML = `
       <div class="empty-state">
-        <div class="empty-state-icon">◫</div>
+        <div class="empty-state-icon">${icon('layout-grid', { size: 30 })}</div>
         <div class="empty-state-title">Your vault is empty</div>
         <div class="empty-state-message">Upload some movies, music, or videos to get started. Your media will appear here.</div>
         <button class="btn btn-primary" onclick="window.Vault.router.navigate('/upload')">Upload Media</button>
