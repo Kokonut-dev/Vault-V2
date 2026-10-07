@@ -48,12 +48,24 @@ Legend of sources: what the comparable popular platform does that Vault currentl
   touch gestures; ambient artwork colour extraction; offline downloads;
   QR pairing module; playlist export/import/reorder; quality badges on cards;
   `v3.css` component sheet.
-- **Partial:** settings pages for TOTP / remote-access wizard / subtitle
-  styling / audio normalisation; audiobooks (server paths + type exist, no
-  dedicated view yet); virtualised grids (helper written, not yet used by the
-  big grids); casting device picker for audio; Media Session for video.
-- **Todo:** provider API-key UI polish, mDNS, Docker/compose + systemd units,
-  CI test job wiring.
+- **Done (settings & playback):** TOTP enable/disable + recovery codes,
+  active-session list with revoke / sign-out-everywhere, QR pairing panel,
+  remote-access helper, subtitle size/colour/background/timing with a live
+  preview, default playback speed, volume normalisation and skip-silence —
+  all persisted in `vault_playback_prefs` and applied to both players.
+- **Done (library UX):** **Audiobooks** view (resume, chapters, speed, sleep
+  timer, bookmarks) and **Artists / Artist** views (play all, shuffle, queue,
+  album grouping); virtualised rendering for grids over 150 items
+  (`utils/virtualGrid.js` → `mediaGrid`); Media Session for video (lock-screen
+  controls, metadata, playlist nav); context menus on list rows as well as
+  cards; `window.vaultPlayback` provides current-time/seek helpers.
+- **Done (ops):** mDNS announcement (`vault.local`, opt-in via
+  `server.mdns` / `VAULT_MDNS=1`), Dockerfile + `docker-compose.yml` (ffmpeg
+  included), systemd unit + launchd plist + `deploy/README.md`, provider
+  API-key cards in the Server console; ffmpeg resolution now falls back to the
+  system binary when the bundled one is missing.
+- **Todo:** nothing outstanding from the approved list — future work tracked in
+  `IMPROVEMENTS.md` history and the PR description.
 
 ## Tier 1 — Finish what's already shipped in the UI (dead buttons + README drift)
 

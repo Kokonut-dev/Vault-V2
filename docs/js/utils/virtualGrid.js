@@ -57,14 +57,21 @@ export function createVirtualGrid(container, options = {}) {
     const totalRows = Math.ceil(items.length / columns);
     const height = rowHeight();
 
-    // Where is the container relative to the viewport?
-    const rect = container.getBoundingClientRect();
-    const scrolled = (scrollRoot === window ? window.scrollY : scrollRoot.scrollTop) - rect.top - (scrollRoot === window ? window.scrollY : 0);
-    const offsetInContainer = Math.max(0, -rect.top + (scrollRoot === window ? 0 : 0));
-    const viewportHeight = scrollRoot === window ? window.innerHeight : scrollRoot.clientHeight;
+    // How far the container's top edge sits above the visible area. For a
+    // window scroller `getBoundingClientRect()` already includes the scroll
+    // offset; for an element scroller we compare scrollTop with offsetTop.
+    let offsetInContainer;
+    let viewportHeight;
+    if (scrollRoot === window) {
+      const rect = container.getBoundingClientRect();
+      offsetInContainer = Math.max(0, -rect.top);
+      viewportHeight = window.innerHeight || document.documentElement.clientHeight || 800;
+    } else {
+      offsetInContainer = Math.max(0, (scrollRoot.scrollTop || 0) - (container.offsetTop || 0));
+      viewportHeight = scrollRoot.clientHeight || 800;
+    }
 
-    const visibleTop = Math.max(0, offsetInContainer - viewportHeight);
-    const firstRow = Math.max(0, Math.floor(visibleTop / height) - opts.buffer);
+    const firstRow = Math.max(0, Math.floor(offsetInContainer / height) - opts.buffer);
     const rowsVisible = Math.ceil(viewportHeight / height) + opts.buffer * 2;
     const lastRow = Math.min(totalRows, firstRow + rowsVisible);
 
@@ -110,6 +117,12 @@ export function createVirtualGrid(container, options = {}) {
     destroy() {
       scrollRoot.removeEventListener('scroll', onScroll);
       window.removeEventListener('resize', onScroll);
+      if (rafId) cancelAnimationFrame(rafId);
+      rafId = null;
+      topSpacer.remove();
+      bottomSpacer.remove();
+      viewport.remove();
+      container.classList.remove('virtual-grid');
       items = [];
     },
     get virtualized() {

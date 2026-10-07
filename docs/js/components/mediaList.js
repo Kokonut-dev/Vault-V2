@@ -4,6 +4,7 @@
 import { api } from '../api.js';
 import { formatTime, formatBytes, formatDate, escapeHtml } from '../utils/format.js';
 import { icon } from '../utils/icons.js';
+import { attachContextMenu } from './contextMenu.js';
 
 export function renderMediaList(container, items, options = {}) {
   const { onPlay, onClick, sortField = 'title', sortOrder = 'asc', onSort } = options;
@@ -96,6 +97,12 @@ export function renderMediaList(container, items, options = {}) {
       else if (onPlay) onPlay(item);
     });
     
+    // Right-click / long-press gets the same actions as grid cards
+    // (queue, watchlist, watched, add to playlist, trash).
+    row.dataset.itemId = item.id;
+    row.dataset.contextMenuFor = item.id;
+    attachContextMenu(row, item);
+
     row.addEventListener('keydown', (e) => {
       // Row-focused only — a Space/Enter on the nested .media-list-play button
       // must reach that button, not be swallowed here (see mediaCard.js).

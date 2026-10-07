@@ -159,6 +159,49 @@ export function initVideoPlayer() {
     if (durationEl) durationEl.textContent = formatTime(videoEl.duration);
   });
 
+  // OS-level media controls (lock screen, Windows/macOS media keys, Android
+  // notification). Audio had this; video did not (Tier 3 item).
+  function updateMediaSession() {
+    if (!('mediaSession' in navigator) || !currentItem) return;
+    try {
+      navigator.mediaSession.metadata = new MediaMetadata({
+        title: currentItem.title || 'Vault',
+        artist: currentItem.artist || currentItem.genre || '',
+        album: currentItem.season ? `S${String(currentItem.season).padStart(2, '0')}E${String(currentItem.episode || 0).padStart(2, '0')}` : (currentItem.album || 'Vault'),
+        artwork: currentItem.poster || currentItem.cover
+          ? [{ src: currentItem.poster || currentItem.cover, sizes: '512x512', type: 'image/jpeg' }]
+          : [{ src: api.getThumbnailUrl(currentItem.id), sizes: '320x180', type: 'image/jpeg' }],
+      });
+    } catch { /* MediaMetadata unsupported */ }
+
+    const video = videoEl;
+    navigator.mediaSession.setActionHandler?.('play', () => video?.play().catch(() => {}));
+    navigator.mediaSession.setActionHandler?.('pause', () => video?.pause());
+    navigator.mediaSession.setActionHandler?.('seekbackward', () => {
+      if (video) video.currentTime = Math.max(0, video.currentTime - 10);
+    });
+    navigator.mediaSession.setActionHandler?.('seekforward', () => {
+      if (video) video.currentTime = Math.min(video.duration || Infinity, video.currentTime + 10);
+    });
+    navigator.mediaSession.setActionHandler?.('seekto', (details) => {
+      if (video && details.seekTime != null) video.currentTime = details.seekTime;
+    });
+    try {
+      navigator.mediaSession.setActionHandler?.('nexttrack', nextBtn && !nextBtn.disabled ? () => nextBtn.click() : null);
+    } catch { /* handler unsupported */ }
+  }
+
+  window.addEventListener('vault:video-opened', () => {
+    updateMediaSession();
+    if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'playing';
+  });
+  videoEl.addEventListener('pause', () => {
+    if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'paused';
+  });
+  videoEl.addEventListener('play', () => {
+    if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'playing';
+  });
+
   videoEl.addEventListener('ended', () => {
     // Two things used to be missing here (audit note): nothing told the
     // server the item finished, and no event fired for the "stop after N"

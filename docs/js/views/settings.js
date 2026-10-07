@@ -7,6 +7,7 @@ import { api } from '../api.js';
 import { toast } from '../components/toast.js';
 import { getApiBaseUrl, setApiBaseUrl } from '../config.js';
 import { renderEQPanel } from '../components/eqPanel.js';
+import { renderSettingsExtras } from './settingsExtras.js';
 import { copyText } from '../utils/clipboard.js';
 import { icon } from '../utils/icons.js';
 
@@ -116,6 +117,9 @@ export function renderSettings(container) {
     <div id="eq-modal-host"></div>
   `;
   
+  // v3 cards: playback quality, subtitles, devices/pairing, TOTP, remote access.
+  renderSettingsExtras(container);
+
   // Theme buttons
   container.querySelectorAll('[data-theme]').forEach(btn => {
     btn.addEventListener('click', () => {

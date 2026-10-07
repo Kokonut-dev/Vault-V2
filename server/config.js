@@ -9,6 +9,12 @@ const DEFAULT_CONFIG = {
   server: {
     port: parseInt(process.env.VAULT_PORT || '4000', 10),
     host: process.env.VAULT_HOST || '0.0.0.0',
+    // Announce <hostname>.local on the LAN so TVs/phones can connect without
+    // an IP (opt-in; set VAULT_MDNS=1 or server.mdns.enabled=true).
+    mdns: {
+      enabled: process.env.VAULT_MDNS === '1',
+      hostname: process.env.VAULT_MDNS_HOST || 'vault'
+    },
     https: {
       enabled: false,
       keyPath: './certs/key.pem',

@@ -270,9 +270,15 @@ class ApiClient {
     return `${this.baseUrl}/api/media/stream/${id}?token=${encodeURIComponent(token || '')}`;
   }
 
-  getCoverUrl(id) {
+  getCoverUrl(id, size = null) {
     const token = store.get('token') || localStorage.getItem('vault_token');
-    return `${this.baseUrl}/api/media/cover/${id}?token=${encodeURIComponent(token || '')}`;
+    const sizeParam = size ? `&size=${encodeURIComponent(size)}` : '';
+    return `${this.baseUrl}/api/media/cover/${id}?token=${encodeURIComponent(token || '')}${sizeParam}`;
+  }
+
+  getBackdropUrl(id) {
+    const token = store.get('token') || localStorage.getItem('vault_token');
+    return `${this.baseUrl}/api/media/cover/${id}?kind=backdrop&token=${encodeURIComponent(token || '')}`;
   }
 
   getThumbnailUrl(id, time = null) {
@@ -312,11 +318,17 @@ class ApiClient {
 
   getPlaybackUrl(item, { forceTranscode = false } = {}) {
     if (!item) return '';
+    // Items can carry their own source (live TV channels, recordings, plugin
+    // providers). Those must never be rewritten to /api/media/stream/<id>,
+    // which would 404 for anything not in the library index.
+    if (!forceTranscode && item.streamUrl && !this.needsTranscode(item)) {
+      return item.streamUrl;
+    }
     if (forceTranscode || this.needsTranscode(item)) {
       if (item.type === 'music') return this.getAudioTranscodeUrl(item.id);
       return this.getTranscodeUrl(item.id);
     }
-    return this.getStreamUrl(item.id);
+    return item.streamUrl || this.getStreamUrl(item.id);
   }
 
   // Hosts browsers NEVER treat as mixed content. Per the Secure Contexts spec
@@ -481,6 +493,14 @@ class ApiClient {
 
   removeFavourite(id) {
     return this.request(`/api/playlists/favourites/${id}`, { method: 'DELETE' });
+  }
+
+  /** Mark an item fully watched/listened (drives scrobbling + "watched" state). */
+  markCompleted(id, duration = null) {
+    return this.request('/api/playlists/history', {
+      method: 'POST',
+      body: { itemId: id, progress: 100, duration, completed: true, bumpPlayCount: true },
+    });
   }
 
   // History
@@ -849,7 +869,9 @@ class ApiClient {
 
   // --- Metadata agents (match / fix) ---------------------------------------
   searchMetadata(params) {
-    const qs = new URLSearchParams(Object.entries(params).filter(([, v]) => v));
+    // The server expects `query`; callers often pass the natural `q`.
+    const normalised = { ...params, query: params.query || params.q };
+    const qs = new URLSearchParams(Object.entries(normalised).filter(([, v]) => v));
     return this.request(`/api/agent/search?${qs}`);
   }
 

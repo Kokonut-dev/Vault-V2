@@ -7,6 +7,9 @@
  * extracted to disk, so a 1 GB archive costs almost no memory per page.
  */
 const fs = require('fs-extra');
+// `fs-extra` promisifies callbacks, but its `open()` resolves to a raw fd — the
+// ZIP reader needs a real FileHandle, so those two calls use fs/promises.
+const fsp = require('fs/promises');
 const path = require('path');
 const zlib = require('zlib');
 const { promisify } = require('util');
@@ -23,7 +26,7 @@ function naturalCompare(a, b) {
 }
 
 async function readCentralDirectory(filePath) {
-  const handle = await fs.open(filePath, 'r');
+  const handle = await fsp.open(filePath, 'r');
   try {
     const stat = await handle.stat();
     const tailSize = Math.min(stat.size, 66000);
@@ -68,7 +71,7 @@ async function readCentralDirectory(filePath) {
 }
 
 async function readEntry(filePath, entry) {
-  const handle = await fs.open(filePath, 'r');
+  const handle = await fsp.open(filePath, 'r');
   try {
     const header = Buffer.alloc(30);
     await handle.read(header, 0, 30, entry.localOffset);

@@ -1009,9 +1009,21 @@
         if (nav && !nav.isCurrent()) return;
         runViewCleanups();
         viewContainer.innerHTML = '';
-        await render(viewContainer, params.key || params.id, params);
+        await render(viewContainer, params.key || params.id || params.name, params);
       };
 
+      router.addRoute('/artists', async (params, nav) => {
+        const { renderArtists } = await import('./js/views/artists.js');
+        return mount(renderArtists)(params, nav);
+      });
+      router.addRoute('/artist/:name', async (params, nav) => {
+        const { renderArtist } = await import('./js/views/artists.js');
+        return mountKeyed(renderArtist)(params, nav);
+      });
+      router.addRoute('/audiobooks', async (params, nav) => {
+        const { renderAudiobooks } = await import('./js/views/audiobooks.js');
+        return mount(renderAudiobooks)(params, nav);
+      });
       router.addRoute('/shows', async (params, nav) => {
         const { renderShows } = await import('./js/views/shows.js');
         return mount(renderShows)(params, nav);
@@ -1063,6 +1075,33 @@
       router.addRoute('/read/:id', async (params, nav) => {
         const { renderComicReader } = await import('./js/views/comics.js');
         return mountKeyed(renderComicReader)(params, nav);
+      });
+      // QR pairing deep link: /pair?code=123456 (scanned from Settings → Devices)
+      router.addRoute('/pair', async (params, nav) => {
+        const { joinWithPairingCode } = await import('./js/components/qrPair.js');
+        const code = (params && (params.code || params.query?.code)) || new URLSearchParams(location.search).get('code');
+        if (!code) {
+          viewContainer.innerHTML = `
+            <div class="page">
+              <div class="page-header"><h1 class="page-title">Pair this device</h1></div>
+              <div class="empty-state">
+                <div class="empty-state-title">No pairing code</div>
+                <div class="empty-state-message">Open Settings → Devices on an already-signed-in device and scan the QR code, or enter the 6-digit code below.</div>
+                <form id="pair-form" style="display:flex; gap:8px; justify-content:center; margin-top:12px">
+                  <input class="form-input" id="pair-code" inputmode="numeric" maxlength="6" placeholder="123456" aria-label="Pairing code">
+                  <button class="btn btn-primary" type="submit">Pair</button>
+                </form>
+              </div>
+            </div>`;
+          viewContainer.querySelector('#pair-form').addEventListener('submit', async (event) => {
+            event.preventDefault();
+            const value = viewContainer.querySelector('#pair-code').value.trim();
+            if (value) await joinWithPairingCode(value);
+          });
+          return;
+        }
+        viewContainer.innerHTML = '<div class="page"><div class="page-header"><h1 class="page-title">Pairing…</h1></div></div>';
+        await joinWithPairingCode(code);
       });
       router.addRoute('/livetv', async (params, nav) => {
         const { renderLiveTV } = await import('./js/views/livetv.js');

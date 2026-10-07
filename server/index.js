@@ -27,6 +27,7 @@ const livetvService = require('./services/livetv');
 const podcastsService = require('./services/podcasts');
 const agentService = require('./services/agent');
 const systemService = require('./services/system');
+const mdnsService = require('./services/mdns');
 const logger = require('./utils/logger');
 
 // Load config
@@ -121,7 +122,7 @@ app.get('/api/health', (req, res) => {
   const stats = libraryService.getStats();
   res.json({
     status: 'ok',
-    version: '3.0.0',
+    version: require('./package.json').version || '3.0.0',
     uptime: process.uptime(),
     library: {
       total: stats.totalItems,
@@ -219,7 +220,7 @@ app.get('/api/events', authMiddleware, (req, res) => {
   sendEvent('connected', {
     message: 'Connected to Vault events',
     jobs: events.jobList(),
-    version: '3.0.0',
+    version: require('./package.json').version || '3.0.0',
   });
 
   const interval = setInterval(() => {
@@ -344,6 +345,18 @@ async function onServerStart() {
     logger.warn(`Startup extras failed: ${err.message}`);
   }
 
+  // mDNS announcement (vault.local) — opt-in via server.mdns / VAULT_MDNS=1.
+  try {
+    const mdns = getConfig().server?.mdns || {};
+    mdnsService.start({
+      enabled: mdns.enabled || process.env.VAULT_MDNS === '1',
+      hostname: mdns.hostname || 'vault',
+      port: getConfig().server?.mdns?.announcePort || getConfig().server.port,
+    });
+  } catch (err) {
+    logger.warn(`mDNS startup failed: ${err.message}`);
+  }
+
   // Trash retention sweep (hourly) — soft-deleted media is purged after the
   // configured window.
   const trashTimer = setInterval(() => {
@@ -387,6 +400,7 @@ async function shutdown() {
   try {
     scannerService.stopWatcher();
     hlsService.stopAll();
+    mdnsService.stop();
     livetvService.stopAll;
     await Promise.all([
       libraryService.flush(),

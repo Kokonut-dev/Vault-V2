@@ -14,9 +14,11 @@ import { initLiveEvents } from './events.js';
 import { initQueuePanel, toggleQueue } from './components/queuePanel.js';
 import { initLyrics } from './components/lyrics.js';
 import { initContextMenu } from './components/contextMenu.js';
+import { initQuickActions } from './components/quickActions.js';
 import { applyArtworkAmbience, clearArtworkAmbience } from './utils/color.js';
 import { wireCastButton, renderSleepMenu, wireSleepMenu, updateSleepIndicator, onItemFinished } from './components/playerExtras.js';
 import { initVideoExtras } from './components/videoExtras.js';
+import { initPlaybackPrefs } from './components/playbackPrefs.js';
 import { confirmDialog } from './components/confirmDialog.js';
 import { icon } from './utils/icons.js';
 import { formatTime } from './utils/format.js';
@@ -455,6 +457,7 @@ export function initAppExtras() {
   initQueuePanel();
   initLyrics();
   initContextMenu();
+  initQuickActions();
   initMultiSelect();
   initGestures();
   initBottomNav();
@@ -462,6 +465,7 @@ export function initAppExtras() {
   initSyncPlayFollower();
   initPlayerExtras();
   initVideoExtras();
+  initPlaybackPrefs();
   initGridKeyboardNav();
 
   window.vaultExtras = {
@@ -470,6 +474,27 @@ export function initAppExtras() {
     removeOfflineItem,
     setSelectionMode,
     formatTime,
+  };
+
+  // Bookmark/time helpers the audio + video players read (used by the sleep
+  // timer, bookmark capture and the lyrics window). Previously referenced as
+  // `window.vaultPlayback` but never defined, so seeks silently did nothing.
+  window.vaultPlayback = window.vaultPlayback || {
+    currentTime() {
+      const media = document.getElementById('video-element') || document.querySelector('audio');
+      return media && Number.isFinite(media.currentTime) ? media.currentTime : 0;
+    },
+    duration() {
+      const media = document.getElementById('video-element') || document.querySelector('audio');
+      return media && Number.isFinite(media.duration) ? media.duration : 0;
+    },
+    paused() {
+      const media = document.getElementById('video-element') || document.querySelector('audio');
+      return media ? media.paused : true;
+    },
+    seek(time) {
+      window.dispatchEvent(new CustomEvent('vault:seek', { detail: { time } }));
+    },
   };
 
   return window.vaultExtras;

@@ -11,6 +11,8 @@ const NAV_ITEMS = [
     { id: 'home', label: 'Home', icon: 'home', route: '/' },
     { id: 'movies', label: 'Movies & Series', icon: 'film', route: '/movies' },
     { id: 'music', label: 'Music', icon: 'music', route: '/music' },
+    { id: 'artists', label: 'Artists', icon: 'headphones', route: '/artists' },
+    { id: 'audiobooks', label: 'Audiobooks', icon: 'headphones', route: '/audiobooks' },
     { id: 'videos', label: 'Videos', icon: 'video', route: '/videos' },
   ]},
   { section: 'TV & Live', items: [
