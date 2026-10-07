@@ -1,5 +1,54 @@
 # Changelog
 
+## [3.0.0] — in progress (branch `arena/0deefe55-vault-v2`)
+
+### Added
+- **Server subsystems (18):** events (SSE bus + job tracking), trash (soft
+  delete with retention + restore), extras (watchlist, collections, smart
+  rules, markers, bookmarks, podcast feeds, listen stats), profiles + sessions
+  (per-profile libraries/history, PINs, session list/revoke), stats
+  (Wrapped-style recap), SQLite index (optional, `node:sqlite`), transcode plan
+  (quality ladder, hardware-accel detection), metadata agents (TMDB/MusicBrainz/
+  NFO), podcasts (RSS/Atom + episode download), comics (CBZ reader), live TV
+  (M3U/HDHomeRun/XMLTV + DVR), SyncPlay (rooms, drift correction, chat),
+  notifications (webhook/ntfy/Discord/Telegram + Last.fm/ListenBrainz
+  scrobbling), system (health, backups, log ring, disk usage), Subsonic API,
+  HLS streaming (on-demand segmenter + playlists), JSON store utility, TOTP,
+  ignore rules.
+- **REST surface:** `/api/extras`, `/api/series`, `/api/profiles`,
+  `/api/system`, `/api/podcasts`, `/api/comics`, `/api/livetv`,
+  `/api/syncplay`, `/api/agent`, `/rest` (Subsonic), live `/api/events`;
+  artwork/trailer/extras/trickplay/lyrics/chapters/plan/sources endpoints;
+  playlist order/export/import/stats; HLS playlists; `/api/library/libraries`
+  and `/api/library/recent`.
+- **Client:** context menus with queue/watchlist/watched/trash-undo, Up Next
+  queue panel (drag to reorder, save as playlist), synced lyrics with offset
+  nudge, sleep timer + stop-after with fade, cast button, bookmarks,
+  "stats for nerds", skip intro/recap/outro, chapter chips, trickplay scrub
+  previews, quality selector, home hero + "Next up" + "Because you watched"
+  rows, shows/seasons/episodes pages, My List, Continue Watching, Stats/Wrapped,
+  profiles picker, server console, trash, downloads, podcasts, comics reader,
+  live TV/DVR, SyncPlay rooms, QR pairing, multi-select batch actions, mobile
+  gestures, bottom navigation, ambient artwork colours, offline downloads,
+  quality badges, playlist export/import/drag-reorder, live updates over SSE.
+- **Docs/config:** `server/config.example.json` regenerated from the real
+  defaults (TOTP, profiles, Subsonic, libraries, ignore rules, scan schedule,
+  storage backend, trickplay, trash, extras, notifications, Live TV, podcasts,
+  metadata providers). Vendored `hls.js` + `qrcode-generator` under
+  `docs/vendor/` with licences.
+
+### Changed
+- `docs/js/api.js` accepts plain-object request bodies (normalised to JSON) and
+  gained the full v3 method surface + `markCompleted`.
+- Video player emits `vault:video-opened` / `vault:timeupdate` /
+  `vault:item-finished` and marks items completed on `ended`.
+- `docs/css/v3.css` added to the CSS build (13 sheets → 93.5 KB minified,
+  16.7 KB gzip).
+
+### Verification
+- `npm run lint` (syntax-check): 129 files OK · `node --test`: 24/24 pass ·
+  server boots and serves `/api/health` 3.0.0.
+
 ## [Unreleased]
 
 ### Added

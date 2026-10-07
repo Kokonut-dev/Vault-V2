@@ -11,6 +11,50 @@ Legend of sources: what the comparable popular platform does that Vault currentl
 
 ---
 
+## Implementation status — `arena/0deefe55-vault-v2`
+
+> Updated as work lands. **Done** = code merged on the branch and passing
+> `npm run lint` (syntax-check) + the server test suite; **Partial** = core is
+> in but some wiring/UI is still missing; **Todo** = not started.
+
+### Server (complete)
+- **All 18 new services** load and the server boots: events (SSE bus + jobs),
+  trash (soft delete + retention), extras (watchlist, collections, markers,
+  bookmarks, feeds, listens), profiles + sessions, stats, sqliteIndex,
+  transcodePlan (quality ladder + HW-accel detection), agent (TMDB/MusicBrainz/
+  NFO), podcasts (RSS/Atom), comics (CBZ reader), livetv (M3U/HDHomeRun/XMLTV),
+  syncplay (rooms + drift), notifications (webhook/ntfy/Discord/Telegram,
+  Last.fm/ListenBrainz), system (health, backups, logs), subsonic, hls.
+- **Routes mounted:** `/api/extras`, `/api/series`, `/api/profiles`,
+  `/api/system`, `/api/podcasts`, `/api/comics`, `/api/livetv`,
+  `/api/syncplay`, `/api/agent`, `/rest` (Subsonic), live `/api/events`;
+  `library` (libraries/recent/scan/trash-aware delete), `media` (artwork,
+  trailer, extras, trickplay, lyrics, chapters, plan, sources), `playlists`
+  (order, M3U export/import, stats, scrobbles), `transcode` (HLS + `?plan=true`),
+  `settings` (validates every new block).
+- **Boot/smoke verified:** `/api/health` 3.0.0, grid login, 14 endpoints 200,
+  `/rest/ping` ok, SQLite index available, 24/24 tests pass.
+
+### Client
+- **Done:** full v3 API client; SSE live-update client; context menus (queue,
+  watchlist, watched, playlist, trash+undo); Up Next queue panel with drag
+  reorder; synced lyrics with offset; sleep timer + stop-after; cast button;
+  bookmarks; stats-for-nerds panel; skip intro/recap/outro; chapter chips;
+  trickplay scrub preview; quality selector; hero + smart rows on Home;
+  new views for **Shows (seasons/episodes)**, **My List**, **Continue
+  Watching**, **Stats/Wrapped**, **Profiles**, **Server console**, **Trash**,
+  **Downloads**, **Podcasts**, **Comics reader**, **Live TV/DVR**,
+  **SyncPlay**; sidebar + bottom-nav entries; multi-select batch actions;
+  touch gestures; ambient artwork colour extraction; offline downloads;
+  QR pairing module; playlist export/import/reorder; quality badges on cards;
+  `v3.css` component sheet.
+- **Partial:** settings pages for TOTP / remote-access wizard / subtitle
+  styling / audio normalisation; audiobooks (server paths + type exist, no
+  dedicated view yet); virtualised grids (helper written, not yet used by the
+  big grids); casting device picker for audio; Media Session for video.
+- **Todo:** provider API-key UI polish, mDNS, Docker/compose + systemd units,
+  CI test job wiring.
+
 ## Tier 1 — Finish what's already shipped in the UI (dead buttons + README drift)
 
 These are half-built: the DOM exists, the API exists, or both — but there's no wiring. Each one
