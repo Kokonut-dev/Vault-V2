@@ -127,11 +127,27 @@ export function initVideoPlayer() {
         lastProgressSave = now;
         store.addToHistory(currentItem.id, percent);
       }
+      // v3: one shared tick for lyrics highlighting, skip-intro prompts,
+      // chapter highlighting and the trickplay preview.
+      window.dispatchEvent(new CustomEvent('vault:timeupdate', {
+        detail: { currentTime: videoEl.currentTime, duration: videoEl.duration, item: currentItem },
+      }));
     });
   });
 
   videoEl.addEventListener('loadedmetadata', () => {
     if (durationEl) durationEl.textContent = formatTime(videoEl.duration);
+  });
+
+  videoEl.addEventListener('ended', () => {
+    // Two things used to be missing here (audit note): nothing told the
+    // server the item finished, and no event fired for the "stop after N"
+    // sleep timer / next-episode logic to hook into.
+    if (currentItem) {
+      api.markCompleted?.(currentItem.id).catch(() => {});
+      store.addToHistory?.(currentItem.id, 100);
+    }
+    window.dispatchEvent(new CustomEvent('vault:item-finished', { detail: { item: currentItem } }));
   });
 
   videoEl.addEventListener('progress', () => {
@@ -350,11 +366,16 @@ export function openPlayer(item, { forceTranscode = false } = {}) {
   });
 
   if (item.season && item.episode) checkNextEpisode(item);
+
+  // Let the v3 extras layer load markers (skip intro/outro), chapters,
+  // trickplay metadata and the transcode plan for this item.
+  window.dispatchEvent(new CustomEvent('vault:video-opened', { detail: { item } }));
 }
 
 export function closePlayer() {
   const modal = document.getElementById('video-modal');
   const vEl = document.getElementById('video-element');
+  window.dispatchEvent(new CustomEvent('vault:video-closed'));
 
   if (rafId) { cancelAnimationFrame(rafId); rafId = null; }
   if (controlsTimeout) { clearTimeout(controlsTimeout); controlsTimeout = null; }

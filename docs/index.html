@@ -923,6 +923,12 @@
       // Init shortcuts panel
       const { initShortcutsPanel } = await import('./js/components/shortcutsPanel.js');
       initShortcutsPanel();
+
+      // v3 client layer: live SSE updates, Up Next queue, synced lyrics,
+      // context menus, multi-select, gestures, bottom nav, ambient artwork,
+      // SyncPlay follower, sleep timer, offline downloads.
+      const { initAppExtras } = await import('./js/app-extras.js');
+      initAppExtras();
     }
     
     function setupRoutes() {
@@ -997,6 +1003,79 @@
       router.addRoute('/watch/:id', mountDetail);
       router.addRoute('/movie/:id', mountDetail);
       router.addRoute('/album/:id', mountDetail);
+
+      // ---- v3 routes -------------------------------------------------------
+      const mountKeyed = (render) => async (params, nav) => {
+        if (nav && !nav.isCurrent()) return;
+        runViewCleanups();
+        viewContainer.innerHTML = '';
+        await render(viewContainer, params.key || params.id, params);
+      };
+
+      router.addRoute('/shows', async (params, nav) => {
+        const { renderShows } = await import('./js/views/shows.js');
+        return mount(renderShows)(params, nav);
+      });
+      router.addRoute('/show/:key', async (params, nav) => {
+        const { renderShowDetail } = await import('./js/views/shows.js');
+        return mountKeyed(renderShowDetail)(params, nav);
+      });
+      router.addRoute('/watchlist', async (params, nav) => {
+        const { renderWatchlist } = await import('./js/views/watchlist.js');
+        return mount(renderWatchlist)(params, nav);
+      });
+      router.addRoute('/continue', async (params, nav) => {
+        const { renderContinue } = await import('./js/views/watchlist.js');
+        return mount(renderContinue)(params, nav);
+      });
+      router.addRoute('/stats', async (params, nav) => {
+        const { renderStats } = await import('./js/views/stats.js');
+        return mount(renderStats)(params, nav);
+      });
+      router.addRoute('/profiles', async (params, nav) => {
+        const { renderProfiles } = await import('./js/views/profiles.js');
+        return mount(renderProfiles)(params, nav);
+      });
+      router.addRoute('/system', async (params, nav) => {
+        const { renderSystem } = await import('./js/views/system.js');
+        return mount(renderSystem)(params, nav);
+      });
+      router.addRoute('/trash', async (params, nav) => {
+        const { renderTrash } = await import('./js/views/trash.js');
+        return mount(renderTrash)(params, nav);
+      });
+      router.addRoute('/downloads', async (params, nav) => {
+        const { renderDownloads } = await import('./js/views/trash.js');
+        return mount(renderDownloads)(params, nav);
+      });
+      router.addRoute('/podcasts', async (params, nav) => {
+        const { renderPodcasts } = await import('./js/views/podcasts.js');
+        return mount(renderPodcasts)(params, nav);
+      });
+      router.addRoute('/podcast/:id', async (params, nav) => {
+        const { renderPodcasts } = await import('./js/views/podcasts.js');
+        return mount(renderPodcasts)(params, nav);
+      });
+      router.addRoute('/comics', async (params, nav) => {
+        const { renderComics } = await import('./js/views/comics.js');
+        return mount(renderComics)(params, nav);
+      });
+      router.addRoute('/read/:id', async (params, nav) => {
+        const { renderComicReader } = await import('./js/views/comics.js');
+        return mountKeyed(renderComicReader)(params, nav);
+      });
+      router.addRoute('/livetv', async (params, nav) => {
+        const { renderLiveTV } = await import('./js/views/livetv.js');
+        return mount(renderLiveTV)(params, nav);
+      });
+      router.addRoute('/syncplay', async (params, nav) => {
+        const { renderSyncPlay } = await import('./js/views/syncplay.js');
+        return mount(renderSyncPlay)(params, nav);
+      });
+      router.addRoute('/syncplay/:id', async (params, nav) => {
+        const { renderSyncPlay } = await import('./js/views/syncplay.js');
+        return mount(renderSyncPlay)(params, nav);
+      });
     }
     
     // Shake animation

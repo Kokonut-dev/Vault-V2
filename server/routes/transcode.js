@@ -6,6 +6,8 @@ const libraryService = require('../services/library');
 const transcoderService = require('../services/transcoder');
 const logger = require('../utils/logger');
 const { sendFileWithRange } = require('../utils/fileUtils');
+const hls = require('../services/hls');
+const transcodePlan = require('../services/transcodePlan');
 
 router.get('/audio/:id', (req, res) => {
   const item = libraryService.getById(req.params.id);
@@ -19,6 +21,41 @@ router.get('/audio/:id', (req, res) => {
   transcoderService.transcodeAudioStream(item.path, res, { codec, bitrate });
 });
 
+// --- HLS / adaptive streaming ---------------------------------------------
+router.get('/hls/:id/master.m3u8', (req, res) => {
+  const item = libraryService.getById(req.params.id);
+  if (!item || !fs.existsSync(item.path)) return res.status(404).json({ error: 'Item not found' });
+  const variants = hls.variantsFor(item);
+  res.setHeader('Content-Type', 'application/vnd.apple.mpegurl');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.send(hls.masterPlaylist(item, variants));
+});
+
+router.get('/hls/:id/:variant/index.m3u8', async (req, res) => {
+  const item = libraryService.getById(req.params.id);
+  if (!item || !fs.existsSync(item.path)) return res.status(404).json({ error: 'Item not found' });
+  const playlist = await hls.variantPlaylist(item, req.params.variant);
+  if (!playlist) return res.status(503).json({ error: 'Transcoder did not produce a playlist', code: 'HLS_UNAVAILABLE' });
+  res.setHeader('Content-Type', 'application/vnd.apple.mpegurl');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.send(playlist);
+});
+
+router.get('/hls/:id/:variant/:file', (req, res) => {
+  const file = hls.segmentPath(req.params.id, req.params.variant, req.params.file);
+  if (!file || !fs.existsSync(file)) return res.status(404).json({ error: 'Segment not found' });
+  res.setHeader('Content-Type', req.params.file.endsWith('.ts') ? 'video/mp2t' : 'application/octet-stream');
+  res.setHeader('Cache-Control', 'public, max-age=600');
+  return sendFileWithRange(req, res, file);
+});
+
+router.get('/hls/status', (req, res) => res.json(hls.status()));
+
+router.delete('/hls/cache', async (req, res) => {
+  const removed = await hls.clearCache();
+  res.json({ message: `Cleared ${removed} HLS session(s)`, removed });
+});
+
 router.get('/:id', (req, res) => {
   const item = libraryService.getById(req.params.id);
   if (!item) return res.status(404).json({ error: 'Item not found' });
@@ -27,7 +64,12 @@ router.get('/:id', (req, res) => {
     return res.status(404).json({ error: 'File not found on disk' });
   }
 
-  const { quality = '720p', format = 'mp4', audioCodec = 'aac' } = req.query;
+  const { quality = '720p', format = 'mp4', audioCodec = 'aac', plan: wantPlan } = req.query;
+
+  // `?plan=true` returns what would happen instead of streaming (stats panel).
+  if (wantPlan === 'true') {
+    return res.json(transcodePlan.plan(item, quality));
+  }
 
   // Check cache first — serve through the shared Range-aware helper so
   // seeking in a cached transcode returns proper 206 responses (F-16).

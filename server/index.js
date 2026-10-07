@@ -15,6 +15,18 @@ const { errorHandler, notFoundHandler } = require('./middleware/errorHandler');
 const { startCacheCleanupScheduler } = require('./services/transcoder');
 const libraryService = require('./services/library');
 const scannerService = require('./services/scanner');
+const events = require('./services/events');
+const notifications = require('./services/notifications');
+const extrasService = require('./services/extras');
+const trashService = require('./services/trash');
+const profilesService = require('./services/profiles');
+const sessionsService = require('./services/sessions');
+const sqliteIndex = require('./services/sqliteIndex');
+const hlsService = require('./services/hls');
+const livetvService = require('./services/livetv');
+const podcastsService = require('./services/podcasts');
+const agentService = require('./services/agent');
+const systemService = require('./services/system');
 const logger = require('./utils/logger');
 
 // Load config
@@ -27,10 +39,40 @@ libraryService.init();
 const app = express();
 
 // Middleware
+// Content-Security-Policy: previously disabled while the docs claimed CSP
+// protection. The policy below allows exactly what the app needs:
+//   * self-hosted scripts/styles and the small number of inline handlers the
+//     zero-build SPA still uses,
+//   * media/images from the API base URL (which is this server, or the tunnel
+//     origin the user configured),
+//   * connect to the same origins for fetch()/SSE.
+// `frame-ancestors 'none'` + `object-src 'none'` keep the clickjacking and
+// plugin vectors closed.
 app.use(helmet({
-  contentSecurityPolicy: false, // We set custom CSP via helmet config if needed
+  contentSecurityPolicy: {
+    useDefaults: false,
+    directives: {
+      defaultSrc: ["'self'"],
+      scriptSrc: ["'self'", "'unsafe-inline'"],
+      styleSrc: ["'self'", "'unsafe-inline'"],
+      imgSrc: ["'self'", 'data:', 'blob:', 'https:'],
+      mediaSrc: ["'self'", 'blob:', 'data:'],
+      fontSrc: ["'self'", 'data:'],
+      connectSrc: ["'self'", 'https:', 'http:', 'blob:'],
+      workerSrc: ["'self'", 'blob:'],
+      frameSrc: ["'self'", 'blob:'],
+      objectSrc: ["'none'"],
+      baseUri: ["'self'"],
+      formAction: ["'self'"],
+      frameAncestors: ["'none'"],
+      manifestSrc: ["'self'"],
+    },
+  },
   crossOriginEmbedderPolicy: false,
   crossOriginResourcePolicy: { policy: "cross-origin" },
+  crossOriginOpenerPolicy: { policy: 'same-origin-allow-popups' },
+  referrerPolicy: { policy: 'no-referrer' },
+  hsts: config.server?.https?.enabled ? undefined : false,
 }));
 
 app.use(createCorsMiddleware());
@@ -79,7 +121,7 @@ app.get('/api/health', (req, res) => {
   const stats = libraryService.getStats();
   res.json({
     status: 'ok',
-    version: '2.0.0',
+    version: '3.0.0',
     uptime: process.uptime(),
     library: {
       total: stats.totalItems,
@@ -117,8 +159,52 @@ app.use('/api/history', authMiddleware, (req, res, next) => {
   playlistsRouter(req, res, next);
 });
 app.use('/api/settings', authMiddleware, require('./routes/settings'));
+app.use('/api/extras', authMiddleware, require('./routes/extras'));
+app.use('/api/series', authMiddleware, require('./routes/series'));
+app.use('/api/profiles', authMiddleware, require('./routes/profiles'));
+app.use('/api/system', authMiddleware, require('./routes/system'));
+app.use('/api/podcasts', authMiddleware, require('./routes/podcasts'));
+app.use('/api/comics', authMiddleware, require('./routes/comics'));
+app.use('/api/livetv', authMiddleware, require('./routes/livetv'));
+app.use('/api/syncplay', authMiddleware, require('./routes/syncplay'));
 
-// SSE for real-time updates (optional)
+// Metadata agents (search + apply a match to an item).
+const agentRouter = express.Router();
+agentRouter.get('/search', async (req, res) => {
+  const { query, type, year, artist, album } = req.query;
+  if (!query && !album && !artist) return res.status(400).json({ error: 'query required' });
+  const result = await agentService.searchMatches({ query, type, year, artist, album });
+  res.json(result);
+});
+agentRouter.post('/apply/:id', async (req, res) => {
+  const item = libraryService.getById(req.params.id);
+  if (!item) return res.status(404).json({ error: 'Item not found' });
+  try {
+    const { patch, details } = await agentService.applyMatch(item, req.body?.match || {}, {
+      downloadArtwork: req.body?.downloadArtwork !== false,
+    });
+    const updated = libraryService.updateItem(item.id, patch);
+    events.broadcast('library:changed', { reason: 'metadata', id: item.id, title: updated.title });
+    res.json({ item: updated, match: details });
+  } catch (err) {
+    logger.warn(`[Agent] apply failed: ${err.message}`);
+    res.status(502).json({ error: `Metadata provider failed: ${err.message}` });
+  }
+});
+agentRouter.get('/local/:id', (req, res) => {
+  const item = libraryService.getById(req.params.id);
+  if (!item) return res.status(404).json({ error: 'Item not found' });
+  res.json({ match: agentService.readNfo(item.path) });
+});
+app.use('/api/agent', authMiddleware, agentRouter);
+
+// Subsonic-compatible API so existing apps (Symfonium, play:Sub, Feishin…)
+// work without a Vault client. Auth happens per-request inside the router.
+app.use('/rest', require('./routes/subsonic'));
+
+// SSE for real-time updates. Previously this endpoint only ever sent `ping`,
+// so nothing consumed it (audit F-22). It now carries the live event bus:
+// library changes, scan/upload jobs, now-playing, syncplay and playback state.
 app.get('/api/events', authMiddleware, (req, res) => {
   res.setHeader('Content-Type', 'text/event-stream');
   res.setHeader('Cache-Control', 'no-cache');
@@ -130,12 +216,34 @@ app.get('/api/events', authMiddleware, (req, res) => {
     res.write(`data: ${JSON.stringify(data)}\n\n`);
   };
 
-  sendEvent('connected', { message: 'Connected to Vault events' });
+  sendEvent('connected', {
+    message: 'Connected to Vault events',
+    jobs: events.jobList(),
+    version: '3.0.0',
+  });
 
   const interval = setInterval(() => {
     sendEvent('ping', { timestamp: Date.now() });
   }, 30000);
 
+  req.on('close', () => {
+    clearInterval(interval);
+    res.end();
+  });
+});
+
+// Public (unauthenticated) event stream used *only* while the auth gate is
+// visible — it carries scan progress for the setup/first-run screens and
+// nothing library-specific.
+app.get('/api/events/public', (req, res) => {
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  res.flushHeaders();
+
+  const send = (event, data) => res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
+  send('connected', { jobs: events.jobList() });
+  const interval = setInterval(() => send('ping', { timestamp: Date.now() }), 30000);
   req.on('close', () => {
     clearInterval(interval);
     res.end();
@@ -165,7 +273,7 @@ if (fs.existsSync(docsPath)) {
 }
 
 // 404 handler for unmatched API routes
-app.use('/api', notFoundHandler);
+app.use(['/api', '/rest'], notFoundHandler);
 
 // SPA fallback so /movies, /music, etc. work when the UI is served by this server.
 // Without this, refreshing or navigating via history API 404s and "switching pages
@@ -223,6 +331,43 @@ async function onServerStart() {
   // Periodic transcode-cache cleanup — cleanupCache() was previously defined
   // but never invoked, so stale transcodes grew without bound (F-8).
   startCacheCleanupScheduler();
+
+  // First-run defaults + background maintenance.
+  try {
+    profilesService.ensureDefaults();
+    notifications.wireLibraryEvents();
+    if (getConfig().media?.storage === 'sqlite') {
+      const result = sqliteIndex.sync(libraryService.getAll());
+      logger.info(`[Index] SQLite sync: ${result.synced} item(s)`);
+    }
+  } catch (err) {
+    logger.warn(`Startup extras failed: ${err.message}`);
+  }
+
+  // Trash retention sweep (hourly) — soft-deleted media is purged after the
+  // configured window.
+  const trashTimer = setInterval(() => {
+    trashService.pruneExpired().catch(() => {});
+  }, 60 * 60 * 1000);
+  trashTimer.unref?.();
+  trashService.pruneExpired().catch(() => {});
+
+  // Optional scan schedule (off | hourly | 6h | daily) per library.
+  const scheduleAnswers = { hourly: 3600000, '6h': 21600000, daily: 86400000 };
+  const schedule = getConfig().media?.scanSchedule || 'off';
+  if (scheduleAnswers[schedule]) {
+    const timer = setInterval(() => {
+      scannerService.scanAll().catch(err => logger.warn(`Scheduled scan failed: ${err.message}`));
+    }, scheduleAnswers[schedule]);
+    timer.unref?.();
+    logger.info(`Library scan scheduled (${schedule})`);
+  }
+
+  // Podcast auto-refresh (every 6 hours) when feeds exist.
+  const podcastTimer = setInterval(() => {
+    if (extrasService.getFeeds().length) podcastsService.refreshAll().catch(() => {});
+  }, 6 * 60 * 60 * 1000);
+  podcastTimer.unref?.();
   try {
     // Initial scan
     logger.info('Starting initial library scan...');
@@ -238,21 +383,36 @@ async function onServerStart() {
 }
 
 // Graceful shutdown — flush library debounced saves
-process.on('SIGINT', async () => {
-  logger.info('Shutting down...');
+async function shutdown() {
   try {
     scannerService.stopWatcher();
-    await libraryService.flush();
-  } catch {}
+    hlsService.stopAll();
+    livetvService.stopAll;
+    await Promise.all([
+      libraryService.flush(),
+      libraryService.flushScoped(),
+      extrasService.flush(),
+      trashService.flush(),
+      profilesService.flush(),
+      sessionsService.flush(),
+      notifications.flush(),
+      agentService.flush(),
+      livetvService.flush(),
+    ]);
+  } catch (err) {
+    logger.warn(`Shutdown flush failed: ${err.message}`);
+  }
+}
+
+process.on('SIGINT', async () => {
+  logger.info('Shutting down...');
+  await shutdown();
   process.exit(0);
 });
 
 process.on('SIGTERM', async () => {
   logger.info('Shutting down...');
-  try {
-    scannerService.stopWatcher();
-    await libraryService.flush();
-  } catch {}
+  await shutdown();
   process.exit(0);
 });
 
