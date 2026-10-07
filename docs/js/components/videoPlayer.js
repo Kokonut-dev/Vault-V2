@@ -101,9 +101,29 @@ export function initVideoPlayer() {
   videoEl.addEventListener('error', () => {
     const err = videoEl.error;
     console.error('[VideoPlayer] error', err);
+
+    // Attempt ladder: direct play → progressive transcode → HLS (if the
+    // browser supports MSE and the vendored hls.js loads). Each step is only
+    // taken once per item so a broken file cannot loop forever.
     if (currentItem && !usingTranscode) {
       toast.info('Direct play failed — trying transcode…');
       openPlayer(currentItem, { forceTranscode: true });
+      return;
+    }
+    if (currentItem && usingTranscode && !currentItem._triedHls) {
+      currentItem._triedHls = true;
+      import('./hlsLoader.js').then(async ({ attachHls }) => {
+        const started = await attachHls(videoEl, api.hlsMasterUrl(currentItem.id), {
+          startPosition: videoEl.currentTime || 0,
+        });
+        if (!started) {
+          setError('This file could not be played. The codec may be unsupported or the server is unreachable.', false);
+          return;
+        }
+        clearError();
+        toast.info('Switched to adaptive streaming (HLS)');
+        videoEl.play().catch(() => player?.classList.add('paused', 'show-controls'));
+      });
       return;
     }
     setError('This file could not be played. The codec may be unsupported or the server is unreachable.', false);
@@ -376,6 +396,9 @@ export function closePlayer() {
   const modal = document.getElementById('video-modal');
   const vEl = document.getElementById('video-element');
   window.dispatchEvent(new CustomEvent('vault:video-closed'));
+  if (vEl) {
+    import('./hlsLoader.js').then(({ detachHls }) => detachHls(vEl)).catch(() => {});
+  }
 
   if (rafId) { cancelAnimationFrame(rafId); rafId = null; }
   if (controlsTimeout) { clearTimeout(controlsTimeout); controlsTimeout = null; }
