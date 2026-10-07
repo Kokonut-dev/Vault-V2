@@ -13,13 +13,29 @@ const NAV_ITEMS = [
     { id: 'music', label: 'Music', icon: 'music', route: '/music' },
     { id: 'videos', label: 'Videos', icon: 'video', route: '/videos' },
   ]},
+  { section: 'TV & Live', items: [
+    { id: 'shows', label: 'TV Shows', icon: 'tv', route: '/shows' },
+    { id: 'livetv', label: 'Live TV & DVR', icon: 'radio', route: '/livetv' },
+    { id: 'syncplay', label: 'SyncPlay', icon: 'users', route: '/syncplay' },
+  ]},
   { section: 'Your Collection', items: [
+    { id: 'watchlist', label: 'My List', icon: 'bookmark', route: '/watchlist' },
+    { id: 'continue', label: 'Continue Watching', icon: 'activity', route: '/continue' },
     { id: 'playlists', label: 'Playlists', icon: 'list', route: '/playlists' },
     { id: 'favourites', label: 'Favourites', icon: 'heart', route: '/favourites' },
     { id: 'history', label: 'History', icon: 'history', route: '/history' },
+    { id: 'downloads', label: 'Downloads', icon: 'download', route: '/downloads' },
+  ]},
+  { section: 'Audio & Reading', items: [
+    { id: 'podcasts', label: 'Podcasts', icon: 'rss', route: '/podcasts' },
+    { id: 'comics', label: 'Comics', icon: 'book', route: '/comics' },
+    { id: 'stats', label: 'Your Stats', icon: 'bar-chart', route: '/stats' },
   ]},
   { section: 'Manage', items: [
     { id: 'upload', label: 'Upload', icon: 'upload', route: '/upload' },
+    { id: 'profiles', label: 'Profiles', icon: 'users', route: '/profiles' },
+    { id: 'system', label: 'Server', icon: 'hard-drive', route: '/system' },
+    { id: 'trash', label: 'Trash', icon: 'trash', route: '/trash' },
     { id: 'settings', label: 'Settings', icon: 'settings', route: '/settings' },
   ]},
 ];

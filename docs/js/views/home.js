@@ -58,7 +58,14 @@ async function loadHomeContent(container) {
   const favItems = favourites.map(id => library.find(i => i.id === id)).filter(Boolean).slice(0, 8);
   
   container.innerHTML = '';
-  
+
+  // Hero: the most relevant in-progress (or newest) item.
+  const heroSeed = continueItems[0] || recentlyAdded[0];
+  if (heroSeed) {
+    const heroProgress = history.find(h => h.itemId === heroSeed.id)?.progress || 0;
+    container.appendChild(createHero(heroSeed, heroProgress));
+  }
+
   if (continueItems.length > 0) {
     const section = createSection('Continue Watching', continueItems, (item) => {
       if (item.type === 'music') {
@@ -70,6 +77,26 @@ async function loadHomeContent(container) {
     container.appendChild(section);
   }
   
+  // Next up across TV shows (server computed: next unwatched episode per show).
+  api.getNextUp(12).then(next => {
+    const items = next.items || [];
+    if (!items.length) return;
+    const row = createSection('Next up in your shows', items, item => {
+      window.dispatchEvent(new CustomEvent('vault:open-video', { detail: { item } }));
+    });
+    const target = container.querySelector('.home-section') || container;
+    target.after(row);
+  }).catch(() => {});
+
+  // Smart row: because you watched <seed>.
+  const seed = continueItems[0] || history[0];
+  const seedItem = seed ? library.find(i => i.id === (seed.itemId || seed.id)) : null;
+  const similar = similarItems(library, seedItem, 10).filter(i => !continueItems.some(c => c.id === i.id));
+  if (similar.length >= 4) {
+    const row = createSection(`Because you watched ${escapeHtml(seedItem.title)}`, similar, handleItemClick);
+    container.appendChild(row);
+  }
+
   if (recentlyAdded.length > 0) {
     const section = createSection('Recently Added', recentlyAdded, handleItemClick);
     container.appendChild(section);
@@ -149,6 +176,73 @@ async function loadHomeContent(container) {
       </div>
     `;
   }
+}
+
+/**
+ * Hero — big backdrop + resume button + progress (Netflix/Disney+ pattern).
+ */
+function createHero(item, progress) {
+  const hero = document.createElement('section');
+  hero.className = 'hero';
+  const art = item.backdrop || item.poster || item.coverArtPath ? api.getBackdropUrl?.(item.id) || api.getCoverUrl(item.id) : null;
+  const backdropUrl = item.backdrop
+    ? (item.backdrop.startsWith('http') ? item.backdrop : `${api.baseUrl}${item.backdrop}`)
+    : (item.type === 'music' ? api.getCoverUrl(item.id) : api.getThumbnailUrl(item.id));
+
+  hero.innerHTML = `
+    <img class="hero-backdrop" src="${backdropUrl}" alt="" onerror="this.style.display='none'">
+    <div class="hero-meta">
+      <span class="quality-badge">${item.type === 'music' ? 'Music' : item.type === 'video' ? 'Video' : 'Movie'}</span>
+      ${item.year ? `<span>${item.year}</span>` : ''}
+      ${item.artist ? `<span>${escapeHtml(item.artist)}</span>` : ''}
+      ${item.rating ? `<span>${icon('star-filled', { size: 13 })} ${item.rating}</span>` : ''}
+      ${progress ? `<span>${Math.round(progress)}% watched</span>` : ''}
+    </div>
+    <h1 class="hero-title">${escapeHtml(item.title)}</h1>
+    ${progress ? `<div class="hero-progress"><span style="width:${Math.round(progress)}%"></span></div>` : ''}
+    <div class="hero-actions">
+      <button class="btn btn-primary" data-hero-play>${icon('play', { size: 16 })}<span>${progress ? 'Resume' : 'Play'}</span></button>
+      <button class="btn btn-secondary" data-hero-info>${icon('info', { size: 16 })}<span>Details</span></button>
+      <button class="btn btn-ghost" data-hero-list>${icon('bookmark', { size: 16 })}<span>My list</span></button>
+    </div>
+    <div class="row-meta">${escapeHtml(item.overview || item.genre || item.album || '')}</div>
+  `;
+  void art;
+
+  hero.querySelector('[data-hero-play]').addEventListener('click', () => {
+    if (item.type === 'music') window.dispatchEvent(new CustomEvent('vault:play', { detail: { item } }));
+    else window.dispatchEvent(new CustomEvent('vault:open-video', { detail: { item } }));
+  });
+  hero.querySelector('[data-hero-info]').addEventListener('click', () => {
+    window.dispatchEvent(new CustomEvent('vault:open-detail', { detail: { item } }));
+  });
+  hero.querySelector('[data-hero-list]').addEventListener('click', async () => {
+    const { api: apiClient } = await import('../api.js');
+    try {
+      await apiClient.addToWatchlist(item.id);
+      window.dispatchEvent(new CustomEvent('vault:watchlist-changed', { detail: { item, added: true } }));
+    } catch { /* offline */ }
+  });
+  return hero;
+}
+
+/**
+ * Smart row: "Because you watched X" — same genre, unwatched first.
+ */
+function similarItems(library, seed, limit = 10) {
+  if (!seed) return [];
+  const genres = new Set(Array.isArray(seed.genre) ? seed.genre : [seed.genre].filter(Boolean));
+  return library
+    .filter(item => item.id !== seed.id && genres.size)
+    .map(item => {
+      const itemGenres = Array.isArray(item.genre) ? item.genre : [item.genre].filter(Boolean);
+      const overlap = itemGenres.filter(genre => genres.has(genre)).length;
+      return { item, overlap };
+    })
+    .filter(entry => entry.overlap > 0)
+    .sort((a, b) => b.overlap - a.overlap)
+    .slice(0, limit)
+    .map(entry => entry.item);
 }
 
 function createSection(title, items, onClick) {
