@@ -5,7 +5,7 @@
 import { api } from '../api.js';
 import { store } from '../store.js';
 import { renderMediaGrid, renderSkeletonGrid } from '../components/mediaGrid.js';
-import { subscribeView, cleanups } from '../utils/lifecycle.js';
+import { subscribeView } from '../utils/lifecycle.js';
 import { icon } from '../utils/icons.js';
 import { escapeHtml, formatTime, truncate } from '../utils/format.js';
 import { toast } from '../components/toast.js';

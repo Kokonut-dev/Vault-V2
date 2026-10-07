@@ -13,7 +13,8 @@
     "build:css": "node ../scripts/build-css.js",
     "test": "node --test test/*.test.js",
     "test:keyboard": "node ../scripts/keyboard-check.js",
-    "lint": "node ../scripts/syntax-check.js"
+    "lint": "node ../scripts/syntax-check.js",
+    "check:imports": "node ../scripts/import-check.js"
   },
   "keywords": [
     "media-server",
