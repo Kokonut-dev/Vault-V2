@@ -2,8 +2,8 @@
  * Detail view — movie, music, video detail pages — optimized
  */
 import { store } from '../store.js';
+import { formatTime, formatBytes, escapeHtml } from '../utils/format.js';
 import { api } from '../api.js';
-import { formatTime, formatBytes, formatDate, formatBitrate, formatResolution, escapeHtml } from '../utils/format.js';
 import { toast } from '../components/toast.js';
 import { confirmDialog, alertDialog } from '../components/confirmDialog.js';
 import { copyText } from '../utils/clipboard.js';

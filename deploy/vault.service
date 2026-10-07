@@ -1,0 +1,31 @@
+[Unit]
+# Vault media server — systemd unit (Linux). See deploy/README.md.
+Description=Vault media server
+Documentation=https://github.com/Kokonut-dev/Vault-V2
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+# Adjust User/WorkingDirectory to match your install location.
+User=vault
+Group=vault
+WorkingDirectory=/opt/vault/server
+ExecStart=/usr/bin/node index.js
+Restart=on-failure
+RestartSec=5
+
+# Environment (uncomment to override config.json)
+#Environment=VAULT_PORT=4000
+#Environment=LOG_LEVEL=info
+#Environment=VAULT_MDNS=1
+
+# Hardening — the server only needs to read media and write its own data dir.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=read-only
+ReadWritePaths=/opt/vault/server/data /opt/vault/server/cache /opt/vault/server/logs
+
+[Install]
+WantedBy=multi-user.target

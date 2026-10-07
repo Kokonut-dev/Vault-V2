@@ -12,7 +12,7 @@
  */
 
 import { api } from './api.js';
-import { getApiBaseUrl, setApiBaseUrl, getConfig } from './config.js';
+import { getApiBaseUrl, setApiBaseUrl } from './config.js';
 import { escapeHtml } from './utils/format.js';
 import { store } from './store.js';
 import { toast } from './components/toast.js';

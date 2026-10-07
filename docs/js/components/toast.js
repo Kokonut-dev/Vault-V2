@@ -76,6 +76,67 @@ class ToastManager {
     return this.show(message, { title, type: 'info' });
   }
 
+  warning(message, title = 'Heads up') {
+    return this.show(message, { title, type: 'warning', duration: 6000 });
+  }
+
+  /**
+   * Sticky toast with an Undo action — used for deletes, playlist clear,
+   * history clear and anything else that used to be irreversible.
+   */
+  undo(message, onUndo, { title = 'Done', label = 'Undo', duration = 9000 } = {}) {
+    const el = this.show(message, { title, type: 'success', duration });
+    el.classList.add('toast-actionable');
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'toast-action';
+    button.textContent = label;
+    el.querySelector('.toast-content').appendChild(button);
+
+    let used = false;
+    button.addEventListener('click', async () => {
+      if (used) return;
+      used = true;
+      button.disabled = true;
+      try {
+        await onUndo();
+      } finally {
+        el.classList.remove('show');
+        setTimeout(() => el.remove(), 300);
+      }
+    });
+    return el;
+  }
+
+  /** Replaceable progress toast; returns a handle with update/finish. */
+  progress(message, { title = '' } = {}) {
+    const el = this.show(message, { title, type: 'info', duration: 0 });
+    el.classList.add('toast-progress');
+    const bar = document.createElement('div');
+    bar.className = 'toast-progress-bar';
+    bar.innerHTML = '<span style="width:0%"></span>';
+    el.querySelector('.toast-content').appendChild(bar);
+    const fill = bar.firstElementChild;
+    return {
+      element: el,
+      update(percent, text) {
+        fill.style.width = `${Math.max(0, Math.min(100, percent))}%`;
+        if (text) el.querySelector('.toast-message').textContent = text;
+      },
+      finish(text = 'Done', type = 'success') {
+        el.className = `toast ${type} show`;
+        if (text) el.querySelector('.toast-message').textContent = text;
+        setTimeout(() => {
+          el.classList.remove('show');
+          setTimeout(() => el.remove(), 300);
+        }, 2500);
+      },
+      fail(text = 'Failed') {
+        this.finish(text, 'error');
+      },
+    };
+  }
+
   escape(str) {
     const div = document.createElement('div');
     div.textContent = str;

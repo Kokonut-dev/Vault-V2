@@ -130,12 +130,105 @@ function validateGridPattern(pattern) {
 
 function generateChallengeToken(username) {
   const config = getConfig();
-  return jwt.sign({ username, step: 'grid' }, config.auth.jwtSecret, { expiresIn: '5m' });
+  // The second factor can be the grid, TOTP, or a recovery code.
+  const step = config.auth.totp?.enabled ? 'second-factor' : 'grid';
+  return jwt.sign({ username, step }, config.auth.jwtSecret, { expiresIn: '5m' });
 }
 
-function generateAccessToken(username) {
+function generateAccessToken(username, extra = {}) {
   const config = getConfig();
-  return jwt.sign({ username }, config.auth.jwtSecret, { expiresIn: config.auth.sessionTimeout });
+  const ttl = extra.remember ? '30d' : config.auth.sessionTimeout;
+  return jwt.sign(
+    { username, ...extra },
+    config.auth.jwtSecret,
+    { expiresIn: ttl }
+  );
+}
+
+/** Short-lived token embedded in media URLs (basic ?token= streaming). */
+function generateMediaToken(username, ttl = '12h') {
+  const config = getConfig();
+  return jwt.sign({ username, scope: 'media' }, config.auth.jwtSecret, { expiresIn: ttl });
+}
+
+// --- Optional TOTP second factor -------------------------------------------
+const totp = require('../utils/totp');
+
+function isTotpEnabled() {
+  return !!getConfig().auth.totp?.enabled;
+}
+
+function totpStatus() {
+  const config = getConfig();
+  return {
+    enabled: !!config.auth.totp?.enabled,
+    configured: !!config.auth.totp?.secret,
+    recoveryCodesLeft: (config.auth.totp?.recoveryHashes || []).length,
+  };
+}
+
+function setupTotp() {
+  const config = getConfig();
+  const secret = totp.generateSecret();
+  config.auth.totp = { ...(config.auth.totp || {}), enabled: false, secret, recoveryHashes: [] };
+  // Persist immediately so the secret survives a restart mid-setup.
+  const { saveConfig } = require('../config');
+  saveConfig(config);
+  return { secret, otpauthUrl: totp.otpauthUrl(secret, config.auth.username) };
+}
+
+function verifyTotpCode(code) {
+  const config = getConfig();
+  return totp.verify(config.auth.totp?.secret, code);
+}
+
+function enableTotp(code) {
+  const config = getConfig();
+  if (!config.auth.totp?.secret) return { ok: false, error: 'Run setup first' };
+  if (!totp.verify(config.auth.totp.secret, code)) return { ok: false, error: 'Invalid code' };
+  const bcrypt = require('bcryptjs');
+  const codes = totp.generateRecoveryCodes();
+  config.auth.totp.enabled = true;
+  config.auth.totp.recoveryHashes = codes.map(c => bcrypt.hashSync(c, 10));
+  const { saveConfig } = require('../config');
+  saveConfig(config);
+  return { ok: true, recoveryCodes: codes };
+}
+
+function disableTotp(password) {
+  const config = getConfig();
+  if (!validateCredentials(config.auth.username, password)) return { ok: false, error: 'Invalid password' };
+  config.auth.totp = { enabled: false, secret: null, recoveryHashes: [] };
+  const { saveConfig } = require('../config');
+  saveConfig(config);
+  return { ok: true };
+}
+
+function regenerateRecoveryCodes(code) {
+  const config = getConfig();
+  if (!totp.verify(config.auth.totp?.secret, code)) return { ok: false, error: 'Invalid code' };
+  const bcrypt = require('bcryptjs');
+  const codes = totp.generateRecoveryCodes();
+  config.auth.totp.recoveryHashes = codes.map(c => bcrypt.hashSync(c, 10));
+  const { saveConfig } = require('../config');
+  saveConfig(config);
+  return { ok: true, recoveryCodes: codes };
+}
+
+function consumeRecoveryCode(input) {
+  const config = getConfig();
+  const bcrypt = require('bcryptjs');
+  const clean = String(input || '').trim().toLowerCase();
+  const hashes = config.auth.totp?.recoveryHashes || [];
+  for (let i = 0; i < hashes.length; i++) {
+    if (bcrypt.compareSync(clean, hashes[i])) {
+      hashes.splice(i, 1);
+      const { saveConfig } = require('../config');
+      saveConfig(config);
+      return true;
+    }
+  }
+  return false;
 }
 
 function verifyToken(token) {
@@ -157,5 +250,14 @@ module.exports = {
   validateGridPattern,
   generateChallengeToken,
   generateAccessToken,
+  generateMediaToken,
   verifyToken,
+  isTotpEnabled,
+  totpStatus,
+  setupTotp,
+  enableTotp,
+  disableTotp,
+  verifyTotpCode,
+  regenerateRecoveryCodes,
+  consumeRecoveryCode,
 };

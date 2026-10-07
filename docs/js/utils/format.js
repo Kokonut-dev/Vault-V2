@@ -46,55 +46,16 @@ export function formatRelativeTime(dateString) {
   return formatDate(dateString);
 }
 
-export function formatDuration(seconds) {
-  if (!seconds) return '0:00';
-  return formatTime(seconds);
-}
-
 export function truncate(str, len = 50) {
   if (!str) return '';
   if (str.length <= len) return str;
   return str.substring(0, len).trim() + '…';
 }
 
-export function slugify(str) {
-  return str.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
-}
-
-export function parseYear(year) {
-  if (!year) return null;
-  const y = parseInt(year, 10);
-  if (isNaN(y) || y < 1900 || y > 2100) return null;
-  return y;
-}
-
 export function formatYear(year) {
   if (year === null || year === undefined || year === '') return '';
   if (typeof year === 'object' && year.year) return String(year.year);
   return String(year);
-}
-
-export function getFileExtension(filename) {
-  if (!filename) return '';
-  const parts = filename.split('.');
-  return parts.length > 1 ? '.' + parts.pop().toLowerCase() : '';
-}
-
-export function formatBitrate(bitrate) {
-  if (!bitrate) return 'Unknown';
-  if (bitrate >= 1000000) return `${(bitrate / 1000000).toFixed(1)} Mbps`;
-  if (bitrate >= 1000) return `${Math.round(bitrate / 1000)} kbps`;
-  return `${bitrate} bps`;
-}
-
-export function formatResolution(width, height) {
-  if (!width || !height) return 'Unknown';
-  if (height >= 2160) return '4K';
-  if (height >= 1440) return '1440p';
-  if (height >= 1080) return '1080p';
-  if (height >= 720) return '720p';
-  if (height >= 480) return '480p';
-  return `${width}x${height}`;
 }
 
 export function escapeHtml(str) {

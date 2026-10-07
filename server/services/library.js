@@ -3,6 +3,7 @@ const path = require('path');
 const { getConfig } = require('../config');
 const logger = require('../utils/logger');
 const { writeJsonAtomic } = require('../utils/fileUtils');
+const { createJsonStore } = require('../utils/jsonStore');
 
 const LIBRARY_PATH = path.join(__dirname, '../data/library.json');
 const FAVOURITES_PATH = path.join(__dirname, '../data/favourites.json');
@@ -17,6 +18,7 @@ let history = [];
 
 // Indexes
 let idMap = new Map(); // id -> item
+let pathMap = new Map(); // path -> item (addItem used to find by path too)
 let typeIndex = { movie: [], music: [], video: [] };
 let genreSet = new Set();
 
@@ -39,13 +41,18 @@ function trackWrite(name, filePath, data) {
   return p;
 }
 
+let genreDirty = false;
+
 function rebuildIndexes() {
   idMap.clear();
   typeIndex = { movie: [], music: [], video: [] };
   genreSet.clear();
+  pathMap.clear();
+  genreDirty = false;
 
   for (const item of library) {
     idMap.set(item.id, item);
+    if (item.path) pathMap.set(item.path, item);
     if (typeIndex[item.type]) typeIndex[item.type].push(item);
     if (item.genre) {
       if (Array.isArray(item.genre)) item.genre.forEach(g => genreSet.add(g));
@@ -183,15 +190,23 @@ function getByType(type) {
 }
 
 function addItem(item) {
-  const existingIdx = library.findIndex(i => i.id === item.id || i.path === item.path);
+  // O(1) existence check via idMap (the old findIndex made a full scan of the
+  // library for every scanned file, i.e. O(n²) per scan).
+  const existing = idMap.get(item.id) || (item.path ? pathMap.get(item.path) : null) || null;
   const now = new Date().toISOString();
-  if (existingIdx >= 0) {
-    library[existingIdx] = { ...library[existingIdx], ...item, updatedAt: now };
-    idMap.set(library[existingIdx].id, library[existingIdx]);
+  if (existing) {
+    const previousType = existing.type;
+    const previousPath = existing.path;
+    Object.assign(existing, item, { updatedAt: now });
+    searchTextCache.delete(existing);
+    if (previousPath && previousPath !== existing.path) pathMap.delete(previousPath);
+    if (existing.path) pathMap.set(existing.path, existing);
+    if (item.type && item.type !== previousType) moveTypeIndex(existing, previousType);
   } else {
     const newItem = { ...item, addedAt: now, updatedAt: now };
     library.push(newItem);
     idMap.set(newItem.id, newItem);
+    if (newItem.path) pathMap.set(newItem.path, newItem);
     if (typeIndex[newItem.type]) typeIndex[newItem.type].push(newItem);
     if (newItem.genre) {
       if (Array.isArray(newItem.genre)) newItem.genre.forEach(g => genreSet.add(g));
@@ -203,27 +218,47 @@ function addItem(item) {
 }
 
 function updateItem(id, updates) {
-  const idx = library.findIndex(i => i.id === id);
-  if (idx === -1) return null;
-  library[idx] = { ...library[idx], ...updates, updatedAt: new Date().toISOString() };
-  idMap.set(id, library[idx]);
-  // Rebuild type index if type changed
-  if (updates.type) rebuildIndexes();
-  else if (updates.genre) {
+  const existing = idMap.get(id);
+  if (!existing) return null;
+  const previousType = existing.type;
+  // Mutate in place so indexMap/typeIndex/array stay consistent without an
+  // O(n) findIndex + rebuild on every progress/metadata write.
+  Object.assign(existing, updates, { updatedAt: new Date().toISOString() });
+  searchTextCache.delete(existing); // cached haystack no longer valid
+  if (updates.type && updates.type !== previousType) moveTypeIndex(existing, previousType);
+  if (updates.genre) {
     if (Array.isArray(updates.genre)) updates.genre.forEach(g => genreSet.add(g));
     else genreSet.add(updates.genre);
   }
   saveLibrary();
-  return library[idx];
+  return existing;
+}
+
+/** Move an item between type buckets without rebuilding the whole index. */
+function moveTypeIndex(item, previousType) {
+  const from = typeIndex[previousType];
+  if (from) {
+    const index = from.indexOf(item);
+    if (index !== -1) from.splice(index, 1);
+  }
+  if (typeIndex[item.type]) typeIndex[item.type].push(item);
 }
 
 function removeItem(id) {
-  const idx = library.findIndex(i => i.id === id);
-  if (idx === -1) return false;
-  library.splice(idx, 1);
+  const item = idMap.get(id);
+  if (!item) return false;
+  const idx = library.indexOf(item);
+  if (idx !== -1) library.splice(idx, 1);
   idMap.delete(id);
-  // Rebuild indexes to keep typeIndex consistent
-  rebuildIndexes();
+  if (item.path) pathMap.delete(item.path);
+  // Surgical index update — a full rebuildIndexes() per removal turned batch
+  // deletes (prune missing, rescan after a drive is gone) into O(n²).
+  const bucket = typeIndex[item.type];
+  if (bucket) {
+    const bucketIdx = bucket.indexOf(item);
+    if (bucketIdx !== -1) bucket.splice(bucketIdx, 1);
+  }
+  genreDirty = true; // genreSet may now contain a genre with no items
 
   // Also remove from favourites, playlists, history
   let changed = false;
@@ -288,8 +323,8 @@ function getStats() {
 }
 
 function getGenres() {
-  // Use cached set if available
-  if (genreSet.size > 0) return Array.from(genreSet).sort();
+  // Use cached set if available (rebuilt lazily after removals)
+  if (!genreDirty && genreSet.size > 0) return Array.from(genreSet).sort();
   const genres = new Set();
   library.forEach(item => {
     if (item.genre) {
@@ -388,11 +423,12 @@ function addHistoryEntry(entry) {
     duration: entry.duration || 0,
     completed: !!entry.completed,
     watchedAt: now,
-    playCount: 1,
+    // playCount on the entry counts how many times the *entry* was resumed;
+    // the item-level counter below counts real "start playback" events.
+    playCount: (existingIdx >= 0 ? (history[existingIdx].playCount || 0) : 0) + (entry.bumpPlayCount ? 1 : 0),
   };
+  if (entry.bumpPlayCount) bumpPlayCount(entry.itemId);
   if (existingIdx >= 0) {
-    newEntry.playCount = (history[existingIdx].playCount || 0) + 1;
-    // Preserve original added time if exists
     history[existingIdx] = { ...history[existingIdx], ...newEntry };
   } else {
     history.push(newEntry);
@@ -440,6 +476,233 @@ async function flush() {
   await flushWrites();
 }
 
+
+
+// ---------------------------------------------------------------------------
+// Play counts & watched state
+// ---------------------------------------------------------------------------
+function bumpPlayCount(itemId) {
+  const item = getById(itemId);
+  if (!item) return null;
+  item.playCount = (item.playCount || 0) + 1;
+  item.lastPlayedAt = new Date().toISOString();
+  saveLibrary();
+  return item.playCount;
+}
+
+const watchedStore = createJsonStore('watched.json', {});
+
+function isWatched(itemId, profileId = 'default') {
+  const scoped = getScopedStore(profileId, 'watched');
+  const map = scoped ? scoped.get() : watchedStore.get();
+  return !!(map[itemId] && map[itemId].watched);
+}
+
+function setWatched(itemId, watched, profileId = 'default') {
+  const scoped = getScopedStore(profileId, 'watched');
+  const store = scoped || watchedStore;
+  const map = store.get();
+  if (watched) {
+    map[itemId] = { watched: true, at: new Date().toISOString() };
+  } else {
+    delete map[itemId];
+  }
+  store.set(map);
+  if (!getById(itemId)) return null;
+  return { itemId, watched: !!watched };
+}
+
+function getWatchedMap(profileId = 'default') {
+  const scoped = getScopedStore(profileId, 'watched');
+  return (scoped || watchedStore).get();
+}
+
+// ---------------------------------------------------------------------------
+// Per-profile data scoping
+//
+// The `default` profile keeps using the original flat files, so existing
+// installs are never migrated or touched. Extra profiles get their own folder.
+// ---------------------------------------------------------------------------
+const scopedStores = new Map();
+
+const SCOPED_KINDS = {
+  favourites: 'favourites.json',
+  history: 'history.json',
+  playlists: 'playlists.json',
+  watched: 'watched.json',
+};
+
+function getScopedStore(profileId, kind) {
+  if (!profileId || profileId === 'default') return null;
+  const key = `${profileId}:${kind}`;
+  if (!scopedStores.has(key)) {
+    scopedStores.set(key, createJsonStore(
+      path.join('profiles', String(profileId).replace(/[^a-zA-Z0-9_-]/g, ''), SCOPED_KINDS[kind]),
+      kind === 'watched' ? {} : []
+    ));
+  }
+  return scopedStores.get(key);
+}
+
+/**
+ * Returns the same favourites/history/playlists API as this module, but bound to
+ * one profile. For the default profile this is literally the module itself.
+ */
+function forProfile(profileId) {
+  if (!profileId || profileId === 'default') {
+    return {
+      profileId: 'default',
+      getFavourites, addFavourite, removeFavourite, isFavourite,
+      getHistory, addHistoryEntry, clearHistory,
+      getPlaylists, getPlaylistById, createPlaylist, updatePlaylist, deletePlaylist,
+      setWatched, isWatched, getWatchedMap,
+    };
+  }
+
+  const favStore = getScopedStore(profileId, 'favourites');
+  const histStore = getScopedStore(profileId, 'history');
+  const plStore = getScopedStore(profileId, 'playlists');
+
+  return {
+    profileId,
+    getFavourites() {
+      return favStore.get().map(id => idMap.get(id)).filter(Boolean);
+    },
+    addFavourite(id) {
+      const list = favStore.get();
+      if (!list.includes(id)) {
+        list.push(id);
+        favStore.set(list);
+      }
+      return true;
+    },
+    removeFavourite(id) {
+      favStore.set(favStore.get().filter(f => f !== id));
+      return true;
+    },
+    isFavourite(id) {
+      return favStore.get().includes(id);
+    },
+    getHistory() {
+      return [...histStore.get()].sort((a, b) => new Date(b.watchedAt) - new Date(a.watchedAt));
+    },
+    addHistoryEntry(entry) {
+      const list = histStore.get();
+      const idx = list.findIndex(h => h.itemId === entry.itemId);
+      const record = {
+        itemId: entry.itemId,
+        progress: Math.min(100, Math.max(0, entry.progress || 0)),
+        duration: entry.duration || 0,
+        completed: !!entry.completed,
+        watchedAt: new Date().toISOString(),
+        playCount: (idx >= 0 ? (list[idx].playCount || 0) : 0) + (entry.bumpPlayCount ? 1 : 0),
+      };
+      if (entry.bumpPlayCount) bumpPlayCount(entry.itemId);
+      if (idx >= 0) list[idx] = { ...list[idx], ...record };
+      else list.push(record);
+      histStore.set(list.slice(-500));
+      return record;
+    },
+    clearHistory() {
+      histStore.set([]);
+      return true;
+    },
+    getPlaylists() {
+      return plStore.get();
+    },
+    getPlaylistById(id) {
+      return plStore.get().find(p => p.id === id) || null;
+    },
+    createPlaylist(data) {
+      const list = plStore.get();
+      const now = new Date().toISOString();
+      const playlist = {
+        id: data.id || `pl_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+        name: data.name || 'Untitled Playlist',
+        description: data.description || '',
+        type: data.type || 'playlist',
+        items: Array.isArray(data.items) ? [...new Set(data.items)] : [],
+        createdAt: now,
+        updatedAt: now,
+        profileId,
+      };
+      list.push(playlist);
+      plStore.set(list);
+      return playlist;
+    },
+    updatePlaylist(id, updates) {
+      const list = plStore.get();
+      const idx = list.findIndex(p => p.id === id);
+      if (idx === -1) return null;
+      if (updates.items) updates.items = [...new Set(updates.items)];
+      list[idx] = { ...list[idx], ...updates, updatedAt: new Date().toISOString() };
+      plStore.set(list);
+      return list[idx];
+    },
+    deletePlaylist(id) {
+      const list = plStore.get();
+      const next = list.filter(p => p.id !== id);
+      if (next.length === list.length) return false;
+      plStore.set(next);
+      return true;
+    },
+    setWatched,
+    isWatched,
+    getWatchedMap,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Query helper (filters + pagination + sorting) shared by /api/library and the
+// live views. Sorting always works on a copy (F-14).
+// ---------------------------------------------------------------------------
+function queryWith({ type = 'all', search = '', genre = '', year = null, rating = null, sort = 'addedAt', order = 'desc', page = 1, limit = 0, watched = null, profileId = 'default' } = {}) {
+  let items = getByType(type).slice();
+  if (search) items = items.filter(i => getSearchText(i).includes(String(search).toLowerCase()));
+  if (genre) {
+    const g = String(genre).toLowerCase();
+    items = items.filter(i => {
+      const value = Array.isArray(i.genre) ? i.genre.join(' ') : (i.genre || '');
+      return value.toLowerCase().includes(g);
+    });
+  }
+  if (year) items = items.filter(i => String(i.year) === String(year));
+  if (rating) items = items.filter(i => (i.rating || 0) >= Number(rating));
+
+  if (watched !== null) {
+    const map = getWatchedMap(profileId);
+    items = items.filter(i => !!map[i.id]?.watched === !!watched);
+  }
+
+  const dir = order === 'asc' ? 1 : -1;
+  items.sort((a, b) => {
+    let av = a[sort];
+    let bv = b[sort];
+    if (sort === 'title' || sort === 'artist' || sort === 'album') {
+      av = String(av || '').toLowerCase();
+      bv = String(bv || '').toLowerCase();
+      return av < bv ? -dir : av > bv ? dir : 0;
+    }
+    if (sort === 'addedAt' || sort === 'updatedAt' || sort === 'lastPlayedAt') {
+      return (new Date(av || 0) - new Date(bv || 0)) * dir;
+    }
+    return ((Number(av) || 0) - (Number(bv) || 0)) * dir;
+  });
+
+  const total = items.length;
+  const pageNum = Math.max(1, parseInt(page, 10) || 1);
+  const pageSize = Math.min(1000, Math.max(0, parseInt(limit, 10) || 0));
+  if (pageSize > 0) items = items.slice((pageNum - 1) * pageSize, pageNum * pageSize);
+  return { items, total, page: pageNum, limit: pageSize };
+}
+
+async function flushScoped() {
+  const pending = [];
+  for (const store of scopedStores.values()) pending.push(store.flush());
+  pending.push(watchedStore.flush());
+  await Promise.all(pending);
+}
+
 module.exports = {
   init,
   loadLibrary,
@@ -455,6 +718,13 @@ module.exports = {
   getSearchText,
   getStats,
   getGenres,
+  bumpPlayCount,
+  isWatched,
+  setWatched,
+  getWatchedMap,
+  forProfile,
+  queryWith,
+  flushScoped,
   getFavourites,
   addFavourite,
   removeFavourite,

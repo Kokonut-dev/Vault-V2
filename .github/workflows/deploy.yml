@@ -88,6 +88,22 @@ jobs:
           echo "✓ Onboarding enablement: true"
           echo "✓ GitHub Pages deployment ready"
 
+      - name: Lint (syntax + import graph)
+        run: |
+          node scripts/syntax-check.js
+          node scripts/import-check.js
+
+      - name: Server tests
+        working-directory: server
+        run: |
+          npm ci --ignore-scripts --no-audit --no-fund
+          npm test
+
+      - name: Validate bundled CSS is up to date
+        run: |
+          node scripts/build-css.js
+          git diff --exit-code docs/css/vault.css || (echo "vault.css is stale — run npm run build:css" && exit 1)
+
       - name: Optional build step
         run: |
           echo "No build required - vanilla JS SPA with onboarding"

@@ -5,6 +5,18 @@ import { api } from '../api.js';
 import { formatTime, truncate, escapeHtml, escapeAttr } from '../utils/format.js';
 import { lazyLoadElement } from '../utils/lazyLoad.js';
 import { icon } from '../utils/icons.js';
+import { attachContextMenu } from './contextMenu.js';
+
+/** Quality badges (resolution / HDR / surround) — Plex-style at-a-glance tags. */
+export function qualityBadges(item) {
+  const badges = [];
+  if (item.fourK || (item.width && item.width >= 3840)) badges.push(['4K', 'fourK']);
+  if (item.hdr) badges.push([String(item.hdr).toUpperCase(), 'hdr']);
+  else if (item.height && item.height >= 2160) badges.push(['2160p', '']);
+  else if (item.height && item.height >= 1080) badges.push(['1080p', '']);
+  if (item.surround) badges.push([String(item.surround).toUpperCase(), 'surround']);
+  return badges;
+}
 
 function defaultPlay(item) {
   if (item.type === 'music') {
@@ -24,6 +36,11 @@ export function createMediaCard(item, options = {}) {
   const card = document.createElement('div');
   card.className = 'media-card';
   card.dataset.id = item.id;
+  // Identifies the card for the context menu, multi-select and keyboard grid
+  // navigation layers (docs/js/app-extras.js).
+  card.dataset.itemId = item.id;
+  card.dataset.contextMenuFor = item.id;
+  if (item.watched) card.classList.add('watched');
   card.dataset.type = item.type || 'movie'; // F-12: per-type intrinsic sizes in CSS
   card.setAttribute('role', 'button');
   card.setAttribute('tabindex', '0');
@@ -48,6 +65,8 @@ export function createMediaCard(item, options = {}) {
       </div>
       ${hasProgress ? `<div class="media-card-progress"><div class="media-card-progress-bar" style="width:${progress}%"></div></div>` : ''}
       ${item.duration ? `<div class="media-card-duration">${formatTime(item.duration)}</div>` : ''}
+      ${qualityBadges(item).length ? `<div class="quality-badges">${qualityBadges(item).map(([label, kind]) => `<span class="quality-badge ${kind}">${label}</span>`).join('')}</div>` : ''}
+      ${item.watched ? `<div class="media-card-watched" title="Watched">${icon('check', { size: 14 })}</div>` : ''}
     </div>
     <div class="media-card-info">
       <div class="media-card-title" title="${escapeHtml(item.title)}">${escapeHtml(truncate(item.title, 40))}</div>
@@ -93,6 +112,10 @@ export function createMediaCard(item, options = {}) {
       else defaultClick(item);
     }
   });
+
+  // Right-click / long-press menu with queue, watchlist, watched, playlist,
+  // collection, delete-to-trash (Tier 2 item 30).
+  attachContextMenu(card, item);
 
   return card;
 }

@@ -4,10 +4,43 @@ const libraryService = require('../services/library');
 const scannerService = require('../services/scanner');
 const { sanitizeString } = require('../utils/validators');
 const logger = require('../utils/logger');
+const trash = require('../services/trash');
+const extras = require('../services/extras');
+const events = require('../services/events');
+const system = require('../services/system');
+const sqlite = require('../services/sqliteIndex');
+const { getConfig } = require('../config');
 
 router.get('/', (req, res) => {
   try {
-    const { type, search, genre, year, sort, order, page, limit } = req.query;
+    const { type, search, genre, year, sort, order, page, limit, libraryId, watched, rating, count } = req.query;
+
+    // SQL index path (opt-in): serves filtered/paged queries from SQLite when
+    // configured, which is what keeps very large libraries responsive.
+    const config = getConfig();
+    if (config.media?.storage === 'sqlite' && count !== 'all') {
+      const indexed = sqlite.query({
+        type,
+        search,
+        genre,
+        year,
+        sort: sort || 'addedAt',
+        order: order || 'desc',
+        page: parseInt(page, 10) || 1,
+        limit: parseInt(limit, 10) || 50,
+      });
+      if (indexed) {
+        return res.json({
+          items: indexed.items,
+          total: indexed.total,
+          page: indexed.page,
+          limit: indexed.limit,
+          totalPages: Math.ceil(indexed.total / indexed.limit),
+          storage: 'sqlite',
+        });
+      }
+    }
+
     // F-14: always work on a copy — getAll() returns the live master array and
     // the sort below used to mutate it, making response order depend on
     // whatever a previous request left behind.
@@ -40,6 +73,20 @@ router.get('/', (req, res) => {
       if (!isNaN(y)) {
         items = items.filter(i => i.year === y);
       }
+    }
+
+    // Library (named libraries), watched state, rating floor
+    if (libraryId) {
+      items = items.filter(i => i.libraryId === libraryId);
+    }
+    if (rating) {
+      const min = parseFloat(rating);
+      if (!isNaN(min)) items = items.filter(i => (i.rating || 0) >= min);
+    }
+    if (watched === 'true' || watched === 'false') {
+      const map = libraryService.getWatchedMap(req.profileId || 'default');
+      const want = watched === 'true';
+      items = items.filter(i => !!map[i.id]?.watched === want);
     }
 
     // Sorting — decorate/sort/undecorate: each key is normalised once instead
@@ -119,10 +166,37 @@ router.get('/search', (req, res) => {
 router.post('/scan', async (req, res) => {
   try {
     const result = await scannerService.scanAll();
+    system.invalidateReports(); // library + disk reports changed
     res.json({ message: 'Scan complete', ...result });
   } catch (err) {
     res.status(500).json({ error: 'Scan failed', details: err.message });
   }
+});
+
+// Kick off a background scan and return immediately — the UI tracks it through
+// /api/system/jobs (and the SSE job:* events).
+router.post('/scan/background', (req, res) => {
+  if (scannerService.isScanning?.()) {
+    return res.status(409).json({ error: 'Scan already running', code: 'SCAN_RUNNING' });
+  }
+  scannerService.scanAll().catch(err => logger.error('Background scan failed:', err.message));
+  res.json({ message: 'Scan started', background: true });
+});
+
+// Named libraries (Plex/Jellyfin style).
+router.get('/libraries', (req, res) => {
+  res.json({ libraries: scannerService.getLibraries() });
+});
+
+// Recent additions since a timestamp — used by the live-update toasts.
+router.get('/recent', (req, res) => {
+  const since = req.query.since ? new Date(req.query.since).getTime() : Date.now() - 7 * 86400000;
+  const limit = Math.min(100, parseInt(req.query.limit, 10) || 20);
+  const items = libraryService.getAll()
+    .filter(i => i.addedAt && new Date(i.addedAt).getTime() >= since)
+    .sort((a, b) => new Date(b.addedAt) - new Date(a.addedAt))
+    .slice(0, limit);
+  res.json({ items, total: items.length, since: new Date(since).toISOString() });
 });
 
 router.get('/:id', (req, res) => {
@@ -130,9 +204,19 @@ router.get('/:id', (req, res) => {
     const item = libraryService.getById(req.params.id);
     if (!item) return res.status(404).json({ error: 'Item not found', code: 'NOT_FOUND' });
 
-    // Add favourite status
-    const isFav = libraryService.isFavourite(item.id);
-    res.json({ ...item, isFavourite: isFav });
+    const profileId = req.profileId || 'default';
+    const markers = extras.getMarkers(item.id);
+    res.json({
+      ...item,
+      isFavourite: libraryService.isFavourite(item.id),
+      inWatchlist: extras.getWatchlist().some(w => w.itemId === item.id && (w.profileId || 'default') === profileId),
+      watched: libraryService.isWatched(item.id, profileId),
+      markers: {
+        ...markers,
+        chapters: (markers.chapters && markers.chapters.length) ? markers.chapters : (item.chapters || []),
+      },
+      bookmarks: extras.getBookmarks(item.id),
+    });
   } catch (err) {
     res.status(500).json({ error: 'Failed to fetch item' });
   }
@@ -177,18 +261,32 @@ router.put('/:id', (req, res) => {
   }
 });
 
-router.delete('/:id', (req, res) => {
+router.delete('/:id', async (req, res) => {
   try {
-    const { deleteFile } = req.query;
+    const { deleteFile, permanent } = req.query;
     const item = libraryService.getById(req.params.id);
     if (!item) return res.status(404).json({ error: 'Item not found' });
 
+    const fs = require('fs-extra');
+    let trashEntry = null;
+
     if (deleteFile === 'true') {
-      const fs = require('fs-extra');
+      const config = getConfig();
+      const useTrash = permanent !== 'true' && config.media?.trash?.enabled !== false;
       try {
         if (fs.existsSync(item.path)) {
-          fs.removeSync(item.path);
-          logger.info(`Deleted file: ${item.path}`);
+          if (useTrash) {
+            // Soft delete: move to data/trash so it can be restored (undo).
+            trashEntry = await trash.moveToTrash(item.path, {
+              type: item.type,
+              title: item.title,
+              itemId: item.id,
+              retentionDays: config.media?.trash?.retentionDays ?? 30,
+            });
+          } else {
+            await fs.remove(item.path);
+            logger.info(`Deleted file: ${item.path}`);
+          }
         }
       } catch (err) {
         logger.warn(`Failed to delete file ${item.path}: ${err.message}`);
@@ -196,7 +294,16 @@ router.delete('/:id', (req, res) => {
     }
 
     libraryService.removeItem(req.params.id);
-    res.json({ message: 'Item deleted' });
+    system.invalidateReports();
+    sqlite.remove(req.params.id);
+    events.broadcast('library:changed', { reason: 'delete', id: req.params.id, title: item.title });
+
+    res.json({
+      message: trashEntry ? 'Moved to trash' : 'Item deleted',
+      trashId: trashEntry?.id || null,
+      restorable: !!trashEntry,
+      retentionDays: trashEntry?.retentionDays ?? null,
+    });
   } catch (err) {
     res.status(500).json({ error: 'Failed to delete item' });
   }

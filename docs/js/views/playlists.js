@@ -6,7 +6,7 @@ import { api } from '../api.js';
 import { toast } from '../components/toast.js';
 import { renderSkeletonGrid } from '../components/mediaGrid.js';
 import { confirmDialog } from '../components/confirmDialog.js';
-import { escapeHtml } from '../utils/format.js';
+import { escapeHtml, formatTime } from '../utils/format.js';
 import { icon } from '../utils/icons.js';
 
 export function renderPlaylists(container) {
@@ -146,10 +146,15 @@ export function renderPlaylists(container) {
       <div style="background:rgba(var(--glass-tint),0.05); border-radius:16px; padding:24px; margin-bottom:24px;">
         <h2 style="font-size:24px; font-weight:700; margin-bottom:8px;">${escapeHtml(playlist.name)}</h2>
         <p style="color:var(--text-secondary); margin-bottom:16px;">${escapeHtml(playlist.description || '')}</p>
-        <div style="display:flex; gap:8px;">
+        <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
           <button class="btn btn-primary btn-sm" id="play-pl">Play All</button>
+          <a class="btn btn-secondary btn-sm" id="export-pl" href="${api.exportPlaylistUrl(playlist.id)}" download>${icon('download', { size: 14 })}<span>Export .m3u</span></a>
+          <label class="btn btn-secondary btn-sm" for="import-pl" style="cursor:pointer">${icon('upload', { size: 14 })}<span>Import .m3u</span></label>
+          <input type="file" id="import-pl" accept=".m3u,.m3u8,audio/x-mpegurl" hidden>
+          <button class="btn btn-ghost btn-sm" id="stats-pl">${icon('bar-chart', { size: 14 })}<span>Stats</span></button>
           <button class="btn btn-secondary btn-sm" id="delete-pl">Delete</button>
         </div>
+        <p class="row-meta" style="margin-top:8px">Drag rows to reorder — the order is saved on the server.</p>
       </div>
       <div id="pl-items"></div>
     `;
@@ -191,6 +196,7 @@ export function renderPlaylists(container) {
             }
           }
         });
+        wireReorder(itemsContainer, playlist, items);
       });
       
       content.querySelector('#play-pl').addEventListener('click', () => {
@@ -204,6 +210,76 @@ export function renderPlaylists(container) {
         }
       });
     }
+
+    content.querySelector('#import-pl').addEventListener('change', async (event) => {
+      const file = event.target.files?.[0];
+      if (!file) return;
+      try {
+        const text = await file.text();
+        const result = await api.importPlaylist(playlist.name, text);
+        toast.success(`Imported ${result.matched ?? 0} of ${(result.matched ?? 0) + (result.missed ?? 0)} entries`);
+        loadPlaylists();
+      } catch (err) {
+        toast.error(`Import failed: ${err.message}`);
+      }
+    });
+
+    content.querySelector('#stats-pl').addEventListener('click', async () => {
+      try {
+        const stats = await api.playlistStats(playlist.id);
+        toast.info(`${stats.items ?? items.length} items · ${formatTime(stats.seconds || 0)}${stats.missing ? ` · ${stats.missing} missing` : ''}`, 'Playlist stats');
+      } catch (err) {
+        toast.error(err.message);
+      }
+    });
+  }
+
+  /**
+   * Drag & drop reordering inside an open playlist (Tier 2 item 31).
+   * Sends only the {from,to} pair — the server reorders its copy.
+   */
+  function wireReorder(itemsContainer, playlist, items) {
+    const rows = [...itemsContainer.querySelectorAll('.media-list .media-list-item')];
+    if (!rows.length) return;
+    let fromIndex = null;
+
+    rows.forEach((row, index) => {
+      row.draggable = true;
+      row.classList.add('playlist-item');
+      row.addEventListener('dragstart', (event) => {
+        fromIndex = index;
+        row.classList.add('dragging');
+        event.dataTransfer.effectAllowed = 'move';
+        event.dataTransfer.setData('text/plain', String(index));
+      });
+      row.addEventListener('dragend', () => {
+        row.classList.remove('dragging');
+        rows.forEach(r => r.classList.remove('drop-target'));
+      });
+      row.addEventListener('dragover', (event) => {
+        event.preventDefault();
+        row.classList.add('drop-target');
+      });
+      row.addEventListener('dragleave', () => row.classList.remove('drop-target'));
+      row.addEventListener('drop', async (event) => {
+        event.preventDefault();
+        row.classList.remove('drop-target');
+        const from = fromIndex ?? Number(event.dataTransfer.getData('text/plain'));
+        const to = index;
+        if (Number.isNaN(from) || from === to) return;
+        const next = [...(playlist.items || [])];
+        const [moved] = next.splice(from, 1);
+        next.splice(to, 0, moved);
+        try {
+          await api.reorderPlaylist(playlist.id, { items: next });
+          playlist.items = next;
+          toast.success('Order saved');
+          openPlaylist(playlist);
+        } catch (err) {
+          toast.error(`Could not reorder: ${err.message}`);
+        }
+      });
+    });
   }
 }
 

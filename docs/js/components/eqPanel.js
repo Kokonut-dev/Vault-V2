@@ -4,9 +4,13 @@
 import { store } from '../store.js';
 import { EQ_PRESETS, EQ_FREQUENCIES } from '../utils/constants.js';
 import { toast } from './toast.js';
+import { onUnmount } from '../utils/lifecycle.js';
 
 let canvas = null;
 let ctx = null;
+
+/** Detaches the previous panel's vault:eq-updated handler. */
+let detachEqListener = null;
 
 export function renderEQPanel(container) {
   const gains = store.get('eqGains');
@@ -128,12 +132,18 @@ export function renderEQPanel(container) {
     container.querySelector('#eq-preset-name').value = '';
   });
   
-  // Listen for external updates
-  window.addEventListener('vault:eq-updated', (e) => {
+  // Listen for external updates. The panel is re-created every time the EQ
+  // dialog opens, so detach the previous handler first (and on unmount).
+  detachEqListener?.();
+  const onEqUpdated = (e) => {
+    if (!container.isConnected) return;
     const { gains } = e.detail;
     updateBandUI(gains);
     drawEQCurve(gains);
-  });
+  };
+  window.addEventListener('vault:eq-updated', onEqUpdated);
+  detachEqListener = () => window.removeEventListener('vault:eq-updated', onEqUpdated);
+  onUnmount(detachEqListener);
 }
 
 function updateBandUI(gains) {

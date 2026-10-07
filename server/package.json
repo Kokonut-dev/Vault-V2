@@ -1,6 +1,6 @@
 {
   "name": "vault-server",
-  "version": "2.0.0",
+  "version": "3.0.0",
   "description": "Vault - Self-hosted personal media server backend",
   "main": "index.js",
   "type": "commonjs",
@@ -11,9 +11,11 @@
     "scan": "node -e \"require('./services/scanner').scanAll()\"",
     "generate-cert": "node ../scripts/generate-cert.js",
     "build:css": "node ../scripts/build-css.js",
+    "config:example": "node ../scripts/config-example.js",
     "test": "node --test test/*.test.js",
     "test:keyboard": "node ../scripts/keyboard-check.js",
-    "lint": "node ../scripts/syntax-check.js"
+    "lint": "node ../scripts/syntax-check.js",
+    "check:imports": "node ../scripts/import-check.js"
   },
   "keywords": [
     "media-server",
