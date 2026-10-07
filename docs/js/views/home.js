@@ -5,7 +5,7 @@ import { store } from '../store.js';
 import { api } from '../api.js';
 import { renderMediaGrid, renderSkeletonGrid } from '../components/mediaGrid.js';
 import { router } from '../router.js';
-import { formatRelativeTime, escapeHtml } from '../utils/format.js';
+import { escapeHtml } from '../utils/format.js';
 import { icon } from '../utils/icons.js';
 
 export function renderHome(container) {

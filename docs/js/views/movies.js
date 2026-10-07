@@ -2,7 +2,7 @@
  * Movies view — optimized with debounce, _sortCache, precomputed lower
  */
 import { store } from '../store.js';
-import { renderMediaGrid, renderSkeletonGrid } from '../components/mediaGrid.js';
+import { renderMediaGrid } from '../components/mediaGrid.js';
 import { renderMediaList } from '../components/mediaList.js';
 import { subscribeView, onUnmount } from '../utils/lifecycle.js';
 

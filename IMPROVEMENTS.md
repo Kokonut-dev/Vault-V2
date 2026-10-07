@@ -64,6 +64,14 @@ Legend of sources: what the comparable popular platform does that Vault currentl
   included), systemd unit + launchd plist + `deploy/README.md`, provider
   API-key cards in the Server console; ffmpeg resolution now falls back to the
   system binary when the bundled one is missing.
+- **Done (efficiency pass):** five-stage scan (dead modules/exports/imports →
+  DOM & CSS → duplication → client hot paths → server hot paths). Removed the
+  five dead stub modules (AUDIT F-28), 21 unreferenced exports and 12 unused
+  imports; fixed three stacked listener leaks, a stale-view write, the mDNS
+  TTL overflow and the unwired install prompt; made library indexing O(1)
+  (a 20 k-item rescan was O(n²)), gave `/api/system/disk` a single tree walk
+  (5.2× faster) and both system reports a short-TTL memo. `import-check.js`
+  now flags unused imports. Details in CHANGELOG.md and ARCHITECTURE.md §1.4.
 - **Todo:** nothing outstanding from the approved list — future work tracked in
   `IMPROVEMENTS.md` history and the PR description.
 

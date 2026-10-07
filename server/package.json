@@ -11,6 +11,7 @@
     "scan": "node -e \"require('./services/scanner').scanAll()\"",
     "generate-cert": "node ../scripts/generate-cert.js",
     "build:css": "node ../scripts/build-css.js",
+    "config:example": "node ../scripts/config-example.js",
     "test": "node --test test/*.test.js",
     "test:keyboard": "node ../scripts/keyboard-check.js",
     "lint": "node ../scripts/syntax-check.js",

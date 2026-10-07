@@ -24,6 +24,8 @@ window.addEventListener('vault:update-available', () => {
 });
 
 export function initPWA() {
+  initInstallPrompt();
+
   if (!('serviceWorker' in navigator)) {
     console.warn('[PWA] Service Worker not supported');
     return;
@@ -68,22 +70,34 @@ export function initPWA() {
   });
 }
 
-export function showInstallPrompt() {
+/**
+ * Install-to-home-screen support. The browser fires `beforeinstallprompt`
+ * once; we keep the event so the UI (Settings → Devices) can offer a button
+ * and call `window.vaultInstall.prompt()` on demand.
+ */
+export function initInstallPrompt() {
   let deferredPrompt = null;
+
+  const api = {
+    available: () => Boolean(deferredPrompt),
+    /** Resolve true when the user accepted, false otherwise/unavailable. */
+    async prompt() {
+      if (!deferredPrompt) return false;
+      const event = deferredPrompt;
+      deferredPrompt = null;
+      window.dispatchEvent(new CustomEvent('vault:install-state'));
+      event.prompt();
+      const { outcome } = await event.userChoice;
+      return outcome === 'accepted';
+    },
+  };
 
   window.addEventListener('beforeinstallprompt', (e) => {
     e.preventDefault();
     deferredPrompt = e;
-    window.dispatchEvent(new CustomEvent('vault:install-prompt', { detail: { prompt: e } }));
+    window.dispatchEvent(new CustomEvent('vault:install-state'));
   });
 
-  return {
-    prompt: async () => {
-      if (!deferredPrompt) return false;
-      deferredPrompt.prompt();
-      const { outcome } = await deferredPrompt.userChoice;
-      deferredPrompt = null;
-      return outcome === 'accepted';
-    }
-  };
+  window.vaultInstall = api;
+  return api;
 }

@@ -2,7 +2,7 @@
  * Media List — table view — optimized with DocumentFragment
  */
 import { api } from '../api.js';
-import { formatTime, formatBytes, formatDate, escapeHtml } from '../utils/format.js';
+import { formatTime, escapeHtml } from '../utils/format.js';
 import { icon } from '../utils/icons.js';
 import { attachContextMenu } from './contextMenu.js';
 

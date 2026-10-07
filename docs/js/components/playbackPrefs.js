@@ -8,7 +8,6 @@
  * Everything lives in localStorage under one key so the settings page, the
  * player menus and the keyboard layer all read the same object.
  */
-import { store } from '../store.js';
 import { toast } from './toast.js';
 
 const KEY = 'vault_playback_prefs';

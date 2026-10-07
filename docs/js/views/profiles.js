@@ -135,17 +135,6 @@ export async function openProfileMenu() {
   });
 }
 
-export async function manageProfile(profile) {
-  const name = await promptModal({ title: `Rename ${profile.name}`, label: 'Name', value: profile.name });
-  if (!name || name === profile.name) return;
-  try {
-    await api.updateProfile(profile.id, { name });
-    toast.success('Profile renamed');
-  } catch (err) {
-    toast.error(err.message);
-  }
-}
-
 export async function deleteProfile(profile) {
   const ok = await confirmDialog({
     title: `Delete profile "${profile.name}"?`,

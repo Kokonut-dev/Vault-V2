@@ -573,10 +573,6 @@ function onLoadedMetadata() {
   }));
 }
 
-export function getAudioElement() {
-  return currentAudio;
-}
-
 export function getAnalyser() {
   return analyserNode;
 }

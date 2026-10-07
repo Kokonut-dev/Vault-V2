@@ -9,7 +9,12 @@
  * This script walks `docs/js/**` and verifies, for every RELATIVE import:
  *   1. the target file exists (with .js / .mjs resolution),
  *   2. every named binding is actually exported by the target,
- *   3. a default import has a default export behind it.
+ *   3. a default import has a default export behind it,
+ *   4. the binding is actually used in the importing file.
+ *
+ * (4) matters in a no-bundler SPA: an unused import still triggers a network
+ * request for the whole module graph behind it. Those are reported as
+ * warnings — `--strict` turns them into failures.
  *
  *   node scripts/import-check.js          (or: npm run check:imports)
  *
@@ -68,8 +73,10 @@ function main() {
     process.exit(1);
   }
 
+  const strict = process.argv.includes('--strict');
   const files = walk(JS_ROOT);
   const problems = [];
+  const warnings = [];
   let checked = 0;
 
   for (const file of files) {
@@ -91,32 +98,53 @@ function main() {
         continue;
       }
       const { names, hasDefault } = exportsOf(target);
+      // Bindings as they are visible *inside this file* (for the unused check).
+      const localNames = [];
       const braced = clause.match(/\{([^}]*)\}/);
       if (braced) {
         for (const part of braced[1].split(',')) {
           const raw = part.trim();
           if (!raw) continue;
-          const name = raw.split(/\s+as\s+/)[0].trim();
+          const [sourceName, alias] = raw.split(/\s+as\s+/).map(part2 => part2.trim());
+          const name = sourceName;
+          localNames.push(alias || sourceName);
           checked += 1;
           if (!names.has(name)) {
             problems.push(`${rel}: "${name}" is not exported by ${m[2]}`);
           }
         }
       }
+      const rest = src.replace(m[0], '');
+      for (const local of localNames) {
+        if (!new RegExp(`\\b${local.replace(/\$/g, '\\$')}\\b`).test(rest)) {
+          warnings.push(`${rel}: "${local}" imported from ${m[2]} but never used`);
+        }
+      }
       const defaultBinding = clause.replace(/\{[^}]*\}/, '').replace(/,/g, '').trim();
       if (defaultBinding) {
         checked += 1;
         if (!hasDefault) problems.push(`${rel}: no default export in ${m[2]}`);
+        const restAfter = src.replace(m[0], '');
+        if (!new RegExp(`\\b${defaultBinding.replace(/\$/g, '\\$')}\\b`).test(restAfter)) {
+          warnings.push(`${rel}: default import "${defaultBinding}" from ${m[2]} never used`);
+        }
       }
     }
   }
 
-  if (problems.length) {
+  if (warnings.length) {
+    const label = strict ? 'problem(s)' : 'warning(s)';
+    const log = strict ? console.error : console.warn;
+    log(`[import-check] ${warnings.length} unused-import ${label}:`);
+    for (const warning of warnings) log(`  - ${warning}`);
+  }
+
+  if (problems.length || (strict && warnings.length)) {
     console.error(`[import-check] ${problems.length} problem(s):`);
     for (const problem of problems) console.error(`  - ${problem}`);
     process.exit(1);
   }
-  console.log(`[import-check] ${checked} imports across ${files.length} files OK`);
+  console.log(`[import-check] ${checked} imports across ${files.length} files OK${warnings.length ? ` (${warnings.length} unused-import warning(s))` : ''}`);
 }
 
 main();

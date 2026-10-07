@@ -104,10 +104,6 @@ function updateSleepIndicator() {
   }
 }
 
-export function sleepStatus() {
-  return { endsAt: sleep.endsAt, stopAfter: sleep.stopAfter, played: sleep.played };
-}
-
 /** Settings row used by both player menus. */
 export function renderSleepMenu() {
   return `
@@ -279,13 +275,6 @@ export function renderStatsPanel(plan, extra = {}) {
       ${rows.map(([label, value]) => `<tr><th>${label}</th><td>${String(value ?? '—')}</td></tr>`).join('')}
     </table>
   `;
-}
-
-export function openStatsModal(plan, extra) {
-  return modal.create({
-    title: 'Playback stats',
-    content: `<div class="stats-panel">${renderStatsPanel(plan, extra)}</div>`,
-  });
 }
 
 export { sleep as _sleep, updateSleepIndicator, api, modal };

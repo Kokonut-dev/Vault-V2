@@ -13,7 +13,8 @@ import { api } from '../api.js';
 import { icon } from '../utils/icons.js';
 import { formatTime } from '../utils/format.js';
 import { toast } from './toast.js';
-import { wireCastButton } from './playerExtras.js';
+import { wireCastButton, renderStatsPanel } from './playerExtras.js';
+import { modal } from './modal.js';
 
 const QUALITIES = [
   ['original', 'Original (direct play)'],
@@ -213,6 +214,33 @@ function buildQualityButton() {
         const plan = await api.getPlan(state.item.id, quality);
         if (plan?.transcode) toast.info(`Transcoding with ${plan.encoder?.label || 'CPU'} (${plan.reasons?.join(', ') || 'compatibility'})`);
       } catch { /* plan is informational only */ }
+    });
+  });
+
+  // "Stats for nerds" — the plan plus live decoder/buffer numbers.
+  menu.insertAdjacentHTML('beforeend', `
+    <button type="button" class="context-menu-item" data-stats="1">
+      ${icon('info', { size: 15 })}<span>Playback stats</span>
+    </button>`);
+  menu.querySelector('[data-stats]').addEventListener('click', async () => {
+    menu.classList.remove('active');
+    const el = video();
+    if (!el || !state.item) return;
+    let plan = state.plan;
+    try {
+      plan = await api.getPlan(state.item.id, 'original');
+    } catch { /* stats still show what we have */ }
+    const buffered = el.buffered?.length ? el.buffered.end(el.buffered.length - 1) - el.currentTime : undefined;
+    modal.create({
+      title: 'Playback stats',
+      content: `<div class="stats-panel">${renderStatsPanel(plan, {
+        video: {
+          videoWidth: el.videoWidth,
+          videoHeight: el.videoHeight,
+          dropped: el.getVideoPlaybackQuality?.().droppedVideoFrames,
+        },
+        buffered,
+      })}</div>`,
     });
   });
 }

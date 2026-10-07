@@ -18,6 +18,7 @@ let history = [];
 
 // Indexes
 let idMap = new Map(); // id -> item
+let pathMap = new Map(); // path -> item (addItem used to find by path too)
 let typeIndex = { movie: [], music: [], video: [] };
 let genreSet = new Set();
 
@@ -40,13 +41,18 @@ function trackWrite(name, filePath, data) {
   return p;
 }
 
+let genreDirty = false;
+
 function rebuildIndexes() {
   idMap.clear();
   typeIndex = { movie: [], music: [], video: [] };
   genreSet.clear();
+  pathMap.clear();
+  genreDirty = false;
 
   for (const item of library) {
     idMap.set(item.id, item);
+    if (item.path) pathMap.set(item.path, item);
     if (typeIndex[item.type]) typeIndex[item.type].push(item);
     if (item.genre) {
       if (Array.isArray(item.genre)) item.genre.forEach(g => genreSet.add(g));
@@ -184,15 +190,23 @@ function getByType(type) {
 }
 
 function addItem(item) {
-  const existingIdx = library.findIndex(i => i.id === item.id || i.path === item.path);
+  // O(1) existence check via idMap (the old findIndex made a full scan of the
+  // library for every scanned file, i.e. O(n²) per scan).
+  const existing = idMap.get(item.id) || (item.path ? pathMap.get(item.path) : null) || null;
   const now = new Date().toISOString();
-  if (existingIdx >= 0) {
-    library[existingIdx] = { ...library[existingIdx], ...item, updatedAt: now };
-    idMap.set(library[existingIdx].id, library[existingIdx]);
+  if (existing) {
+    const previousType = existing.type;
+    const previousPath = existing.path;
+    Object.assign(existing, item, { updatedAt: now });
+    searchTextCache.delete(existing);
+    if (previousPath && previousPath !== existing.path) pathMap.delete(previousPath);
+    if (existing.path) pathMap.set(existing.path, existing);
+    if (item.type && item.type !== previousType) moveTypeIndex(existing, previousType);
   } else {
     const newItem = { ...item, addedAt: now, updatedAt: now };
     library.push(newItem);
     idMap.set(newItem.id, newItem);
+    if (newItem.path) pathMap.set(newItem.path, newItem);
     if (typeIndex[newItem.type]) typeIndex[newItem.type].push(newItem);
     if (newItem.genre) {
       if (Array.isArray(newItem.genre)) newItem.genre.forEach(g => genreSet.add(g));
@@ -204,27 +218,47 @@ function addItem(item) {
 }
 
 function updateItem(id, updates) {
-  const idx = library.findIndex(i => i.id === id);
-  if (idx === -1) return null;
-  library[idx] = { ...library[idx], ...updates, updatedAt: new Date().toISOString() };
-  idMap.set(id, library[idx]);
-  // Rebuild type index if type changed
-  if (updates.type) rebuildIndexes();
-  else if (updates.genre) {
+  const existing = idMap.get(id);
+  if (!existing) return null;
+  const previousType = existing.type;
+  // Mutate in place so indexMap/typeIndex/array stay consistent without an
+  // O(n) findIndex + rebuild on every progress/metadata write.
+  Object.assign(existing, updates, { updatedAt: new Date().toISOString() });
+  searchTextCache.delete(existing); // cached haystack no longer valid
+  if (updates.type && updates.type !== previousType) moveTypeIndex(existing, previousType);
+  if (updates.genre) {
     if (Array.isArray(updates.genre)) updates.genre.forEach(g => genreSet.add(g));
     else genreSet.add(updates.genre);
   }
   saveLibrary();
-  return library[idx];
+  return existing;
+}
+
+/** Move an item between type buckets without rebuilding the whole index. */
+function moveTypeIndex(item, previousType) {
+  const from = typeIndex[previousType];
+  if (from) {
+    const index = from.indexOf(item);
+    if (index !== -1) from.splice(index, 1);
+  }
+  if (typeIndex[item.type]) typeIndex[item.type].push(item);
 }
 
 function removeItem(id) {
-  const idx = library.findIndex(i => i.id === id);
-  if (idx === -1) return false;
-  library.splice(idx, 1);
+  const item = idMap.get(id);
+  if (!item) return false;
+  const idx = library.indexOf(item);
+  if (idx !== -1) library.splice(idx, 1);
   idMap.delete(id);
-  // Rebuild indexes to keep typeIndex consistent
-  rebuildIndexes();
+  if (item.path) pathMap.delete(item.path);
+  // Surgical index update — a full rebuildIndexes() per removal turned batch
+  // deletes (prune missing, rescan after a drive is gone) into O(n²).
+  const bucket = typeIndex[item.type];
+  if (bucket) {
+    const bucketIdx = bucket.indexOf(item);
+    if (bucketIdx !== -1) bucket.splice(bucketIdx, 1);
+  }
+  genreDirty = true; // genreSet may now contain a genre with no items
 
   // Also remove from favourites, playlists, history
   let changed = false;
@@ -289,8 +323,8 @@ function getStats() {
 }
 
 function getGenres() {
-  // Use cached set if available
-  if (genreSet.size > 0) return Array.from(genreSet).sort();
+  // Use cached set if available (rebuilt lazily after removals)
+  if (!genreDirty && genreSet.size > 0) return Array.from(genreSet).sort();
   const genres = new Set();
   library.forEach(item => {
     if (item.genre) {

@@ -3,12 +3,10 @@
  * Server side lives in /api/extras/watchlist (per profile).
  */
 import { api } from '../api.js';
-import { store } from '../store.js';
+import { onUnmount } from '../utils/lifecycle.js';
 import { renderMediaGrid, renderSkeletonGrid } from '../components/mediaGrid.js';
-import { subscribeView } from '../utils/lifecycle.js';
 import { icon } from '../utils/icons.js';
 import { escapeHtml, formatTime, truncate } from '../utils/format.js';
-import { toast } from '../components/toast.js';
 
 export async function renderWatchlist(container) {
   container.className = 'page';
@@ -102,16 +100,19 @@ export async function renderContinue(container) {
     content.innerHTML = `<div class="empty-state"><div class="empty-state-message">${escapeHtml(err.message)}</div></div>`;
   }
 
-  window.addEventListener('vault:library-changed', () => {
-    // Cheap re-render instead of a full reload: pull the newest progress
-    // values and repaint the grid in place.
+  // Registered once per mount and torn down with the view — previously every
+  // navigation added another listener holding a detached grid (F-4 pattern).
+  const onLibraryChanged = () => {
     api.getRecent(null, 24).then(result => {
+      if (!content.isConnected) return;
       renderMediaGrid(content, (result.items || []).filter(item => !item.watched), {
         onClick: item => window.dispatchEvent(new CustomEvent('vault:open-detail', { detail: { item } })),
         onPlay: item => window.dispatchEvent(new CustomEvent('vault:open-video', { detail: { item } })),
       });
     }).catch(() => {});
-  });
+  };
+  window.addEventListener('vault:library-changed', onLibraryChanged);
+  onUnmount(() => window.removeEventListener('vault:library-changed', onLibraryChanged));
 }
 
 export default { renderWatchlist, renderContinue };

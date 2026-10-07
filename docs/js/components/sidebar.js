@@ -145,7 +145,3 @@ export function renderSidebar(container) {
 
   return sidebar;
 }
-
-export function toggleSidebar() {
-  window.dispatchEvent(new CustomEvent('vault:toggle-sidebar'));
-}

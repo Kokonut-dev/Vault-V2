@@ -12,6 +12,7 @@ import { toast } from '../components/toast.js';
 import { getPrefs, setPrefs, resetPrefs } from '../components/playbackPrefs.js';
 import { renderPairingPanel } from '../components/qrPair.js';
 import { formatRelativeTime } from '../utils/format.js';
+import { onUnmount } from '../utils/lifecycle.js';
 
 function card(title, iconName, body, id = '') {
   const node = document.createElement('div');
@@ -146,10 +147,33 @@ function devicesCard() {
       <button class="btn btn-ghost btn-sm" id="revoke-others">${icon('shield-off', { size: 14 })}<span>Sign out other devices</span></button>
     </div>
     <div id="sessions-list"></div>
+    <hr class="settings-divider">
+    <div class="row-main">
+      <div class="row-title">Install as an app</div>
+      <button class="btn btn-secondary btn-sm" id="install-app" hidden>${icon('download', { size: 14 })}<span>Install</span></button>
+    </div>
+    <div class="row-meta" id="install-hint">Add Vault to your home screen for full-screen playback.</div>
   `);
 
   renderPairingPanel(node.querySelector('#pair-panel'));
   loadSessions(node.querySelector('#sessions-list'));
+
+  // Only offered when the browser actually allows it (Chrome/Edge/Android).
+  const installBtn = node.querySelector('#install-app');
+  const hint = node.querySelector('#install-hint');
+  const syncInstall = () => {
+    const available = Boolean(window.vaultInstall?.available?.());
+    installBtn.hidden = !available;
+    hint.hidden = available;
+  };
+  syncInstall();
+  window.addEventListener('vault:install-state', syncInstall);
+  onUnmount(() => window.removeEventListener('vault:install-state', syncInstall));
+  installBtn.addEventListener('click', async () => {
+    const accepted = await window.vaultInstall?.prompt?.();
+    if (accepted) toast.success('Installing Vault…');
+    syncInstall();
+  });
 
   node.querySelector('#revoke-others').addEventListener('click', async () => {
     try {

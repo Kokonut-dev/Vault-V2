@@ -2,6 +2,10 @@
   "server": {
     "port": 4000,
     "host": "0.0.0.0",
+    "mdns": {
+      "enabled": false,
+      "hostname": "vault"
+    },
     "https": {
       "enabled": false,
       "keyPath": "./certs/key.pem",
@@ -186,5 +190,9 @@
         "max": 30
       }
     }
+  },
+  "onboarding": {
+    "version": "2.0.0",
+    "enablement": true
   }
 }

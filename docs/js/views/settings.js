@@ -271,10 +271,13 @@ export function renderSettings(container) {
     window.dispatchEvent(new CustomEvent('vault:logout'));
   });
   
-  // Load server info
-  api.health().then(health => {
-    container.querySelector('#server-info').textContent = JSON.stringify(health, null, 2);
-  }).catch(err => {
-    container.querySelector('#server-info').textContent = `Cannot connect: ${err.message}`;
-  });
+  // Load server info. The write must survive the user navigating away before
+  // the request resolves (the element is gone once the view unmounts).
+  const showServerInfo = (text) => {
+    const el = container.querySelector('#server-info');
+    if (el) el.textContent = text;
+  };
+  api.health()
+    .then(health => showServerInfo(JSON.stringify(health, null, 2)))
+    .catch(err => showServerInfo(`Cannot connect: ${err.message}`));
 }

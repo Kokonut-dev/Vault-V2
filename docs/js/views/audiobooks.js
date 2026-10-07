@@ -89,10 +89,14 @@ async function openAudiobook(item) {
   `;
   document.body.appendChild(backdrop);
 
-  const close = () => backdrop.remove();
+  const onEscape = () => close();
+  const close = () => {
+    window.removeEventListener('vault:escape', onEscape);
+    backdrop.remove();
+  };
   backdrop.querySelector('.modal-close').addEventListener('click', close);
   backdrop.addEventListener('click', event => { if (event.target === backdrop) close(); });
-  window.addEventListener('vault:escape', close, { once: true });
+  window.addEventListener('vault:escape', onEscape);
 
   backdrop.querySelector('#ab-play').addEventListener('click', () => {
     playAudiobook(item);

@@ -7,6 +7,7 @@ const logger = require('../utils/logger');
 const trash = require('../services/trash');
 const extras = require('../services/extras');
 const events = require('../services/events');
+const system = require('../services/system');
 const sqlite = require('../services/sqliteIndex');
 const { getConfig } = require('../config');
 
@@ -165,6 +166,7 @@ router.get('/search', (req, res) => {
 router.post('/scan', async (req, res) => {
   try {
     const result = await scannerService.scanAll();
+    system.invalidateReports(); // library + disk reports changed
     res.json({ message: 'Scan complete', ...result });
   } catch (err) {
     res.status(500).json({ error: 'Scan failed', details: err.message });
@@ -292,6 +294,7 @@ router.delete('/:id', async (req, res) => {
     }
 
     libraryService.removeItem(req.params.id);
+    system.invalidateReports();
     sqlite.remove(req.params.id);
     events.broadcast('library:changed', { reason: 'delete', id: req.params.id, title: item.title });
 

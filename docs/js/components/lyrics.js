@@ -7,7 +7,6 @@
  */
 import { api } from '../api.js';
 import { icon } from '../utils/icons.js';
-import { toast } from './toast.js';
 
 const OFFSET_KEY = 'vault_lyrics_offset';
 
@@ -133,25 +132,4 @@ export function initLyrics() {
   });
 
   return { loadLyrics, setLyricTime };
-}
-
-export function openLyricsModal(item) {
-  const backdrop = document.createElement('div');
-  backdrop.className = 'modal-backdrop active';
-  backdrop.innerHTML = `
-    <div class="modal modal-lyrics" role="dialog" aria-modal="true" aria-label="Lyrics">
-      <div class="modal-header">
-        <div class="modal-title">${icon('music', { size: 16 })}<span>Lyrics</span></div>
-        <button class="modal-close" aria-label="Close lyrics">${icon('x', { size: 16 })}</button>
-      </div>
-      <div class="modal-body"><div id="lyrics-modal-body" class="lyrics-container"></div></div>
-    </div>
-  `;
-  document.body.appendChild(backdrop);
-  const close = () => backdrop.remove();
-  backdrop.querySelector('.modal-close').addEventListener('click', close);
-  backdrop.addEventListener('click', event => { if (event.target === backdrop) close(); });
-  window.addEventListener('vault:escape', close, { once: true });
-  loadLyrics(item, backdrop.querySelector('#lyrics-modal-body'));
-  return backdrop;
 }

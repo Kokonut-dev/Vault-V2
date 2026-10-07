@@ -2,6 +2,55 @@
 
 ## [3.0.0] — in progress (branch `arena/0deefe55-vault-v2`)
 
+### Efficiency pass — dead code stripped, hot paths fixed
+Five-stage scan (dead modules/exports/imports → DOM & CSS → duplication →
+client hot paths → server hot paths), then the findings were removed or fixed:
+
+**Removed (nothing was reachable)**
+- Dead stub modules: `components/collections.js`, `detailView.js`,
+  `metadataEditor.js`, `uploadModal.js`, `utils/validators.js`
+  (the AUDIT.md F-28 list, now gone).
+- 21 exports nothing referenced (`getAudioElement`, `openLyricsModal`,
+  `sleepStatus`, `toggleSidebar`, `manageProfile`, `formatDuration`,
+  `slugify`, `parseYear`, `getFileExtension`, `preloadImage`, the unused
+  constants, …) and 12 unused imports.
+- **`renderStatsPanel` / "Playback stats"** was unreachable too — instead of
+  deleting the feature it is now wired into the player's quality menu.
+
+**Fixed**
+- Three leaked `window` listeners that stacked on every route change
+  (Continue Watching, the EQ panel, Settings → Devices) — they now register
+  through `utils/lifecycle.js` and detach on unmount.
+- A stale-view write in Settings (`#server-info`) that threw once the request
+  resolved after navigating away.
+- mDNS cache-flush TTL overflow (`ttl | 0x80000000` is negative in JS and
+  Buffer rejects it) — the announcement previously failed with a warning.
+- Install-to-home-screen prompt was never wired: `initInstallPrompt()` now
+  exposes `window.vaultInstall` and Settings → Devices offers the button.
+- `searchMetadata()` accepts `q` (the server expects `query`).
+
+**Server performance**
+- Library index operations are O(1): `updateItem` merged in place via `idMap`
+  instead of `findIndex` + array swap, `removeItem` splices only the affected
+  type bucket instead of rebuilding every index, `addItem` de-dupes through
+  `idMap`/`pathMap`. A 20 000-item rescan no longer degrades to O(n²)
+  (isolated benchmark: 20 000 updates 3 633 ms → 4 ms; 500 removals
+  1 445 ms → 2 ms).
+- `/api/system/disk` walks the cache tree once (sub-totals from the same pass)
+  with batched `stat` calls — 5.2× faster on 3 400 files — and is memoised for
+  15 s; `/api/system/health` probes the filesystem with bounded concurrency
+  and a 30 s TTL, invalidated by scans, prunes, cache clears and restores.
+- `prune-missing` uses the parallel probe pass; the deep health scan's
+  sidecar check went from O(n²) to set lookups.
+
+**Tooling**
+- `scripts/import-check.js` now also reports imported-but-unused bindings
+  (warnings; `--strict` fails) — the class of dead weight this pass removed.
+- `scripts/config-example.js` regenerates `server/config.example.json` from
+  `DEFAULT_CONFIG` with portable paths and placeholders (`npm run
+  config:example`).
+- Server tests 24 → 35 (mDNS packet builders, library index consistency).
+
 ### Added
 - **Server subsystems (18):** events (SSE bus + job tracking), trash (soft
   delete with retention + restore), extras (watchlist, collections, smart
