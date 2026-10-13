@@ -179,7 +179,7 @@
     "rateLimit": {
       "general": {
         "windowMs": 900000,
-        "max": 200
+        "max": 2000
       },
       "auth": {
         "windowMs": 900000,
