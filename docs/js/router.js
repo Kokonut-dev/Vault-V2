@@ -17,7 +17,12 @@ export class Router {
     this._scrollMem = new Map(); // path → scrollY, capped (QoL4)
     this._onClick = this._onClick.bind(this);
     this._onPopState = () => this.handleRoute();
-    this._onHashChange = () => { if (this.useHash) this.handleRoute(); };
+    this._onHashChange = () => {
+      // Adopt hash routing on the fly: a "#/…" link clicked on a page that
+      // was opened without a hash must still navigate, not just change the URL.
+      if (!this.useHash && window.location.hash.startsWith('#/')) this.useHash = true;
+      if (this.useHash) this.handleRoute();
+    };
     this._onNavigate = (e) => {
       const page = e.detail?.page || '';
       if (page === 'home' || page === '') this.navigate('/');

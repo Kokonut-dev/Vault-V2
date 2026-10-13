@@ -2,7 +2,7 @@
  * Detail view — movie, music, video detail pages — optimized
  */
 import { store } from '../store.js';
-import { formatTime, formatBytes, escapeHtml } from '../utils/format.js';
+import { formatTime, formatDuration, durationSeconds, formatBytes, escapeHtml } from '../utils/format.js';
 import { api } from '../api.js';
 import { toast } from '../components/toast.js';
 import { confirmDialog, alertDialog } from '../components/confirmDialog.js';
@@ -182,66 +182,99 @@ function renderMusicDetail(container, item) {
   // album tag (undefined, '' or null) are one "Unknown Album" group, so opening
   // that group lists every untagged track instead of an empty heading.
   const albumKey = item.album || 'Unknown Album';
-  const albumTracks = library.filter(i => i.type === 'music' && (i.album || 'Unknown Album') === albumKey).sort((a, b) => (a.track || 0) - (b.track || 0));
+  const sortTracks = (list) => [...list].sort((a, b) => (a.track || 0) - (b.track || 0) || String(a.title).localeCompare(String(b.title)));
+  let albumTracks = sortTracks(library.filter(i => i.type === 'music' && (i.album || 'Unknown Album') === albumKey));
   const isAlbumView = albumTracks.length > 1;
-  // An album byline shouldn't name whichever track happened to be clicked.
   const albumArtists = [...new Set(albumTracks.map(t => t.artist).filter(Boolean))];
   const byline = isAlbumView
     ? (albumArtists.length > 1 ? 'Various Artists' : (albumArtists[0] || ''))
     : (item.artist || '');
-  
+  const coverVersion = Math.max(0, ...albumTracks.map(t => new Date(t.updatedAt || 0).getTime() || 0));
+  const totalSeconds = albumTracks.reduce((sum, t) => sum + durationSeconds(t.duration), 0);
+
   container.innerHTML = `
     <div style="display:flex; align-items:center; gap:12px; margin-bottom:24px;">
       <button class="btn btn-secondary btn-sm" id="back-btn">${icon('arrow-left', { size: 16 })}<span>Back</span></button>
       <span style="color:var(--text-tertiary); font-size:13px;">${isAlbumView ? 'Album' : 'Track'}</span>
     </div>
-    
-    <div class="detail-layout">
-      <div>
-        <div style="aspect-ratio:1/1; background:rgba(var(--glass-tint),0.05); border-radius:16px; overflow:hidden; box-shadow:var(--shadow-lg);">
-          <img src="${api.getCoverUrl(item.id)}" alt="" style="width:100%;height:100%;object-fit:cover;" onerror="this.style.display='none'">
-        </div>
+
+    <div class="album-header">
+      <div class="album-header-cover">
+        <img src="${api.getCoverUrlVersioned(item.id, coverVersion || '')}" alt="" onerror="this.style.display='none'">
       </div>
-      
-      <div>
-        <h1 style="font-size:32px; font-weight:800; line-height:1.1;">${escapeHtml(isAlbumView ? albumKey : item.title)}</h1>
-        <div style="font-size:18px; color:var(--text-secondary); margin-top:8px; margin-bottom:24px;">${escapeHtml(byline)} ${item.year ? `• ${item.year}` : ''}</div>
-        
-        <div style="display:flex; gap:12px; margin-bottom:24px;">
+      <div class="album-header-meta">
+        <span class="quality-badge">${isAlbumView ? 'Album' : 'Track'}</span>
+        <h1 class="album-header-title">${escapeHtml(isAlbumView ? albumKey : item.title)}</h1>
+        <div class="album-header-sub">
+          ${byline ? `<span>${escapeHtml(byline)}</span>` : ''}
+          ${item.year ? `<span>${item.year}</span>` : ''}
+          <span>${albumTracks.length} track(s)</span>
+          <span>${formatDuration(totalSeconds)} total</span>
+        </div>
+        <div style="display:flex; gap:8px; flex-wrap:wrap;">
           <button class="btn btn-primary" id="play-btn">${icon('play', { size: 18 })}<span>Play ${isAlbumView ? 'Album' : ''}</span></button>
           <button class="btn btn-secondary" id="shuffle-btn">${icon('shuffle', { size: 18 })}<span>Shuffle</span></button>
           <button class="btn btn-secondary" id="fav-btn" aria-label="${store.get('favourites').includes(item.id) ? 'Remove from favourites' : 'Add to favourites'}" aria-pressed="${store.get('favourites').includes(item.id)}">${icon(store.get('favourites').includes(item.id) ? 'heart-filled' : 'heart', { size: 18 })}</button>
+          ${isAlbumView ? '<button class="btn btn-secondary" id="edit-album-btn">Edit album</button>' : '<button class="btn btn-secondary" id="edit-track-btn">Edit track</button>'}
         </div>
-        
-        <div id="track-list"></div>
+        ${isAlbumView ? '<p class="row-meta">Drag rows or use the ↑ ↓ buttons to reorder — new track numbers are saved for the whole album. “Edit” renames a single track.</p>' : ''}
       </div>
     </div>
-    
-    <style>@media (max-width: 768px) { .detail-grid { grid-template-columns: 1fr !important; } }</style>
+
+    <div id="track-list"></div>
   `;
-  
+
   container.querySelector('#back-btn').addEventListener('click', () => history.back());
-  
-  const tracks = isAlbumView ? albumTracks : [item];
+
+  let tracks = isAlbumView ? albumTracks : [item];
   const trackListEl = container.querySelector('#track-list');
-  
-  import('../components/mediaList.js').then(({ renderMediaList }) => {
+
+  const refreshLibrary = async (updatedItems) => {
+    (updatedItems || []).forEach(u => {
+      const local = store.get('library').find(i => i.id === u.id);
+      if (local) Object.assign(local, u);
+    });
+    store.set('library', [...store.get('library')]);
+  };
+
+  const renderTracks = async () => {
+    const { renderMediaList } = await import('../components/mediaList.js');
     renderMediaList(trackListEl, tracks, {
       onClick: (track) => {
         window.dispatchEvent(new CustomEvent('vault:play', { detail: { item: track, queue: tracks, index: tracks.findIndex(t => t.id === track.id) } }));
       }
     });
-  });
-  
+    if (!isAlbumView) return;
+    const { makeReorderable } = await import('../components/reorderableList.js');
+    makeReorderable(trackListEl, {
+      onEdit: (index) => showTrackEditModal(tracks[index], async () => { await refreshLibrary(); renderMusicDetail(container, item); }),
+      onMove: async (from, to) => {
+        const next = [...tracks];
+        const [moved] = next.splice(from, 1);
+        next.splice(to, 0, moved);
+        try {
+          const { items: updated } = await api.updateAlbumOrder(next.map(t => t.id));
+          tracks = sortTracks(updated && updated.length ? next.map(t => updated.find(u => u.id === t.id) || t) : next.map((t, i) => ({ ...t, track: i + 1 })));
+          await refreshLibrary(tracks);
+          toast.success('Album order saved');
+          renderMusicDetail(container, item);
+        } catch (err) {
+          toast.error(`Could not reorder: ${err.message}`);
+        }
+      },
+    });
+  };
+  renderTracks();
+
   container.querySelector('#play-btn').addEventListener('click', () => {
     window.dispatchEvent(new CustomEvent('vault:play', { detail: { item: tracks[0], queue: tracks, index: 0 } }));
   });
-  
+
   container.querySelector('#shuffle-btn').addEventListener('click', () => {
     const shuffled = [...tracks].sort(() => Math.random() - 0.5);
     window.dispatchEvent(new CustomEvent('vault:play', { detail: { item: shuffled[0], queue: shuffled, index: 0 } }));
   });
-  
+
   container.querySelector('#fav-btn').addEventListener('click', async (e) => {
     const btn = e.currentTarget;
     const isFav = store.toggleFavourite(item.id);
@@ -252,6 +285,98 @@ function renderMusicDetail(container, item) {
       if (isFav) await api.addFavourite(item.id);
       else await api.removeFavourite(item.id);
     } catch {}
+  });
+
+  container.querySelector('#edit-album-btn')?.addEventListener('click', () => {
+    showAlbumEditModal({
+      albumKey,
+      tracks,
+      onSaved: async (updated) => { await refreshLibrary(updated); renderMusicDetail(container, updated?.[0] || item); },
+    });
+  });
+  container.querySelector('#edit-track-btn')?.addEventListener('click', () => {
+    showTrackEditModal(item, async () => { await refreshLibrary(); renderMusicDetail(container, item); });
+  });
+}
+
+/** Rename a single track (title, plus artist/album/year for context). */
+export function showTrackEditModal(track, onSaved) {
+  const backdrop = document.createElement('div');
+  backdrop.className = 'modal-backdrop active';
+  backdrop.innerHTML = `
+    <div class="modal">
+      <div class="modal-header"><div class="modal-title">Edit track</div><button class="modal-close" aria-label="Close dialog">${icon('x', { size: 16 })}</button></div>
+      <div class="modal-body">
+        <div class="form-group"><label class="form-label">Title</label><input type="text" class="form-input" id="track-title" value="${escapeHtml(track.title || '')}"></div>
+        <div class="form-group"><label class="form-label">Artist</label><input type="text" class="form-input" id="track-artist" value="${escapeHtml(track.artist || '')}"></div>
+        <div class="form-group"><label class="form-label">Track #</label><input type="number" class="form-input" id="track-num" min="0" value="${track.track || ''}"></div>
+      </div>
+      <div class="modal-footer"><button class="btn btn-secondary" id="track-cancel">Cancel</button><button class="btn btn-primary" id="track-save">Save</button></div>
+    </div>`;
+  document.body.appendChild(backdrop);
+  const close = () => backdrop.remove();
+  backdrop.querySelector('.modal-close').addEventListener('click', close);
+  backdrop.querySelector('#track-cancel').addEventListener('click', close);
+  backdrop.addEventListener('click', (e) => { if (e.target === backdrop) close(); });
+  backdrop.querySelector('#track-save').addEventListener('click', async () => {
+    const title = backdrop.querySelector('#track-title').value.trim();
+    if (!title) { toast.error('Title is required'); return; }
+    try {
+      const updated = await api.updateItem(track.id, {
+        title,
+        artist: backdrop.querySelector('#track-artist').value.trim(),
+        track: parseInt(backdrop.querySelector('#track-num').value, 10) || 0,
+      });
+      Object.assign(track, updated);
+      toast.success('Track updated');
+      close();
+      await onSaved?.();
+    } catch (err) { toast.error(err.message); }
+  });
+}
+
+/**
+ * Edit an album after the fact: rename it (applied to every track) and/or
+ * replace its cover art (also applied to every track, so all songs in the
+ * album — grids, player, other album tracks — pick up the same artwork).
+ * Albums intentionally have no description; descriptions are playlist-only.
+ */
+function showAlbumEditModal({ albumKey, tracks, onSaved }) {
+  const backdrop = document.createElement('div');
+  backdrop.className = 'modal-backdrop active';
+  backdrop.innerHTML = `
+    <div class="modal">
+      <div class="modal-header"><div class="modal-title">Edit album</div><button class="modal-close" aria-label="Close dialog">${icon('x', { size: 16 })}</button></div>
+      <div class="modal-body">
+        <div class="form-group"><label class="form-label">Album title</label><input type="text" class="form-input" id="album-title" value="${escapeHtml(albumKey === 'Unknown Album' ? '' : albumKey)}" placeholder="Unknown Album"></div>
+        <div class="form-group"><label class="form-label">Cover art (applies to all ${tracks.length} tracks)</label><input type="file" class="form-input" id="album-cover" accept="image/*"></div>
+      </div>
+      <div class="modal-footer"><button class="btn btn-secondary" id="album-cancel">Cancel</button><button class="btn btn-primary" id="album-save">Save</button></div>
+    </div>`;
+  document.body.appendChild(backdrop);
+  const close = () => backdrop.remove();
+  backdrop.querySelector('.modal-close').addEventListener('click', close);
+  backdrop.querySelector('#album-cancel').addEventListener('click', close);
+  backdrop.addEventListener('click', (e) => { if (e.target === backdrop) close(); });
+  backdrop.querySelector('#album-save').addEventListener('click', async () => {
+    const ids = tracks.map(t => t.id);
+    const title = backdrop.querySelector('#album-title').value.trim();
+    const cover = backdrop.querySelector('#album-cover').files?.[0];
+    if (!title && albumKey !== 'Unknown Album') { toast.error('Album title is required'); return; }
+    try {
+      let updated = tracks;
+      if (cover) {
+        const result = await api.uploadAlbumCover(ids, cover);
+        if (result.items) updated = result.items;
+      }
+      if (title && title !== albumKey) {
+        const result = await api.updateAlbumTitle(ids, title);
+        if (result.items) updated = result.items;
+      }
+      toast.success('Album updated');
+      close();
+      await onSaved?.(updated);
+    } catch (err) { toast.error(err.message); }
   });
 }
 

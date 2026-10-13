@@ -1000,6 +1000,45 @@ class ApiClient {
     return this.request('/api/library/scan/background', { method: 'POST' });
   }
 
+  // --- Album / playlist editing -------------------------------------------
+  // Albums are tag-derived, so these fan out server-side to every track id.
+  updateAlbumOrder(ids) {
+    return this.request('/api/library/albums/order', { method: 'PUT', body: { ids } });
+  }
+
+  updateAlbumTitle(ids, album) {
+    return this.request('/api/library/albums/metadata', { method: 'PUT', body: { ids, album } });
+  }
+
+  uploadAlbumCover(ids, file) {
+    const form = new FormData();
+    form.append('cover', file);
+    form.append('ids', JSON.stringify(ids));
+    return this.request('/api/library/albums/cover', { method: 'POST', body: form });
+  }
+
+  uploadPlaylistCover(id, file) {
+    const form = new FormData();
+    form.append('cover', file);
+    return this.request(`/api/playlists/${id}/cover`, { method: 'POST', body: form });
+  }
+
+  removePlaylistCover(id) {
+    return this.request(`/api/playlists/${id}/cover`, { method: 'DELETE' });
+  }
+
+  playlistCoverUrl(id, version = '') {
+    const token = this.getToken();
+    return `${this.baseUrl}/api/playlists/${id}/cover?token=${encodeURIComponent(token || '')}${version ? `&v=${encodeURIComponent(version)}` : ''}`;
+  }
+
+  // Cover URL for a library item, with an optional cache-busting version
+  // (pass updatedAt after editing artwork so browsers drop the old image).
+  getCoverUrlVersioned(id, version) {
+    const url = this.getCoverUrl(id);
+    return version ? `${url}&v=${encodeURIComponent(version)}` : url;
+  }
+
   // --- Playlist additions --------------------------------------------------
   reorderPlaylist(id, payload) {
     return this.request(`/api/playlists/${id}/order`, { method: 'PUT', body: payload });

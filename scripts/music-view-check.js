@@ -172,7 +172,7 @@ function assert(condition, message) {
     const c = document.createElement('div');
     document.body.appendChild(c);
     await renderDetail(c, 't1'); // album also contains t6 by "Guest"
-    const byline = c.querySelectorAll('.detail-layout > div:nth-child(2) > div')[0].textContent;
+    const byline = c.querySelector('.album-header-sub').textContent;
     assert(/Various Artists/.test(byline), `album byline: "${byline.trim()}"`);
     c.remove();
   });

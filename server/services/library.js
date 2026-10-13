@@ -197,7 +197,13 @@ function addItem(item) {
   if (existing) {
     const previousType = existing.type;
     const previousPath = existing.path;
+    const previousId = existing.id;
     Object.assign(existing, item, { updatedAt: now });
+    // Re-key the id index when a rescan assigns a new id to a known path:
+    // without this, getById (array fallback) finds the item but updateItem
+    // (idMap only) returns null, so every metadata edit silently fails.
+    if (previousId && previousId !== existing.id) idMap.delete(previousId);
+    idMap.set(existing.id, existing);
     searchTextCache.delete(existing);
     if (previousPath && previousPath !== existing.path) pathMap.delete(previousPath);
     if (existing.path) pathMap.set(existing.path, existing);

@@ -1,12 +1,39 @@
 export function formatTime(seconds) {
-  if (isNaN(seconds) || seconds < 0) return '0:00';
-  const h = Math.floor(seconds / 3600);
-  const m = Math.floor((seconds % 3600) / 60);
-  const s = Math.floor(seconds % 60);
+  // Durations arrive in several shapes depending on source (ffprobe float,
+  // numeric string from the SQLite index, "m:ss"/"h:mm:ss" strings, or
+  // missing entirely). Normalise them all; unknown length is "—", not 0:00.
+  if (typeof seconds === 'string' && seconds.includes(':')) {
+    const parts = seconds.split(':').map(Number);
+    if (parts.some(isNaN)) return '—';
+    seconds = parts.reduce((sum, p) => sum * 60 + p, 0);
+  }
+  const value = Number(seconds);
+  if (!Number.isFinite(value) || value < 0) return '—';
+  if (value === 0) return '0:00';
+  const h = Math.floor(value / 3600);
+  const m = Math.floor((value % 3600) / 60);
+  const s = Math.floor(value % 60);
   if (h > 0) {
     return `${h}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
   }
   return `${m}:${s.toString().padStart(2, '0')}`;
+}
+
+/** Track/runtime lengths: like formatTime, but a missing/zero length is unknown. */
+export function formatDuration(seconds) {
+  if (typeof seconds === 'string' && seconds.includes(':')) return formatTime(seconds) === '0:00' ? '—' : formatTime(seconds);
+  const value = Number(seconds);
+  return Number.isFinite(value) && value > 0 ? formatTime(value) : '—';
+}
+
+/** Numeric seconds for summing runtimes, whatever shape the value arrived in. */
+export function durationSeconds(seconds) {
+  if (typeof seconds === 'string' && seconds.includes(':')) {
+    const parts = seconds.split(':').map(Number);
+    return parts.some(isNaN) ? 0 : parts.reduce((sum, p) => sum * 60 + p, 0);
+  }
+  const value = Number(seconds);
+  return Number.isFinite(value) && value > 0 ? value : 0;
 }
 
 export function formatBytes(bytes) {
