@@ -5,7 +5,7 @@ import { store } from '../store.js';
 import { renderMediaGrid } from '../components/mediaGrid.js';
 import { renderMediaList } from '../components/mediaList.js';
 import { api } from '../api.js';
-import { escapeHtml } from '../utils/format.js';
+import { escapeHtml, escapeAttr } from '../utils/format.js';
 import { subscribeView, onUnmount } from '../utils/lifecycle.js';
 import { icon } from '../utils/icons.js';
 
@@ -51,7 +51,12 @@ export function renderMusic(container) {
   let sort = 'addedAt';
   let order = 'desc';
   let filter = '';
-  let groupBy = 'all';
+  // Opening an album/artist/genre navigates away, so the grouping is
+  // remembered: Back from an album page lands on the same list, not on
+  // "All Tracks". A stale localStorage value falls back to 'all'.
+  const GROUPS = ['all', 'artist', 'album', 'genre'];
+  const savedGroupBy = store.get('musicGroupBy');
+  let groupBy = GROUPS.includes(savedGroupBy) ? savedGroupBy : 'all';
   
   viewButtons.forEach(btn => {
     btn.classList.toggle('active', btn.dataset.view === viewMode);
@@ -65,10 +70,12 @@ export function renderMusic(container) {
   });
   
   filterButtons.forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.filter === groupBy);
     btn.addEventListener('click', () => {
       groupBy = btn.dataset.filter;
       filterButtons.forEach(b => b.classList.remove('active'));
       btn.classList.add('active');
+      store.set('musicGroupBy', groupBy, true);
       render();
     });
   });
@@ -230,20 +237,52 @@ export function renderMusic(container) {
       card.innerHTML = `
         <div class="media-card-cover music">
           <img src="${api.getCoverUrl(cover.id)}" alt="" onerror="this.style.display='none'">
-          <div class="media-card-overlay"><div class="media-card-play">${icon('play', { size: 20 })}</div></div>
+          <div class="media-card-overlay"><button class="media-card-play" type="button" aria-label="Play ${escapeAttr(album)}">${icon('play', { size: 20 })}</button></div>
         </div>
         <div class="media-card-info">
           <div class="media-card-title">${escapeHtml(album)}</div>
           <div class="media-card-meta">${escapeHtml(tracks[0].artist || '')} • ${tracks.length} tracks</div>
         </div>
       `;
-      card.addEventListener('click', () => {
-        window.dispatchEvent(new CustomEvent('vault:play', { detail: { item: tracks[0], queue: tracks, index: 0 } }));
+      card.setAttribute('role', 'button');
+      card.setAttribute('tabindex', '0');
+      card.setAttribute('aria-label', `${album} — ${tracks.length} tracks`);
+
+      // An album card is a collection, not a track: activating it opens the
+      // album page, which lists its tracks. Playback stays behind the explicit
+      // play button so a click to browse can't start audio by surprise.
+      const openAlbum = () => window.dispatchEvent(new CustomEvent('vault:open-detail', { detail: { item: cover } }));
+      const playAlbum = () => window.dispatchEvent(new CustomEvent('vault:play', { detail: { item: tracks[0], queue: tracks, index: 0 } }));
+
+      card.querySelector('.media-card-play').addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        playAlbum();
       });
+
+      card.addEventListener('click', (e) => {
+        if (e.target.closest('.media-card-play')) return;
+        openAlbum();
+      });
+
+      card.addEventListener('keydown', (e) => {
+        // Guard: only when the card itself has focus, so Enter/Space on the
+        // nested play button doesn't also trigger the open action.
+        if (e.target !== card) return;
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          openAlbum();
+        }
+      });
+
       grid.appendChild(card);
     });
   }
   
+  // Genres have no page of their own, so a genre row expands into its track
+  // list instead of navigating. Same rule as the album cards: browsing a group
+  // never starts audio by surprise — playback is the explicit button.
+  let genreUid = 0;
   function renderGenres() {
     const items = getFiltered();
     const genres = {};
@@ -254,18 +293,46 @@ export function renderMusic(container) {
     });
     
     content.innerHTML = '';
-    Object.entries(genres).forEach(([genre, tracks]) => {
+    Object.entries(genres).sort((a, b) => a[0].localeCompare(b[0])).forEach(([genre, tracks]) => {
+      const listId = `genre-tracks-${++genreUid}`;
       const section = document.createElement('div');
-      section.style.marginBottom = '16px';
+      section.className = 'genre-group';
+      section.style.marginBottom = '12px';
       section.innerHTML = `
-        <div style="display:flex; align-items:center; justify-content:space-between; background:rgba(var(--glass-tint),0.05); padding:12px 16px; border-radius:12px; cursor:pointer;">
-          <span style="font-weight:600;">${escapeHtml(genre)}</span>
+        <div style="display:flex; align-items:center; gap:8px; background:rgba(var(--glass-tint),0.05); padding:8px 8px 8px 12px; border-radius:12px;">
+          <button class="btn btn-ghost btn-sm genre-toggle" type="button" aria-expanded="false" aria-controls="${listId}" style="flex:1; justify-content:flex-start;">
+            <span class="genre-caret" aria-hidden="true" style="display:inline-flex; transition:transform var(--duration-fast) var(--ease-out);">${icon('chevron-right', { size: 14 })}</span>
+            <span>${escapeHtml(genre)}</span>
+          </button>
           <span style="color:var(--text-tertiary); font-size:13px;">${tracks.length} tracks</span>
+          <button class="btn btn-secondary btn-sm genre-play" type="button" aria-label="Play ${escapeAttr(genre)}">${icon('play', { size: 14 })}<span>Play</span></button>
         </div>
+        <div id="${listId}" class="genre-tracks" hidden style="margin-top:8px;"></div>
       `;
-      section.addEventListener('click', () => {
+      
+      const toggle = section.querySelector('.genre-toggle');
+      const caret = section.querySelector('.genre-caret');
+      const listEl = section.querySelector('.genre-tracks');
+      let built = false;
+      
+      const setOpen = (open) => {
+        listEl.hidden = !open;
+        toggle.setAttribute('aria-expanded', String(open));
+        caret.style.transform = open ? 'rotate(90deg)' : '';
+        // Build the rows on first open only — one genre can hold the whole library.
+        if (open && !built) {
+          built = true;
+          renderMediaList(listEl, tracks, {
+            onClick: (item) => window.dispatchEvent(new CustomEvent('vault:play', { detail: { item, queue: tracks, index: tracks.findIndex(i => i.id === item.id) } }))
+          });
+        }
+      };
+      
+      toggle.addEventListener('click', () => setOpen(listEl.hidden));
+      section.querySelector('.genre-play').addEventListener('click', () => {
         window.dispatchEvent(new CustomEvent('vault:play', { detail: { item: tracks[0], queue: tracks, index: 0 } }));
       });
+      
       content.appendChild(section);
     });
   }

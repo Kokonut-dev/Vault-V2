@@ -178,8 +178,17 @@ function renderVideoDetail(container, item) {
 
 function renderMusicDetail(container, item) {
   const library = store.get('library');
-  const albumTracks = library.filter(i => i.type === 'music' && i.album === item.album).sort((a, b) => (a.track || 0) - (b.track || 0));
+  // Same grouping key as the Albums filter in views/music.js: tracks with no
+  // album tag (undefined, '' or null) are one "Unknown Album" group, so opening
+  // that group lists every untagged track instead of an empty heading.
+  const albumKey = item.album || 'Unknown Album';
+  const albumTracks = library.filter(i => i.type === 'music' && (i.album || 'Unknown Album') === albumKey).sort((a, b) => (a.track || 0) - (b.track || 0));
   const isAlbumView = albumTracks.length > 1;
+  // An album byline shouldn't name whichever track happened to be clicked.
+  const albumArtists = [...new Set(albumTracks.map(t => t.artist).filter(Boolean))];
+  const byline = isAlbumView
+    ? (albumArtists.length > 1 ? 'Various Artists' : (albumArtists[0] || ''))
+    : (item.artist || '');
   
   container.innerHTML = `
     <div style="display:flex; align-items:center; gap:12px; margin-bottom:24px;">
@@ -195,8 +204,8 @@ function renderMusicDetail(container, item) {
       </div>
       
       <div>
-        <h1 style="font-size:32px; font-weight:800; line-height:1.1;">${escapeHtml(isAlbumView ? item.album : item.title)}</h1>
-        <div style="font-size:18px; color:var(--text-secondary); margin-top:8px; margin-bottom:24px;">${escapeHtml(item.artist || '')} ${item.year ? `• ${item.year}` : ''}</div>
+        <h1 style="font-size:32px; font-weight:800; line-height:1.1;">${escapeHtml(isAlbumView ? albumKey : item.title)}</h1>
+        <div style="font-size:18px; color:var(--text-secondary); margin-top:8px; margin-bottom:24px;">${escapeHtml(byline)} ${item.year ? `• ${item.year}` : ''}</div>
         
         <div style="display:flex; gap:12px; margin-bottom:24px;">
           <button class="btn btn-primary" id="play-btn">${icon('play', { size: 18 })}<span>Play ${isAlbumView ? 'Album' : ''}</span></button>

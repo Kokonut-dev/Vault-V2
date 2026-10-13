@@ -19,6 +19,13 @@
   browser or npm install required. It fails on the pre-fix handler (13 of its
   cases) and passes now; run it with `scripts/syntax-check.js` when touching the
   global key layer.
+- **`scripts/music-view-check.js`** (`npm run test:music`) — 14 checks driving
+  the real `views/music.js` + `views/detail.js` in a jsdom DOM: album cards open
+  instead of playing, their play button still plays, Enter/Space reach both,
+  genre rows expand, and the grouping survives navigation. It fails 9 checks on
+  the pre-fix code and passes now. Unlike the other checks it needs a real DOM
+  (the views build markup with `innerHTML`), so jsdom is an optional devDep —
+  with none installed it reports SKIPPED and exits 0 instead of failing a build.
 
 ### Fixed
 - **Space could not be typed into any form field.** The global shortcut layer
@@ -39,6 +46,21 @@
 - Browser/OS chords (`Cmd+P`, `Cmd+S`, `Cmd+R`, `Ctrl+N`) are no longer
   swallowed by player shortcuts, and a focused control keeps its own keys
   (Space on a button/checkbox, arrows on a slider or `<select>`).
+- **The Albums filter played the album instead of opening it.** Every album card
+  in `views/music.js` dispatched `vault:play` on click, so the album page — which
+  already lists the album's tracks with Play Album / Shuffle — was unreachable
+  from that filter, and its play affordance was an unfocusable `<div>`. Activating
+  a card now opens the album; playback moved onto a real labelled `<button>`, and
+  the card is focusable (`role`/`tabindex`, Enter/Space) like every other card.
+- **The Genres filter had the same shape** — clicking a row played the genre.
+  Genres have no page of their own, so the row now expands into its track list
+  (`aria-expanded`, rows built on first open) and playback sits on its own button.
+- **The album page mis-grouped untagged tracks.** It matched album siblings with
+  `i.album === item.album`, so opening the "Unknown Album" group (tracks carry
+  `undefined`, `''` or no key at all) showed an empty heading and a partial list;
+  it now uses the same `album || 'Unknown Album'` key as the Albums filter.
+- **An album was credited to whichever track you clicked.** The album byline now
+  reads "Various Artists" when its tracks disagree on the artist.
 
 ### Changed
 - Replaced emoji/dingbats in: header (menu, search, theme, shortcuts), mini
@@ -61,6 +83,9 @@
   rendering everywhere (launchers/tools without system-ui fonts included).
 - Favourite buttons gained `aria-pressed` + a stateful `aria-label`; the
   fullscreen control now reflects state; attribute labels use `escapeAttr()`.
+- The Music page remembers its grouping (`vault_music_group_by`, validated
+  against the four known filters). Opening an album is now a navigation, so Back
+  returns to the Albums grid instead of dropping you back on All Tracks.
 
 ## [2.2.0] - 2026-09-27
 

@@ -233,7 +233,8 @@ Vault-V2/
     ├── build-css.js                # 12 CSS sources → docs/css/vault.css
     ├── syntax-check.js             # Parses every JS file (zero-dep)
     ├── contrast-check.js           # WCAG AA check on the theme tokens
-    └── keyboard-check.js           # Global key layer regression suite
+    ├── keyboard-check.js           # Global key layer regression suite
+    └── music-view-check.js         # Music groupings regression suite (jsdom)
 ```
 
 ---
