@@ -96,14 +96,20 @@ app.use(morgan(
 ));
 
 // Rate limiters
-const { generalLimiter, authLimiter, uploadLimiter } = createRateLimiters();
+const { generalLimiter, authLimiter, authFloodLimiter, uploadLimiter } = createRateLimiters();
 app.use('/api/', generalLimiter);
-// Auth limiter applies ONLY to the credential-checking endpoints (login/grid).
-// Mounting it on all of /api/auth/ used to rate-limit /api/auth/verify, which
-// the frontend calls on every page load — locking users out with a
-// "Too many login attempts" error even when their credentials were correct.
-app.use('/api/auth/login', authLimiter);
-app.use('/api/auth/grid', authLimiter);
+// Auth limiters apply ONLY to the credential-checking endpoints
+// (login/grid/second-factor). Mounting them on all of /api/auth/ used to
+// rate-limit /api/auth/verify, which the frontend calls on every page
+// load — locking users out with a "Too many login attempts" error even
+// when their credentials were correct. `authFloodLimiter` is a generous
+// raw-volume ceiling (the general limiter exempts auth entirely);
+// `authLimiter` is the strict one and counts only wrong credentials,
+// per stage, restoring budget on success.
+for (const credentialPath of ['/api/auth/login', '/api/auth/grid', '/api/auth/second-factor']) {
+  app.use(credentialPath, authFloodLimiter);
+  app.use(credentialPath, authLimiter);
+}
 app.use('/api/upload/', uploadLimiter);
 
 // Ensure data dirs

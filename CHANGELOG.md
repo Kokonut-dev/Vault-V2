@@ -2,6 +2,40 @@
 
 ## [3.0.0] — in progress (branch `arena/0deefe55-vault-v2`)
 
+### Fixed — "Too many requests" at login, again (follow-up to PR #13)
+PR #13 exempted `/api/auth/*` from the general limiter, but users with
+correct credentials could still get 429 at login. Three remaining causes:
+- **Successes never restored budget.** The auth-failure limiter (and the
+  persistent brute-force store) counted wrong passwords and wrong grids
+  into one accumulating total; a correct password in between merely
+  didn't add to it. Interleaving typos with correct entries (4 bad
+  passwords → correct → 4 bad grids → correct → 2 bad grids) therefore
+  locked the next *correct* login for 15 minutes. Both lockout systems
+  now budget the password and second-factor stages separately: a
+  correct password clears only the password budget, a completed login
+  clears both, and one step's failures can't lock the other step.
+  Existing `bruteforce.json` records migrate to the staged keys.
+- **The 200→2000 general-limit raise never reached existing installs.**
+  Their `config.json` (written by setup/onboarding) already contains
+  `security.rateLimit.general.max: 200`, which overrides the new
+  default. That exact legacy default is now migrated to 2000 on load
+  (and on re-running `scripts/setup.js`); custom values are untouched.
+  The general limiter's exemptions are now matched on the
+  query-stripped path and also cover the SSE event streams; a generous
+  per-IP flood ceiling (300/15min) now bounds the credential endpoints
+  in place of the general limiter they are exempt from. The
+  `/api/auth/second-factor` endpoint is failure-limited like `/grid`
+  (it previously had the counter flag but no limiter mounted).
+- **A wrong grid entry bounced users back to the password step.** The
+  API client treated every credential-step 401 as session expiry,
+  wiping the challenge token and firing `vault:auth-required`, so each
+  grid retry required a fresh login POST and fed the failure counters.
+  Credential-step 401s (`login`/`grid`/`second-factor`) no longer clear
+  the session; the user stays on the grid step and can retry.
+- Lockout responses now send `Retry-After`; regression tests in
+  `server/test/rate-limit-login.test.js` pin the interleaved-success
+  scenario, per-stage locking, exemptions and the config migration.
+
 ### Efficiency pass — dead code stripped, hot paths fixed
 Five-stage scan (dead modules/exports/imports → DOM & CSS → duplication →
 client hot paths → server hot paths), then the findings were removed or fixed:

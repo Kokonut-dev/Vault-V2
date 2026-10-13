@@ -177,9 +177,12 @@ router.post('/test', async (req, res) => {
 router.post('/complete', async (req, res) => {
   const ip = authService.getClientIp(req);
 
-  // Rate limit setup attempts via same bruteforce mechanism
-  if (authService.isLocked(ip)) {
-    const remaining = authService.getLockoutTimeRemaining(ip);
+  // Rate limit setup attempts via the brute-force mechanism, in its own
+  // stage so setup failures never lock anyone out of *logging in* (and
+  // vice versa).
+  if (authService.isLocked(ip, 'setup')) {
+    const remaining = authService.getLockoutTimeRemaining(ip, 'setup');
+    res.setHeader('Retry-After', String(Math.max(remaining, 1)));
     return res.status(429).json({
       error: `Too many setup attempts. Try again in ${Math.ceil(remaining / 60)} minutes.`,
       code: 'LOCKED_OUT',
@@ -416,7 +419,7 @@ router.post('/complete', async (req, res) => {
     });
   } catch (err) {
     logger.error('Setup complete error:', err.message, err.stack);
-    authService.recordFailedAttempt(ip);
+    authService.recordFailedAttempt(ip, 'setup');
     res.status(500).json({ error: 'Failed to complete setup', details: err.message, code: 'SETUP_FAILED' });
   }
 });

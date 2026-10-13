@@ -9,6 +9,28 @@ const { writeJsonAtomic } = require('../utils/fileUtils');
 const BRUTEFORCE_PATH = path.join(__dirname, '../data/bruteforce.json');
 let attempts = new Map();
 
+// Brute-force tracking is split by *stage*: password failures and
+// second-factor (grid/TOTP/recovery) failures get separate budgets.
+// Before this split both stages shared one counter, while a correct
+// password reset the whole thing — so failures from the two steps were
+// summed inconsistently by the two independent lockout systems (this
+// store and middleware/rateLimiter) and a user who alternated "typo'd
+// password, got it right, fumbled the grid, got the password right
+// again…" accumulated failures until a *correct* password was rejected
+// with 429. Now: a correct password clears only the password budget, a
+// completed login clears every budget, and neither step's failures can
+// lock the other step. (A password holder also can't reset the grid
+// budget by re-submitting the password, so grid guessing stays capped.)
+const STAGES = ['password', 'second', 'setup'];
+
+function stageKey(ip, stage) {
+  return `${ip}|${stage}`;
+}
+
+function normalizeStage(stage) {
+  return STAGES.includes(stage) ? stage : 'password';
+}
+
 function loadAttempts() {
   try {
     if (fs.existsSync(BRUTEFORCE_PATH)) {
@@ -16,9 +38,20 @@ function loadAttempts() {
       attempts = new Map(Object.entries(data));
       // Convert values to proper structure and clean expired
       const now = Date.now();
-      for (const [ip, record] of attempts.entries()) {
+      for (const [key, record] of [...attempts.entries()]) {
         if (record.lockedUntil && record.lockedUntil < now) {
-          attempts.delete(ip);
+          attempts.delete(key);
+          continue;
+        }
+        // Migrate pre-stage records (key was the bare IP): the lock/count
+        // applied to every stage then, so carry it into both login stages
+        // rather than silently forgiving an active lockout on upgrade.
+        const isStaged = STAGES.some(stage => key.endsWith(`|${stage}`));
+        if (!isStaged) {
+          attempts.delete(key);
+          for (const stage of ['password', 'second']) {
+            attempts.set(stageKey(key, stage), { ...record });
+          }
         }
       }
     }
@@ -48,31 +81,42 @@ function getClientIp(req) {
   return req.ip || req.connection.remoteAddress || 'unknown';
 }
 
-function isLocked(ip) {
-  const record = attempts.get(ip);
-  if (!record) return false;
-  if (record.lockedUntil && record.lockedUntil > Date.now()) {
-    return true;
+function isLocked(ip, stage) {
+  const keys = stage
+    ? [stageKey(ip, normalizeStage(stage))]
+    : STAGES.map(s => stageKey(ip, s));
+  let locked = false;
+  for (const key of keys) {
+    const record = attempts.get(key);
+    if (!record) continue;
+    if (record.lockedUntil && record.lockedUntil > Date.now()) {
+      locked = true;
+    } else if (record.lockedUntil && record.lockedUntil <= Date.now()) {
+      attempts.delete(key);
+      saveAttempts();
+    }
   }
-  if (record.lockedUntil && record.lockedUntil <= Date.now()) {
-    attempts.delete(ip);
-    saveAttempts();
-    return false;
-  }
-  return false;
+  return locked;
 }
 
-function getLockoutTimeRemaining(ip) {
-  const record = attempts.get(ip);
-  if (!record || !record.lockedUntil) return 0;
-  const remaining = record.lockedUntil - Date.now();
-  return remaining > 0 ? Math.ceil(remaining / 1000) : 0;
+function getLockoutTimeRemaining(ip, stage) {
+  const keys = stage
+    ? [stageKey(ip, normalizeStage(stage))]
+    : STAGES.map(s => stageKey(ip, s));
+  let longest = 0;
+  for (const key of keys) {
+    const record = attempts.get(key);
+    if (!record || !record.lockedUntil) continue;
+    longest = Math.max(longest, record.lockedUntil - Date.now());
+  }
+  return longest > 0 ? Math.ceil(longest / 1000) : 0;
 }
 
-function recordFailedAttempt(ip) {
+function recordFailedAttempt(ip, stage = 'password') {
   const config = getConfig();
   const now = Date.now();
-  let record = attempts.get(ip);
+  const key = stageKey(ip, normalizeStage(stage));
+  let record = attempts.get(key);
 
   if (!record) {
     record = { count: 1, firstAttempt: now, lockedUntil: null };
@@ -88,18 +132,26 @@ function recordFailedAttempt(ip) {
 
   if (record.count >= config.auth.maxAttempts) {
     record.lockedUntil = now + config.auth.lockoutDurationMinutes * 60 * 1000;
-    logger.warn(`IP ${ip} locked out for ${config.auth.lockoutDurationMinutes} minutes after ${record.count} failed attempts`);
+    logger.warn(`IP ${ip} locked out (${normalizeStage(stage)} stage) for ${config.auth.lockoutDurationMinutes} minutes after ${record.count} failed attempts`);
   }
 
-  attempts.set(ip, record);
+  attempts.set(key, record);
   saveAttempts();
 }
 
-function resetAttempts(ip) {
-  if (attempts.has(ip)) {
-    attempts.delete(ip);
-    saveAttempts();
+// resetAttempts(ip, 'password'|'second'|'setup') clears one stage;
+// resetAttempts(ip) clears every stage for the IP (completed login / setup).
+function resetAttempts(ip, stage) {
+  let changed = false;
+  if (stage) {
+    changed = attempts.delete(stageKey(ip, normalizeStage(stage)));
+  } else {
+    for (const s of STAGES) {
+      if (attempts.delete(stageKey(ip, s))) changed = true;
+    }
+    if (attempts.delete(ip)) changed = true; // legacy bare-IP key, if any
   }
+  if (changed) saveAttempts();
 }
 
 function validateCredentials(username, password) {
@@ -241,6 +293,7 @@ function verifyToken(token) {
 }
 
 module.exports = {
+  _internals: { attempts, stageKey, STAGES },
   getClientIp,
   isLocked,
   getLockoutTimeRemaining,

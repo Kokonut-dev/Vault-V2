@@ -157,6 +157,14 @@ Example: 0,1,4,5,8,9,12,13 (left two columns)
     }
   };
 
+  // Don't re-persist the legacy general rate-limit default (200/15min —
+  // too low for normal app use and the cause of spurious 429s at login)
+  // when re-running setup over an older config.
+  if (config.security?.rateLimit?.general?.max === 200) {
+    config.security.rateLimit.general.max = 2000;
+    console.log('Migrated legacy general rate limit 200 -> 2000 per 15 min');
+  }
+
   fs.writeJsonSync(configPath, config, { spaces: 2 });
   console.log(`\n✓ Config saved to ${configPath}`);
 

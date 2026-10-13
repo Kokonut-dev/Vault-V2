@@ -146,13 +146,34 @@ const DEFAULT_CONFIG = {
 
 let config = null;
 
+// PR #13 raised the general rate limit 200 -> 2000 (normal app use —
+// listen tracking, paginated library loads, view navigation — burns
+// through 200 requests in minutes), but only in DEFAULT_CONFIG. Every
+// existing install already has `security.rateLimit.general.max: 200`
+// written into config.json by setup/onboarding, and mergeDeep lets the
+// file win, so the raise never reached the users who were locked out.
+// Migrate exactly that legacy shipped default on load; any other
+// (deliberately customised) value is left untouched.
+const LEGACY_GENERAL_RATE_LIMIT_MAX = 200;
+
+function migrateLegacyRateLimits(fileConfig, mergedConfig) {
+  if (
+    fileConfig?.security?.rateLimit?.general?.max === LEGACY_GENERAL_RATE_LIMIT_MAX
+    && mergedConfig?.security?.rateLimit?.general
+  ) {
+    mergedConfig.security.rateLimit.general.max = DEFAULT_CONFIG.security.rateLimit.general.max;
+    console.log(`[Config] Migrated legacy general rate limit ${LEGACY_GENERAL_RATE_LIMIT_MAX} -> ${DEFAULT_CONFIG.security.rateLimit.general.max} per 15 min (the old default was too low for normal app use)`);
+  }
+  return mergedConfig;
+}
+
 function loadConfig() {
   if (config) return config;
 
   try {
     if (fs.existsSync(CONFIG_PATH)) {
       const fileConfig = fs.readJsonSync(CONFIG_PATH);
-      config = mergeDeep(DEFAULT_CONFIG, fileConfig);
+      config = migrateLegacyRateLimits(fileConfig, mergeDeep(DEFAULT_CONFIG, fileConfig));
       console.log('[Config] Loaded from config.json');
     } else {
       console.log('[Config] No config.json found, using defaults + env. Run npm run setup to create one.');
@@ -256,4 +277,4 @@ function getConfig() {
   return config;
 }
 
-module.exports = { loadConfig, getConfig, saveConfig, CONFIG_PATH, DEFAULT_CONFIG };
+module.exports = { loadConfig, getConfig, saveConfig, CONFIG_PATH, DEFAULT_CONFIG, _internals: { migrateLegacyRateLimits, LEGACY_GENERAL_RATE_LIMIT_MAX } };
