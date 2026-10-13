@@ -8,7 +8,7 @@ import { api } from '../api.js';
 import { renderSkeletonGrid } from '../components/mediaGrid.js';
 import { subscribeView } from '../utils/lifecycle.js';
 import { icon } from '../utils/icons.js';
-import { escapeHtml, formatTime, truncate } from '../utils/format.js';
+import { escapeHtml, formatTime, formatDuration, durationSeconds, truncate } from '../utils/format.js';
 import { toast } from '../components/toast.js';
 
 function musicItems() {
@@ -56,7 +56,13 @@ export function renderArtists(container) {
         const card = document.createElement('a');
         card.className = 'media-card';
         card.dataset.type = 'music';
-        card.href = `#/artist/${encodeURIComponent(artist)}`;
+        // History-router route, NOT a "#/…" hash link: the router only treats
+        // hashes as routes when the page was opened with one, so hash hrefs
+        // silently changed the URL without ever rendering the artist page.
+        // data-route is intercepted by the router's click handler.
+        const artistPath = `/artist/${encodeURIComponent(artist)}`;
+        card.href = artistPath;
+        card.dataset.route = artistPath;
         card.innerHTML = `
           <div class="media-card-cover music">
             <img loading="lazy" src="${api.getCoverUrl(tracks[0].id)}" alt="">
@@ -77,7 +83,10 @@ export function renderArtists(container) {
 }
 
 export async function renderArtist(container, name) {
-  const artist = decodeURIComponent(name || '');
+  // The router already URL-decodes dynamic segments; decoding again throws
+  // on names containing a literal "%". Decode only if it still looks encoded.
+  let artist = name || '';
+  try { artist = decodeURIComponent(artist); } catch { /* already decoded */ }
   container.className = 'page';
   const tracks = musicItems().filter(item => (item.artist || item.albumArtist || 'Unknown artist') === artist);
 
@@ -90,7 +99,7 @@ export async function renderArtist(container, name) {
   }
 
   const albums = [...new Set(tracks.map(t => t.album).filter(Boolean))];
-  const seconds = tracks.reduce((sum, track) => sum + (track.duration || 0), 0);
+  const seconds = tracks.reduce((sum, track) => sum + durationSeconds(track.duration), 0);
   const coverId = tracks[0].id;
 
   container.innerHTML = `
@@ -113,7 +122,7 @@ export async function renderArtist(container, name) {
       const albumTracks = tracks.filter(t => t.album === album);
       return `
         <section class="section">
-          <h2 class="section-title">${escapeHtml(album)} <span class="row-meta">· ${albumTracks.length} track(s) · ${formatTime(albumTracks.reduce((s, t) => s + (t.duration || 0), 0))}</span></h2>
+          <h2 class="section-title">${escapeHtml(album)} <span class="row-meta">· ${albumTracks.length} track(s) · ${formatDuration(albumTracks.reduce((s, t) => s + durationSeconds(t.duration), 0))}</span></h2>
           <div class="media-list">
             ${albumTracks.sort((a, b) => (a.track || 0) - (b.track || 0)).map(track => `
               <div class="media-list-item" data-track="${track.id}" role="button" tabindex="0">
@@ -124,7 +133,7 @@ export async function renderArtist(container, name) {
                     <div class="media-list-item-artist">${track.track ? `Track ${track.track}` : ''}</div>
                   </div>
                 </div>
-                <div class="row-meta">${formatTime(track.duration || 0)}</div>
+                <div class="row-meta">${formatDuration(track.duration)}</div>
               </div>`).join('')}
           </div>
         </section>`;

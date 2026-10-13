@@ -5,6 +5,7 @@ import { store } from '../store.js';
 import { api } from '../api.js';
 import { formatTime } from '../utils/format.js';
 import { setIcon } from '../utils/icons.js';
+import { toast } from './toast.js';
 
 export function initMiniPlayer() {
   const miniPlayer = document.getElementById('mini-player');
@@ -31,10 +32,15 @@ export function initMiniPlayer() {
   const npPrevBtn = document.getElementById('np-prev');
   const npNextBtn = document.getElementById('np-next');
   const npShuffleBtn = document.getElementById('np-shuffle');
+  const miniDownloadBtn = document.getElementById('mini-download');
+  const npDownloadBtn = document.getElementById('now-playing-download');
+  const nowPlayingBgImg = document.getElementById('now-playing-bg-img');
   const npRepeatBtn = document.getElementById('np-repeat');
   
   function updateTrackInfo(item) {
     if (!item) {
+      if (nowPlayingBgImg) nowPlayingBgImg.style.display = 'none';
+      nowPlaying.classList.remove('has-cover-art');
       miniPlayer.style.display = 'none';
       miniPlayer.classList.remove('active');
       document.body.classList.remove('has-mini-player');
@@ -56,8 +62,22 @@ export function initMiniPlayer() {
     // Now playing
     nowPlayingTitle.textContent = item.title;
     nowPlayingArtist.textContent = item.artist || '';
+    nowPlayingImg.style.display = 'block';
     nowPlayingImg.src = coverUrl;
     nowPlayingImg.onerror = () => nowPlayingImg.style.display = 'none';
+
+    // Frosted cover-art backdrop (Spotify-style): same artwork, blurred and
+    // dimmed behind a frost layer — see .now-playing-bg in player.css.
+    if (nowPlayingBgImg) {
+      nowPlayingBgImg.style.display = 'block';
+      nowPlayingBgImg.src = coverUrl;
+      nowPlayingBgImg.onerror = () => {
+        nowPlayingBgImg.style.display = 'none';
+        nowPlaying.classList.remove('has-cover-art');
+      };
+      nowPlayingBgImg.onload = () => nowPlaying.classList.add('has-cover-art');
+    }
+    [miniDownloadBtn, npDownloadBtn].forEach(btn => { if (btn) btn.disabled = false; });
     
     // Visualizer
     initVisualizer();
@@ -109,6 +129,14 @@ export function initMiniPlayer() {
   miniExpandBtn.addEventListener('click', () => {
     nowPlaying.classList.add('active');
   });
+
+  const downloadCurrent = () => {
+    const item = store.get('currentTrack');
+    if (!item) { toast.info('Nothing is playing yet'); return; }
+    if (api.downloadItemFile(item)) toast.success(`Downloading "${item.title}"`);
+  };
+  miniDownloadBtn?.addEventListener('click', downloadCurrent);
+  npDownloadBtn?.addEventListener('click', downloadCurrent);
 
   if (miniVolume) {
     miniVolume.value = store.get('volume') ?? 0.8;

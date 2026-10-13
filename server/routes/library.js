@@ -1,5 +1,8 @@
 const express = require('express');
 const router = express.Router();
+const fs = require('fs-extra');
+const path = require('path');
+const multer = require('multer');
 const libraryService = require('../services/library');
 const scannerService = require('../services/scanner');
 const { sanitizeString } = require('../utils/validators');
@@ -199,6 +202,63 @@ router.get('/recent', (req, res) => {
   res.json({ items, total: items.length, since: new Date(since).toISOString() });
 });
 
+// ---- Album editing --------------------------------------------------------
+// Albums are derived from track tags, so album-wide edits fan out to every
+// track in the album: renaming sets `album` on all of them, reordering writes
+// sequential `track` numbers, and cover art sets the same coverArtPath on all
+// of them (so every song — and the /cover endpoint for any of them) shows it.
+const COVERS_DIR = path.join(__dirname, '../cache/covers');
+const coverUpload = multer({
+  storage: multer.diskStorage({
+    destination: (req, file, cb) => { fs.ensureDirSync(COVERS_DIR); cb(null, COVERS_DIR); },
+    filename: (req, file, cb) => cb(null, `cover-${Date.now()}-${Math.random().toString(36).slice(2, 8)}${path.extname(file.originalname).toLowerCase()}`),
+  }),
+  limits: { fileSize: 10 * 1024 * 1024 },
+  fileFilter: (req, file, cb) => {
+    const ext = path.extname(file.originalname).toLowerCase();
+    if (['.jpg', '.jpeg', '.png', '.webp', '.gif', '.bmp'].includes(ext) && (!file.mimetype || file.mimetype.startsWith('image/'))) cb(null, true);
+    else cb(new Error('Cover must be an image (jpg, png, webp, gif, bmp)'));
+  },
+});
+
+function musicItemsForIds(ids) {
+  if (!Array.isArray(ids) || !ids.length || ids.length > 1000) return null;
+  const items = ids.map(id => libraryService.getById(String(id))).filter(Boolean);
+  return items.length ? items.filter(i => i.type === 'music') : null;
+}
+
+router.put('/albums/order', (req, res) => {
+  const items = musicItemsForIds(req.body?.ids);
+  if (!items || items.length !== (req.body.ids || []).length) return res.status(400).json({ error: 'ids must list every track in the new order' });
+  const updated = items.map((item, i) => libraryService.updateItem(item.id, { track: i + 1 }));
+  events.broadcast('library:changed', { reason: 'album-reorder' });
+  res.json({ items: updated });
+});
+
+router.put('/albums/metadata', (req, res) => {
+  const items = musicItemsForIds(req.body?.ids);
+  const album = req.body?.album !== undefined ? sanitizeString(req.body.album, 500).trim() : undefined;
+  if (!items) return res.status(400).json({ error: 'ids required' });
+  if (!album) return res.status(400).json({ error: 'Album title is required' });
+  const updated = items.map(item => libraryService.updateItem(item.id, { album }));
+  events.broadcast('library:changed', { reason: 'album-edit' });
+  res.json({ items: updated });
+});
+
+router.post('/albums/cover', (req, res) => {
+  coverUpload.single('cover')(req, res, (err) => {
+    if (err) return res.status(400).json({ error: err.message });
+    if (!req.file) return res.status(400).json({ error: 'cover image required' });
+    let ids = [];
+    try { ids = JSON.parse(req.body?.ids || '[]'); } catch { /* handled below */ }
+    const items = musicItemsForIds(ids);
+    if (!items) { fs.remove(req.file.path).catch(() => {}); return res.status(400).json({ error: 'ids required' }); }
+    const updated = items.map(item => libraryService.updateItem(item.id, { coverArtPath: req.file.path }));
+    events.broadcast('library:changed', { reason: 'album-cover' });
+    res.json({ items: updated, coverArtPath: req.file.path });
+  });
+});
+
 router.get('/:id', (req, res) => {
   try {
     const item = libraryService.getById(req.params.id);
@@ -224,7 +284,7 @@ router.get('/:id', (req, res) => {
 
 router.put('/:id', (req, res) => {
   try {
-    const { title, artist, album, genre, year, description, rating, tags, season, episode } = req.body;
+    const { title, artist, album, genre, year, description, rating, tags, season, episode, track, coverArtPath } = req.body;
     const updates = {};
 
     if (title !== undefined) updates.title = sanitizeString(title, 500);
@@ -250,6 +310,16 @@ router.put('/:id', (req, res) => {
     if (episode !== undefined) {
       const e = parseInt(episode, 10);
       if (!isNaN(e)) updates.episode = e;
+    }
+    if (track !== undefined) {
+      const t = parseInt(track, 10);
+      if (!isNaN(t) && t >= 0 && t <= 10000) updates.track = t;
+    }
+    // Cover art may only point inside the server's cover cache (set by the
+    // album-cover upload above) — never an arbitrary path from the client.
+    if (coverArtPath !== undefined) {
+      const resolved = path.resolve(String(coverArtPath));
+      if (resolved.startsWith(path.resolve(COVERS_DIR))) updates.coverArtPath = resolved;
     }
 
     const updated = libraryService.updateItem(req.params.id, updates);

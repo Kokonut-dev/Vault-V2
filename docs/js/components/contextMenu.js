@@ -114,6 +114,13 @@ function buildItems(item, extra = []) {
   base.push({ separator: true });
   base.push({ label: 'Copy file path', icon: 'copy', action: async () => { await copyText(item.path); toast.success('Path copied'); } });
   base.push({ label: 'Fix metadata', icon: 'search', action: () => window.dispatchEvent(new CustomEvent('vault:match-metadata', { detail: { item } })) });
+  base.push({
+    label: 'Download file',
+    icon: 'download',
+    action: () => {
+      if (api.downloadItemFile(item)) toast.success(`Downloading "${item.title}"`);
+    },
+  });
   if (!isMusic) {
     base.push({
       label: 'Save offline',

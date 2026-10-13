@@ -2,7 +2,7 @@
  * Media List — table view — optimized with DocumentFragment
  */
 import { api } from '../api.js';
-import { formatTime, escapeHtml } from '../utils/format.js';
+import { formatDuration, escapeHtml } from '../utils/format.js';
 import { icon } from '../utils/icons.js';
 import { attachContextMenu } from './contextMenu.js';
 
@@ -79,7 +79,7 @@ export function renderMediaList(container, items, options = {}) {
         ${escapeHtml(item.artist || item.genre || '')}
       </div>
       <div style="font-size:13px; font-family:var(--font-mono); color:var(--text-secondary);">
-        ${formatTime(item.duration)}
+        ${formatDuration(item.duration)}
       </div>
       <div style="font-size:13px; color:var(--text-secondary);">
         ${item.year || '—'}

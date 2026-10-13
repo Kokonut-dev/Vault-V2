@@ -270,6 +270,38 @@ class ApiClient {
     return `${this.baseUrl}/api/media/stream/${id}?token=${encodeURIComponent(token || '')}`;
   }
 
+  // Attachment download of the original file (works over remote access:
+  // the token rides in the query string and the server answers with
+  // Content-Disposition, so no custom headers or CORS preflight are needed
+  // and the browser saves instead of playing the stream).
+  getDownloadUrl(id) {
+    const token = store.get('token') || localStorage.getItem('vault_token');
+    return `${this.baseUrl}/api/media/download/${id}?token=${encodeURIComponent(token || '')}`;
+  }
+
+  /** Trigger a browser download of an item's original file. */
+  downloadItemFile(itemOrId) {
+    const id = typeof itemOrId === 'string' ? itemOrId : itemOrId?.id;
+    if (!id) return false;
+    const link = document.createElement('a');
+    link.href = this.getDownloadUrl(id);
+    link.download = (typeof itemOrId === 'object' && itemOrId?.filename) || '';
+    link.rel = 'noopener';
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    return true;
+  }
+
+  /** True when the UI is being used away from the server's own origin. */
+  isRemoteAccess() {
+    try {
+      return new URL(this.baseUrl, window.location.href).origin !== window.location.origin;
+    } catch {
+      return false;
+    }
+  }
+
   getCoverUrl(id, size = null) {
     const token = store.get('token') || localStorage.getItem('vault_token');
     const sizeParam = size ? `&size=${encodeURIComponent(size)}` : '';
@@ -998,6 +1030,45 @@ class ApiClient {
 
   startBackgroundScan() {
     return this.request('/api/library/scan/background', { method: 'POST' });
+  }
+
+  // --- Album / playlist editing -------------------------------------------
+  // Albums are tag-derived, so these fan out server-side to every track id.
+  updateAlbumOrder(ids) {
+    return this.request('/api/library/albums/order', { method: 'PUT', body: { ids } });
+  }
+
+  updateAlbumTitle(ids, album) {
+    return this.request('/api/library/albums/metadata', { method: 'PUT', body: { ids, album } });
+  }
+
+  uploadAlbumCover(ids, file) {
+    const form = new FormData();
+    form.append('cover', file);
+    form.append('ids', JSON.stringify(ids));
+    return this.request('/api/library/albums/cover', { method: 'POST', body: form });
+  }
+
+  uploadPlaylistCover(id, file) {
+    const form = new FormData();
+    form.append('cover', file);
+    return this.request(`/api/playlists/${id}/cover`, { method: 'POST', body: form });
+  }
+
+  removePlaylistCover(id) {
+    return this.request(`/api/playlists/${id}/cover`, { method: 'DELETE' });
+  }
+
+  playlistCoverUrl(id, version = '') {
+    const token = this.getToken();
+    return `${this.baseUrl}/api/playlists/${id}/cover?token=${encodeURIComponent(token || '')}${version ? `&v=${encodeURIComponent(version)}` : ''}`;
+  }
+
+  // Cover URL for a library item, with an optional cache-busting version
+  // (pass updatedAt after editing artwork so browsers drop the old image).
+  getCoverUrlVersioned(id, version) {
+    const url = this.getCoverUrl(id);
+    return version ? `${url}&v=${encodeURIComponent(version)}` : url;
   }
 
   // --- Playlist additions --------------------------------------------------

@@ -137,6 +137,7 @@
       <button class="btn btn-icon" id="mini-prev" aria-label="Previous track" data-icon="skip-back" data-icon-size="16"></button>
       <button class="btn btn-icon" id="mini-play" aria-label="Play/Pause" data-icon="play" data-icon-size="16"></button>
       <button class="btn btn-icon" id="mini-next" aria-label="Next track" data-icon="skip-forward" data-icon-size="16"></button>
+      <button class="btn btn-icon" id="mini-download" aria-label="Download current track" title="Download current track (works over remote access)" data-icon="download" data-icon-size="16"></button>
       <button class="btn btn-icon" id="mini-expand" aria-label="Expand player" data-icon="maximize" data-icon-size="16"></button>
     </div>
     <div class="mini-player-volume">
@@ -147,10 +148,14 @@
   
   <!-- Now Playing Fullscreen -->
   <div id="now-playing" class="now-playing">
+    <div class="now-playing-bg" aria-hidden="true"><img id="now-playing-bg-img" alt="" style="display:none;"><div class="now-playing-bg-shade"></div></div>
     <div class="now-playing-header">
       <button class="btn btn-icon" id="now-playing-close" aria-label="Close now playing" data-icon="x" data-icon-size="18"></button>
       <div style="font-weight:600;">Now Playing</div>
+      <span style="display:inline-flex; gap:8px;">
+      <button class="btn btn-icon" id="now-playing-download" aria-label="Download current track" title="Download current track (works over remote access)" data-icon="download" data-icon-size="18"></button>
       <button class="btn btn-icon" id="now-playing-queue" aria-label="Queue" title="Queue" data-icon="list" data-icon-size="18"></button>
+      </span>
     </div>
     <div class="now-playing-content">
       <div class="now-playing-art" id="now-playing-art">
@@ -213,6 +218,7 @@
             <div class="video-time"><span id="video-current">0:00</span> / <span id="video-duration">0:00</span></div>
           </div>
           <div class="video-controls-right">
+            <button class="video-control-btn" id="video-download" aria-label="Download" title="Download current media (works over remote access)" data-icon="download" data-icon-size="18"></button>
             <button class="video-control-btn" id="video-captions" aria-label="Captions" title="Captions" data-icon="captions" data-icon-size="18"></button>
             <button class="video-control-btn" id="video-eq" aria-label="Equalizer" title="Equalizer" data-icon="sliders" data-icon-size="18"></button>
             <button class="video-control-btn" id="video-speed" aria-label="Speed">1x</button>

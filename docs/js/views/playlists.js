@@ -60,7 +60,7 @@ export function renderPlaylists(container) {
         card.className = 'media-card';
         card.innerHTML = `
           <div class="media-card-cover" style="background:rgba(var(--glass-tint),0.05); display:flex; align-items:center; justify-content:center;">
-            ${icon(pl.type === 'collection' ? 'layout-grid' : 'music', { size: 32 })}
+            ${pl.coverArt ? `<img src="${api.playlistCoverUrl(pl.id, pl.updatedAt || '')}" alt="" style="width:100%;height:100%;object-fit:cover;" onerror="this.style.display='none'">` : icon(pl.type === 'collection' ? 'layout-grid' : 'music', { size: 32 })}
           </div>
           <div class="media-card-info">
             <div class="media-card-title">${escapeHtml(pl.name)}</div>
@@ -137,13 +137,56 @@ export function renderPlaylists(container) {
     });
   }
   
+
+  function showEditPlaylistModal(playlist, onSaved) {
+    const backdrop = document.createElement('div');
+    backdrop.className = 'modal-backdrop active';
+    backdrop.innerHTML = `
+      <div class="modal">
+        <div class="modal-header"><div class="modal-title">Edit playlist</div><button class="modal-close" aria-label="Close dialog">${icon('x', { size: 16 })}</button></div>
+        <div class="modal-body">
+          <div class="form-group"><label class="form-label">Name</label><input type="text" class="form-input" id="edit-pl-name" value="${escapeHtml(playlist.name || '')}"></div>
+          <div class="form-group"><label class="form-label">Description</label><textarea class="form-textarea" id="edit-pl-desc" placeholder="Optional description">${escapeHtml(playlist.description || '')}</textarea></div>
+          <div class="form-group"><label class="form-label">Cover art</label><input type="file" class="form-input" id="edit-pl-cover" accept="image/*"></div>
+          ${playlist.coverArt ? '<label style="display:flex; gap:8px; align-items:center; font-size:13px;"><input type="checkbox" id="edit-pl-cover-remove"> Remove current cover art</label>' : ''}
+        </div>
+        <div class="modal-footer"><button class="btn btn-secondary" id="edit-pl-cancel">Cancel</button><button class="btn btn-primary" id="edit-pl-save">Save</button></div>
+      </div>
+    `;
+    document.body.appendChild(backdrop);
+    const close = () => backdrop.remove();
+    backdrop.querySelector('.modal-close').addEventListener('click', close);
+    backdrop.querySelector('#edit-pl-cancel').addEventListener('click', close);
+    backdrop.addEventListener('click', (e) => { if (e.target === backdrop) close(); });
+    backdrop.querySelector('#edit-pl-save').addEventListener('click', async () => {
+      const name = backdrop.querySelector('#edit-pl-name').value.trim();
+      if (!name) { toast.error('Name is required'); return; }
+      try {
+        let updated = await api.updatePlaylist(playlist.id, {
+          name,
+          description: backdrop.querySelector('#edit-pl-desc').value.trim(),
+        });
+        const cover = backdrop.querySelector('#edit-pl-cover').files?.[0];
+        if (cover) updated = await api.uploadPlaylistCover(playlist.id, cover);
+        else if (backdrop.querySelector('#edit-pl-cover-remove')?.checked) updated = await api.removePlaylistCover(playlist.id);
+        Object.assign(playlist, updated);
+        toast.success('Playlist updated');
+        close();
+        onSaved?.(playlist);
+      } catch (err) {
+        toast.error(err.message);
+      }
+    });
+  }
+
   function openPlaylist(playlist) {
     // Simple detail view
     content.innerHTML = `
       <div style="margin-bottom:24px;">
         <button class="btn btn-secondary btn-sm" id="back-btn">${icon('arrow-left', { size: 16 })}<span>Back</span></button>
       </div>
-      <div style="background:rgba(var(--glass-tint),0.05); border-radius:16px; padding:24px; margin-bottom:24px;">
+      <div style="background:var(--bg-elevated, var(--bg-secondary)); border:1px solid var(--border-subtle, rgba(var(--glass-tint),0.09)); border-radius:16px; padding:24px; margin-bottom:24px;">
+        ${playlist.coverArt ? `<img src="${api.playlistCoverUrl(playlist.id, playlist.updatedAt || '')}" alt="" style="width:144px;height:144px;object-fit:cover;border-radius:12px;margin-bottom:16px;" onerror="this.style.display='none'">` : ''}
         <h2 style="font-size:24px; font-weight:700; margin-bottom:8px;">${escapeHtml(playlist.name)}</h2>
         <p style="color:var(--text-secondary); margin-bottom:16px;">${escapeHtml(playlist.description || '')}</p>
         <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
@@ -152,14 +195,16 @@ export function renderPlaylists(container) {
           <label class="btn btn-secondary btn-sm" for="import-pl" style="cursor:pointer">${icon('upload', { size: 14 })}<span>Import .m3u</span></label>
           <input type="file" id="import-pl" accept=".m3u,.m3u8,audio/x-mpegurl" hidden>
           <button class="btn btn-ghost btn-sm" id="stats-pl">${icon('bar-chart', { size: 14 })}<span>Stats</span></button>
+          <button class="btn btn-secondary btn-sm" id="edit-pl">Edit</button>
           <button class="btn btn-secondary btn-sm" id="delete-pl">Delete</button>
         </div>
-        <p class="row-meta" style="margin-top:8px">Drag rows to reorder — the order is saved on the server.</p>
+        <p class="row-meta" style="margin-top:8px">Drag rows or use the ↑ ↓ buttons to reorder — the order is saved on the server. “Edit” renames a track in your library.</p>
       </div>
       <div id="pl-items"></div>
     `;
     
     content.querySelector('#back-btn').addEventListener('click', loadPlaylists);
+    content.querySelector('#edit-pl').addEventListener('click', () => showEditPlaylistModal(playlist, (updated) => openPlaylist(updated)));
     content.querySelector('#delete-pl').addEventListener('click', async () => {
       const { confirmed } = await confirmDialog({
         title: 'Delete playlist',
@@ -196,7 +241,27 @@ export function renderPlaylists(container) {
             }
           }
         });
-        wireReorder(itemsContainer, playlist, items);
+        import('../components/reorderableList.js').then(({ makeReorderable }) => {
+          makeReorderable(itemsContainer, {
+            onEdit: async (index) => {
+              const { showTrackEditModal } = await import('./detail.js');
+              showTrackEditModal(items[index], () => openPlaylist(playlist));
+            },
+            onMove: async (from, to) => {
+              const next = [...(playlist.items || [])];
+              const [moved] = next.splice(from, 1);
+              next.splice(to, 0, moved);
+              try {
+                await api.reorderPlaylist(playlist.id, { items: next });
+                playlist.items = next;
+                toast.success('Order saved');
+                openPlaylist(playlist);
+              } catch (err) {
+                toast.error(`Could not reorder: ${err.message}`);
+              }
+            },
+          });
+        });
       });
       
       content.querySelector('#play-pl').addEventListener('click', () => {
@@ -233,54 +298,7 @@ export function renderPlaylists(container) {
       }
     });
   }
-
-  /**
-   * Drag & drop reordering inside an open playlist (Tier 2 item 31).
-   * Sends only the {from,to} pair — the server reorders its copy.
-   */
-  function wireReorder(itemsContainer, playlist, items) {
-    const rows = [...itemsContainer.querySelectorAll('.media-list .media-list-item')];
-    if (!rows.length) return;
-    let fromIndex = null;
-
-    rows.forEach((row, index) => {
-      row.draggable = true;
-      row.classList.add('playlist-item');
-      row.addEventListener('dragstart', (event) => {
-        fromIndex = index;
-        row.classList.add('dragging');
-        event.dataTransfer.effectAllowed = 'move';
-        event.dataTransfer.setData('text/plain', String(index));
-      });
-      row.addEventListener('dragend', () => {
-        row.classList.remove('dragging');
-        rows.forEach(r => r.classList.remove('drop-target'));
-      });
-      row.addEventListener('dragover', (event) => {
-        event.preventDefault();
-        row.classList.add('drop-target');
-      });
-      row.addEventListener('dragleave', () => row.classList.remove('drop-target'));
-      row.addEventListener('drop', async (event) => {
-        event.preventDefault();
-        row.classList.remove('drop-target');
-        const from = fromIndex ?? Number(event.dataTransfer.getData('text/plain'));
-        const to = index;
-        if (Number.isNaN(from) || from === to) return;
-        const next = [...(playlist.items || [])];
-        const [moved] = next.splice(from, 1);
-        next.splice(to, 0, moved);
-        try {
-          await api.reorderPlaylist(playlist.id, { items: next });
-          playlist.items = next;
-          toast.success('Order saved');
-          openPlaylist(playlist);
-        } catch (err) {
-          toast.error(`Could not reorder: ${err.message}`);
-        }
-      });
-    });
-  }
 }
+
 
 

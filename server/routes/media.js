@@ -14,6 +14,24 @@ const logger = require('../utils/logger');
 // route can reuse it — F-16).
 const { sendFileWithRange } = require('../utils/fileUtils');
 
+// Download the original file as an attachment. This is the remote-access
+// path: when the UI is hosted elsewhere (GitHub Pages / a tunnel) the plain
+// stream URL just plays in the browser, whereas Content-Disposition makes
+// the browser save the file. Auth accepts ?token= like the stream route, so
+// a plain <a> click works cross-origin without custom headers.
+router.get('/download/:id', (req, res) => {
+  const item = libraryService.getById(req.params.id);
+  if (!item) return res.status(404).json({ error: 'Item not found' });
+  if (!item.path || !fs.existsSync(item.path)) {
+    return res.status(404).json({ error: 'File not found on disk' });
+  }
+  const fallback = `${item.title || 'vault-media'}${path.extname(item.path || '')}`;
+  const filename = path.basename(item.filename || fallback).replace(/[\r\n"]/g, '');
+  res.download(item.path, filename, (err) => {
+    if (err && !res.headersSent) res.status(500).json({ error: 'Download failed' });
+  });
+});
+
 router.get('/stream/:id', (req, res) => {
   const item = libraryService.getById(req.params.id);
   if (!item) return res.status(404).json({ error: 'Item not found' });

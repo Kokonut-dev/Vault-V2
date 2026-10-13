@@ -1,5 +1,8 @@
 const express = require('express');
 const path = require('path');
+const fs = require('fs-extra');
+const multer = require('multer');
+const mime = require('mime-types');
 const router = express.Router();
 const libraryService = require('../services/library');
 const extras = require('../services/extras');
@@ -103,6 +106,53 @@ router.delete('/history', (req, res) => {
   }
 });
 
+// Playlist cover art: uploaded once, stored in the cover cache, and kept on
+// the playlist record as `coverArt` (absolute path, private to the server).
+const COVERS_DIR = path.join(__dirname, '../cache/covers');
+const coverUpload = multer({
+  storage: multer.diskStorage({
+    destination: (req, file, cb) => { fs.ensureDirSync(COVERS_DIR); cb(null, COVERS_DIR); },
+    filename: (req, file, cb) => cb(null, `playlist-${Date.now()}-${Math.random().toString(36).slice(2, 8)}${path.extname(file.originalname).toLowerCase()}`),
+  }),
+  limits: { fileSize: 10 * 1024 * 1024 },
+  fileFilter: (req, file, cb) => {
+    const ext = path.extname(file.originalname).toLowerCase();
+    if (['.jpg', '.jpeg', '.png', '.webp', '.gif', '.bmp'].includes(ext) && (!file.mimetype || file.mimetype.startsWith('image/'))) cb(null, true);
+    else cb(new Error('Cover must be an image (jpg, png, webp, gif, bmp)'));
+  },
+});
+
+router.post('/:id/cover', (req, res) => {
+  coverUpload.single('cover')(req, res, (err) => {
+    if (err) return res.status(400).json({ error: err.message });
+    if (!req.file) return res.status(400).json({ error: 'cover image required' });
+    const playlist = scoped(req).getPlaylistById(req.params.id);
+    if (!playlist) { fs.remove(req.file.path).catch(() => {}); return res.status(404).json({ error: 'Playlist not found' }); }
+    const previous = playlist.coverArt;
+    const updated = scoped(req).updatePlaylist(playlist.id, { coverArt: req.file.path });
+    if (previous && previous !== req.file.path && path.resolve(previous).startsWith(path.resolve(COVERS_DIR))) fs.remove(previous).catch(() => {});
+    events.broadcast('playlist:changed', { id: playlist.id, action: 'cover' });
+    res.json(updated);
+  });
+});
+
+router.get('/:id/cover', (req, res) => {
+  const playlist = scoped(req).getPlaylistById(req.params.id);
+  if (!playlist?.coverArt || !fs.existsSync(playlist.coverArt)) return res.status(404).json({ error: 'Cover not found' });
+  res.setHeader('Content-Type', mime.lookup(playlist.coverArt) || 'image/jpeg');
+  res.setHeader('Cache-Control', 'no-cache');
+  fs.createReadStream(playlist.coverArt).pipe(res);
+});
+
+router.delete('/:id/cover', (req, res) => {
+  const playlist = scoped(req).getPlaylistById(req.params.id);
+  if (!playlist) return res.status(404).json({ error: 'Playlist not found' });
+  const previous = playlist.coverArt;
+  const updated = scoped(req).updatePlaylist(playlist.id, { coverArt: null });
+  if (previous && path.resolve(previous).startsWith(path.resolve(COVERS_DIR))) fs.remove(previous).catch(() => {});
+  res.json(updated);
+});
+
 router.get('/:id', (req, res) => {
   try {
     const playlist = scoped(req).getPlaylistById(req.params.id);
@@ -136,8 +186,9 @@ router.post('/', (req, res) => {
 
 router.put('/:id', (req, res) => {
   try {
-    const { name, description, items } = req.body;
+    const { name, description, items, coverArt } = req.body;
     const updates = {};
+    if (coverArt === null) updates.coverArt = null; // clearing only; uploads go through /:id/cover
     if (name !== undefined) updates.name = sanitizeString(name, 200);
     if (description !== undefined) updates.description = sanitizeString(description, 1000);
     if (items !== undefined && Array.isArray(items)) updates.items = items;
