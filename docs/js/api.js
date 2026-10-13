@@ -119,7 +119,16 @@ class ApiClient {
 
         if (res.status === 401) {
           const data = await res.json().catch(() => ({}));
-          if (data.code !== 'GRID_REQUIRED') {
+          // A 401 from a credential step means "that password/grid was
+          // wrong" — NOT "your session died". Treating it as session
+          // expiry wiped the stored challenge token and bounced the user
+          // back to the password step after every wrong grid entry,
+          // forcing a fresh login POST per retry and feeding the
+          // server's failed-attempt counters until they hit 429.
+          const isCredentialStep = path.startsWith('/api/auth/login')
+            || path.startsWith('/api/auth/grid')
+            || path.startsWith('/api/auth/second-factor');
+          if (data.code !== 'GRID_REQUIRED' && !isCredentialStep) {
             this.clearTokenCache();
             store.clearAuth();
             window.dispatchEvent(new CustomEvent('vault:auth-required'));

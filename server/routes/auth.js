@@ -11,8 +11,9 @@ const logger = require('../utils/logger');
 // One-time pairing codes for QR / "type this on your TV" login.
 const pairingCodes = new Map(); // code -> { expiresAt, used }
 
-function lockoutResponse(res, ip) {
-  const remaining = authService.getLockoutTimeRemaining(ip);
+function lockoutResponse(res, ip, stage) {
+  const remaining = authService.getLockoutTimeRemaining(ip, stage);
+  res.setHeader('Retry-After', String(Math.max(remaining, 1)));
   return res.status(429).json({
     error: `Too many failed attempts. Try again in ${Math.ceil(remaining / 60)} minutes.`,
     code: 'LOCKED_OUT',
@@ -61,7 +62,7 @@ function validateSecondFactor(challengeToken, body) {
 router.post('/login', (req, res) => {
   const ip = authService.getClientIp(req);
 
-  if (authService.isLocked(ip)) return lockoutResponse(res, ip);
+  if (authService.isLocked(ip, 'password')) return lockoutResponse(res, ip, 'password');
 
   const { username, password } = req.body;
   if (!username || !password) {
@@ -72,13 +73,17 @@ router.post('/login', (req, res) => {
   const cleanPassword = typeof password === 'string' ? password.trim().substring(0, 128) : '';
 
   if (!authService.validateCredentials(cleanUsername, cleanPassword)) {
-    authService.recordFailedAttempt(ip);
+    authService.recordFailedAttempt(ip, 'password');
     res.locals.countAsAuthFailure = true;
     logger.warn(`Failed login attempt for ${cleanUsername} from ${ip}`);
     return res.status(401).json({ error: 'Invalid credentials', code: 'INVALID_CREDENTIALS' });
   }
 
-  authService.resetAttempts(ip);
+  // Correct password restores the *password* budget only — the second
+  // factor keeps its own budget, so grid guessing can't be reset by
+  // re-submitting a (possibly stolen) password.
+  authService.resetAttempts(ip, 'password');
+  res.locals.resetAuthFailures = 'password';
   const challengeToken = authService.generateChallengeToken(cleanUsername);
   const totpEnabled = authService.isTotpEnabled();
 
@@ -109,12 +114,15 @@ function completeLogin(req, res, decoded) {
 
   if (profileId && profiles.hasPin(profileId)) {
     if (!profiles.checkPin(profileId, profilePin)) {
+      authService.recordFailedAttempt(ip, 'second');
       res.locals.countAsAuthFailure = true;
       return res.status(401).json({ error: 'Profile PIN required', code: 'PROFILE_PIN_REQUIRED' });
     }
   }
 
+  // Fully authenticated — restore both stages' budgets.
   authService.resetAttempts(ip);
+  res.locals.resetAuthFailures = 'all';
 
   const session = sessions.create({
     username: decoded.username,
@@ -144,7 +152,7 @@ function completeLogin(req, res, decoded) {
 
 router.post('/grid', (req, res) => {
   const ip = authService.getClientIp(req);
-  if (authService.isLocked(ip)) return lockoutResponse(res, ip);
+  if (authService.isLocked(ip, 'second')) return lockoutResponse(res, ip, 'second');
 
   const { challengeToken, pattern } = req.body;
   if (!challengeToken || !pattern) {
@@ -158,7 +166,7 @@ router.post('/grid', (req, res) => {
 
   const result = validateSecondFactor(challengeToken, { pattern });
   if (!result.ok) {
-    authService.recordFailedAttempt(ip);
+    authService.recordFailedAttempt(ip, 'second');
     res.locals.countAsAuthFailure = true;
     logger.warn(`Failed ${result.code} for ${decoded.username} from ${ip}`);
     return res.status(result.status).json({ error: result.error, code: result.code });
@@ -170,7 +178,7 @@ router.post('/grid', (req, res) => {
 // Generic second-factor endpoint (grid | TOTP | recovery code).
 router.post('/second-factor', (req, res) => {
   const ip = authService.getClientIp(req);
-  if (authService.isLocked(ip)) return lockoutResponse(res, ip);
+  if (authService.isLocked(ip, 'second')) return lockoutResponse(res, ip, 'second');
 
   const { challengeToken } = req.body;
   const decoded = authService.verifyToken(challengeToken);
@@ -180,7 +188,7 @@ router.post('/second-factor', (req, res) => {
 
   const result = validateSecondFactor(challengeToken, req.body);
   if (!result.ok) {
-    authService.recordFailedAttempt(ip);
+    authService.recordFailedAttempt(ip, 'second');
     res.locals.countAsAuthFailure = true;
     logger.warn(`Failed ${result.code} for ${decoded.username} from ${ip}`);
     return res.status(result.status).json({ error: result.error, code: result.code });

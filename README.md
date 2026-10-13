@@ -288,8 +288,9 @@ By default Vault only works at home (`localhost`). To use from phone anywhere:
 - Password: if you forgot, delete `config.json` and restart setup wizard, or run `npm run setup` in `server/`
 
 **"Too many login attempts / locked out"**
-- Lockout only counts **wrong** credentials. Successful logins and normal page loads never trip it.
-- After 5 wrong passwords/grids, Vault locks that IP for 15 min. Wait 15 min or delete `server/data/bruteforce.json` and restart server.
+- Lockout only counts **wrong** credentials — and only within the step you got wrong. Successful logins and normal page loads never trip it, and entering your password correctly restores the password budget.
+- After 5 wrong passwords Vault locks the password step for that IP for 15 min; 5 wrong grid patterns lock the grid step. The other step stays usable. Wait 15 min or delete `server/data/bruteforce.json` and restart server.
+- If you still see "Too many requests" right after updating, restart the server once (`Ctrl+C`, then `npm start`) so the new rate-limit code and the automatic 200→2000 general-limit migration for older `config.json` files take effect.
 - Grid squares: check `server/config.json` → `auth.gridPattern` shows your numbers (e.g. [0,1,4,5,8,9,12,13]). Count from 0 top-left to 15 bottom-right.
 - If the grid step says your "login session expired", just enter your password again — the 5-minute challenge window passed; this is not a failed attempt.
 
