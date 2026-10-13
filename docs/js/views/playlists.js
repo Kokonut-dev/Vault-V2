@@ -9,6 +9,21 @@ import { confirmDialog } from '../components/confirmDialog.js';
 import { escapeHtml, formatTime } from '../utils/format.js';
 import { icon } from '../utils/icons.js';
 
+// Keep playlist pages usable for the one load where a newly deployed view may
+// still be paired with an older installed-PWA API client. sw.js v4 prevents
+// future mixed module sets, while these URL fallbacks avoid a forced cache wipe.
+function playlistCoverUrl(id, version = '') {
+  if (typeof api.playlistCoverUrl === 'function') return api.playlistCoverUrl(id, version);
+  const token = api.getToken?.() || '';
+  return `${api.baseUrl}/api/playlists/${id}/cover?token=${encodeURIComponent(token)}${version ? `&v=${encodeURIComponent(version)}` : ''}`;
+}
+
+function exportPlaylistUrl(id) {
+  if (typeof api.exportPlaylistUrl === 'function') return api.exportPlaylistUrl(id);
+  const token = api.getToken?.() || '';
+  return `${api.baseUrl}/api/playlists/${id}/export?token=${encodeURIComponent(token)}`;
+}
+
 export function renderPlaylists(container) {
   container.className = 'page';
   container.innerHTML = `
@@ -60,7 +75,7 @@ export function renderPlaylists(container) {
         card.className = 'media-card';
         card.innerHTML = `
           <div class="media-card-cover" style="background:rgba(var(--glass-tint),0.05); display:flex; align-items:center; justify-content:center;">
-            ${pl.coverArt ? `<img src="${api.playlistCoverUrl(pl.id, pl.updatedAt || '')}" alt="" style="width:100%;height:100%;object-fit:cover;" onerror="this.style.display='none'">` : icon(pl.type === 'collection' ? 'layout-grid' : 'music', { size: 32 })}
+            ${pl.coverArt ? `<img src="${playlistCoverUrl(pl.id, pl.updatedAt || '')}" alt="" style="width:100%;height:100%;object-fit:cover;" onerror="this.style.display='none'">` : icon(pl.type === 'collection' ? 'layout-grid' : 'music', { size: 32 })}
           </div>
           <div class="media-card-info">
             <div class="media-card-title">${escapeHtml(pl.name)}</div>
@@ -186,12 +201,12 @@ export function renderPlaylists(container) {
         <button class="btn btn-secondary btn-sm" id="back-btn">${icon('arrow-left', { size: 16 })}<span>Back</span></button>
       </div>
       <div style="background:var(--bg-elevated, var(--bg-secondary)); border:1px solid var(--border-subtle, rgba(var(--glass-tint),0.09)); border-radius:16px; padding:24px; margin-bottom:24px;">
-        ${playlist.coverArt ? `<img src="${api.playlistCoverUrl(playlist.id, playlist.updatedAt || '')}" alt="" style="width:144px;height:144px;object-fit:cover;border-radius:12px;margin-bottom:16px;" onerror="this.style.display='none'">` : ''}
+        ${playlist.coverArt ? `<img src="${playlistCoverUrl(playlist.id, playlist.updatedAt || '')}" alt="" style="width:144px;height:144px;object-fit:cover;border-radius:12px;margin-bottom:16px;" onerror="this.style.display='none'">` : ''}
         <h2 style="font-size:24px; font-weight:700; margin-bottom:8px;">${escapeHtml(playlist.name)}</h2>
         <p style="color:var(--text-secondary); margin-bottom:16px;">${escapeHtml(playlist.description || '')}</p>
         <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
           <button class="btn btn-primary btn-sm" id="play-pl">Play All</button>
-          <a class="btn btn-secondary btn-sm" id="export-pl" href="${api.exportPlaylistUrl(playlist.id)}" download>${icon('download', { size: 14 })}<span>Export .m3u</span></a>
+          <a class="btn btn-secondary btn-sm" id="export-pl" href="${exportPlaylistUrl(playlist.id)}" download>${icon('download', { size: 14 })}<span>Export .m3u</span></a>
           <label class="btn btn-secondary btn-sm" for="import-pl" style="cursor:pointer">${icon('upload', { size: 14 })}<span>Import .m3u</span></label>
           <input type="file" id="import-pl" accept=".m3u,.m3u8,audio/x-mpegurl" hidden>
           <button class="btn btn-ghost btn-sm" id="stats-pl">${icon('bar-chart', { size: 14 })}<span>Stats</span></button>
@@ -260,8 +275,18 @@ export function renderPlaylists(container) {
               let cursor = 0;
               const next = (playlist.items || []).map(id => (visibleSet.has(id) ? nextVisible[cursor++] : id));
               try {
-                await api.reorderPlaylist(playlist.id, { items: next });
-                playlist.items = next;
+                // Older installed PWA shells can still have an api.js from
+                // before reorderPlaylist existed. Fall back to the public
+                // request primitive so reordering works without clearing the
+                // browser cache; the service worker update fixes future loads.
+                const updated = typeof api.reorderPlaylist === 'function'
+                  ? await api.reorderPlaylist(playlist.id, { items: next })
+                  : await api.request(`/api/playlists/${playlist.id}/order`, {
+                    method: 'PUT',
+                    body: JSON.stringify({ items: next }),
+                  });
+                playlist.items = Array.isArray(updated?.items) ? updated.items : next;
+                playlist.updatedAt = updated?.updatedAt || playlist.updatedAt;
                 toast.success('Order saved');
                 openPlaylist(playlist);
               } catch (err) {

@@ -1,7 +1,12 @@
 /**
  * Vault Service Worker — PWA offline shell
  */
-const CACHE_NAME = 'vault-v2-shell-v3';
+// Bump when the shell contract changes so already-installed clients replace
+// incompatible module sets. v3 cached api.js forever while detail.js updated
+// from the network, producing errors such as "updateAlbumOrder is not a
+// function". Shell reads below are now network-first to prevent that mismatch
+// from recurring; the version bump repairs clients that already have v3.
+const CACHE_NAME = 'vault-v2-shell-v4';
 const BASE_PATH = '/Vault-V2';
 
 const SHELL_ASSETS = [
@@ -41,7 +46,11 @@ self.addEventListener('activate', (event) => {
   console.log('[SW] Activate');
   event.waitUntil(
     caches.keys().then(keys => {
-      return Promise.all(keys.filter(k => k !== CACHE_NAME).map(k => caches.delete(k)));
+      // Only retire our old app shells. `vault-offline` contains media the user
+      // explicitly downloaded and must survive an application update.
+      return Promise.all(keys
+        .filter(k => k.startsWith('vault-v2-shell-') && k !== CACHE_NAME)
+        .map(k => caches.delete(k)));
     })
   );
   self.clients.claim();
@@ -73,16 +82,20 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // For shell assets, cache-first
+  // Shell modules must move forward as one compatible set. Cache-first kept an
+  // old api.js indefinitely while dynamically imported views came from the
+  // network; new views then called methods the cached client did not have.
+  // Prefer the current deployment and retain the cache strictly as an offline
+  // fallback. Successful responses refresh the cached copy for the next load.
   if (SHELL_ASSETS.some(asset => url.pathname.endsWith(asset.replace(BASE_PATH, '')) || url.pathname === asset)) {
+    const networkRequest = new Request(event.request, { cache: 'no-cache' });
     event.respondWith(
-      caches.match(event.request).then(cached => {
-        return cached || fetch(event.request).then(res => {
-          const clone = res.clone();
-          caches.open(CACHE_NAME).then(cache => cache.put(event.request, clone));
-          return res;
-        });
-      })
+      fetch(networkRequest).then(async res => {
+        if (!res.ok) return (await caches.match(event.request)) || res;
+        const clone = res.clone();
+        caches.open(CACHE_NAME).then(cache => cache.put(event.request, clone));
+        return res;
+      }).catch(() => caches.match(event.request))
     );
     return;
   }

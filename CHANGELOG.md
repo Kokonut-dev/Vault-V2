@@ -2,6 +2,20 @@
 
 ## [3.0.0] — in progress (branch `arena/0deefe55-vault-v2`)
 
+### Fixed — album and playlist track reordering
+- Album reorders no longer report an `AbortError` after they have succeeded.
+  The mutation response is merged into the library immediately, and identical
+  live-event/view refreshes now share one GET instead of cancelling each other.
+- Installed PWAs no longer mix a permanently cached `api.js` with newly
+  deployed views (the source of `updateAlbumOrder/reorderPlaylist is not a
+  function`). The v4 shell repairs existing caches, checks for updates on every
+  load, and fetches shell modules network-first with an offline fallback.
+  Compatibility fallbacks also let an already-open stale client call the
+  reorder endpoints without clearing site data.
+- SQLite-backed libraries mirror add/update/remove operations immediately, so
+  saved album track numbers are visible without restarting the server.
+- Service-worker activation now preserves explicitly downloaded offline media.
+
 ### Fixed — "Too many requests" at login, again (follow-up to PR #13)
 PR #13 exempted `/api/auth/*` from the general limiter, but users with
 correct credentials could still get 429 at login. Three remaining causes:

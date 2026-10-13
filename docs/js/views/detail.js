@@ -191,6 +191,9 @@ function renderMusicDetail(container, item) {
     : (item.artist || '');
   const coverVersion = Math.max(0, ...albumTracks.map(t => new Date(t.updatedAt || 0).getTime() || 0));
   const totalSeconds = albumTracks.reduce((sum, t) => sum + durationSeconds(t.duration), 0);
+  const coverUrl = typeof api.getCoverUrlVersioned === 'function'
+    ? api.getCoverUrlVersioned(item.id, coverVersion || '')
+    : `${api.getCoverUrl(item.id)}${coverVersion ? `&v=${encodeURIComponent(coverVersion)}` : ''}`;
 
   container.innerHTML = `
     <div style="display:flex; align-items:center; gap:12px; margin-bottom:24px;">
@@ -200,7 +203,7 @@ function renderMusicDetail(container, item) {
 
     <div class="album-header">
       <div class="album-header-cover">
-        <img src="${api.getCoverUrlVersioned(item.id, coverVersion || '')}" alt="" onerror="this.style.display='none'">
+        <img src="${coverUrl}" alt="" onerror="this.style.display='none'">
       </div>
       <div class="album-header-meta">
         <span class="quality-badge">${isAlbumView ? 'Album' : 'Track'}</span>
@@ -253,18 +256,44 @@ function renderMusicDetail(container, item) {
         const [moved] = next.splice(from, 1);
         next.splice(to, 0, moved);
         try {
-          const { missing = [] } = await api.updateAlbumOrder(next.map(t => t.id));
-          // Re-sync from the server: track numbers are the server's, and any
-          // track it no longer has must disappear from this list.
-          const fresh = await api.getLibrary({ limit: 1000 });
-          store.setLibrary(fresh.items || []);
+          const ids = next.map(t => t.id);
+          // `request` is a compatibility fallback for clients whose old PWA
+          // shell cached api.js before updateAlbumOrder was added. The service
+          // worker now updates shell files network-first, but this lets the
+          // current page recover without making the user clear site data.
+          const result = typeof api.updateAlbumOrder === 'function'
+            ? await api.updateAlbumOrder(ids)
+            : await api.request('/api/library/albums/order', {
+              method: 'PUT',
+              body: JSON.stringify({ ids }),
+            });
+          const updated = Array.isArray(result?.items) ? result.items : [];
+          const missing = Array.isArray(result?.missing) ? result.missing : [];
+
+          // Merge the authoritative response immediately. The server also
+          // emits library:changed, whose refresh can race this handler; making
+          // a second GET here used to let the two requests cancel each other
+          // and report an AbortError even though the order had been saved.
+          const updatesById = new Map(updated.map(track => [track.id, track]));
+          const missingIds = new Set(missing);
+          const mergedLibrary = store.get('library')
+            .filter(track => !missingIds.has(track.id))
+            .map(track => updatesById.has(track.id)
+              ? { ...track, ...updatesById.get(track.id) }
+              : track);
+          store.setLibrary(mergedLibrary);
+
           if (missing.length) {
             const n = missing.length;
             toast.warning(`${n} track${n === 1 ? ' is' : 's are'} no longer in the library and ${n === 1 ? 'was' : 'were'} skipped.`);
           } else {
             toast.success('Album order saved');
           }
-          renderMusicDetail(container, item);
+          const currentItem = updatesById.get(item.id)
+            || mergedLibrary.find(track => track.id === item.id)
+            || updated[0]
+            || item;
+          renderMusicDetail(container, currentItem);
         } catch (err) {
           toast.error(`Could not reorder: ${err.message}`);
         }
@@ -377,11 +406,24 @@ function showAlbumEditModal({ albumKey, tracks, onSaved }) {
     try {
       let updated = tracks;
       if (cover) {
-        const result = await api.uploadAlbumCover(ids, cover);
+        let result;
+        if (typeof api.uploadAlbumCover === 'function') {
+          result = await api.uploadAlbumCover(ids, cover);
+        } else {
+          const form = new FormData();
+          form.append('cover', cover);
+          form.append('ids', JSON.stringify(ids));
+          result = await api.request('/api/library/albums/cover', { method: 'POST', body: form });
+        }
         if (result.items) updated = result.items;
       }
       if (title && title !== albumKey) {
-        const result = await api.updateAlbumTitle(ids, title);
+        const result = typeof api.updateAlbumTitle === 'function'
+          ? await api.updateAlbumTitle(ids, title)
+          : await api.request('/api/library/albums/metadata', {
+            method: 'PUT',
+            body: JSON.stringify({ ids, album: title }),
+          });
         if (result.items) updated = result.items;
       }
       toast.success('Album updated');
