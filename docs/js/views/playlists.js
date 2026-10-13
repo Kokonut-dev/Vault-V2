@@ -248,9 +248,17 @@ export function renderPlaylists(container) {
               showTrackEditModal(items[index], () => openPlaylist(playlist));
             },
             onMove: async (from, to) => {
-              const next = [...(playlist.items || [])];
-              const [moved] = next.splice(from, 1);
-              next.splice(to, 0, moved);
+              // `from`/`to` are indices into the *rendered* rows, which skip
+              // playlist entries whose track is missing from the library. Apply
+              // the move to the visible ids, then write them back into the full
+              // list so hidden entries keep their slots and the right track moves.
+              const visibleIds = items.map(i => i.id);
+              const nextVisible = [...visibleIds];
+              const [moved] = nextVisible.splice(from, 1);
+              nextVisible.splice(to, 0, moved);
+              const visibleSet = new Set(visibleIds);
+              let cursor = 0;
+              const next = (playlist.items || []).map(id => (visibleSet.has(id) ? nextVisible[cursor++] : id));
               try {
                 await api.reorderPlaylist(playlist.id, { items: next });
                 playlist.items = next;

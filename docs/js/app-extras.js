@@ -17,6 +17,7 @@ import { initContextMenu } from './components/contextMenu.js';
 import { initQuickActions } from './components/quickActions.js';
 import { applyArtworkAmbience, clearArtworkAmbience } from './utils/color.js';
 import { wireCastButton, renderSleepMenu, wireSleepMenu, updateSleepIndicator, onItemFinished } from './components/playerExtras.js';
+import { initListenTracker } from './components/listenTracker.js';
 import { initVideoExtras } from './components/videoExtras.js';
 import { initPlaybackPrefs } from './components/playbackPrefs.js';
 import { confirmDialog } from './components/confirmDialog.js';
@@ -465,6 +466,7 @@ export function initAppExtras() {
   initSyncPlayFollower();
   initPlayerExtras();
   initVideoExtras();
+  initListenTracker();
   initPlaybackPrefs();
   initGridKeyboardNav();
 
