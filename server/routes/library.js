@@ -228,11 +228,28 @@ function musicItemsForIds(ids) {
 }
 
 router.put('/albums/order', (req, res) => {
-  const items = musicItemsForIds(req.body?.ids);
-  if (!items || items.length !== (req.body.ids || []).length) return res.status(400).json({ error: 'ids must list every track in the new order' });
-  const updated = items.map((item, i) => libraryService.updateItem(item.id, { track: i + 1 }));
+  const ids = Array.isArray(req.body?.ids) ? req.body.ids.map(String) : null;
+  if (!ids || !ids.length || ids.length > 1000) return res.status(400).json({ error: 'ids required' });
+
+  // The client's copy of the album can be out of date (a track was removed,
+  // re-scanned or re-tagged since the page loaded). Reorder the tracks we can
+  // still find instead of rejecting the whole request, and tell the client
+  // which ids were not found so it can refresh.
+  const uniqueIds = [...new Set(ids)];
+  const found = [];
+  const missing = [];
+  for (const id of uniqueIds) {
+    const item = libraryService.getById(id);
+    if (item && item.type === 'music') found.push(item);
+    else missing.push(id);
+  }
+  if (!found.length) {
+    return res.status(404).json({ error: 'None of these tracks are in the library any more', missing });
+  }
+
+  const updated = found.map((item, i) => libraryService.updateItem(item.id, { track: i + 1 }));
   events.broadcast('library:changed', { reason: 'album-reorder' });
-  res.json({ items: updated });
+  res.json({ items: updated, missing });
 });
 
 router.put('/albums/metadata', (req, res) => {

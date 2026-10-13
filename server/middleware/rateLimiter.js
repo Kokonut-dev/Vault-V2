@@ -18,6 +18,11 @@ function createRateLimiters() {
     // already protected by auth middleware, so exempt them from the cap.
     skip: (req) => {
       const p = req.originalUrl || req.url || '';
+      // Sign-in, setup and health must never be locked out by general traffic
+      // (the page makes many requests on load, and a shared IP can hit the cap
+      // before anyone can log in). Login/grid still have the auth-failure
+      // limiter, which only counts wrong credentials.
+      if (p.startsWith('/api/auth/') || p.startsWith('/api/setup') || p.startsWith('/api/health')) return true;
       return p.includes('/media/') || p.includes('/transcode/');
     },
   });

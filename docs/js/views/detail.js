@@ -253,10 +253,17 @@ function renderMusicDetail(container, item) {
         const [moved] = next.splice(from, 1);
         next.splice(to, 0, moved);
         try {
-          const { items: updated } = await api.updateAlbumOrder(next.map(t => t.id));
-          tracks = sortTracks(updated && updated.length ? next.map(t => updated.find(u => u.id === t.id) || t) : next.map((t, i) => ({ ...t, track: i + 1 })));
-          await refreshLibrary(tracks);
-          toast.success('Album order saved');
+          const { missing = [] } = await api.updateAlbumOrder(next.map(t => t.id));
+          // Re-sync from the server: track numbers are the server's, and any
+          // track it no longer has must disappear from this list.
+          const fresh = await api.getLibrary({ limit: 1000 });
+          store.setLibrary(fresh.items || []);
+          if (missing.length) {
+            const n = missing.length;
+            toast.warning(`${n} track${n === 1 ? ' is' : 's are'} no longer in the library and ${n === 1 ? 'was' : 'were'} skipped.`);
+          } else {
+            toast.success('Album order saved');
+          }
           renderMusicDetail(container, item);
         } catch (err) {
           toast.error(`Could not reorder: ${err.message}`);
@@ -271,8 +278,12 @@ function renderMusicDetail(container, item) {
   });
 
   container.querySelector('#shuffle-btn').addEventListener('click', () => {
-    const shuffled = [...tracks].sort(() => Math.random() - 0.5);
-    window.dispatchEvent(new CustomEvent('vault:play', { detail: { item: shuffled[0], queue: shuffled, index: 0 } }));
+    if (!tracks.length) return;
+    // Spotify-style: keep album order in the queue, turn shuffle on, and let the
+    // player pick each next track from the ones not yet played in this pass.
+    const start = Math.floor(Math.random() * tracks.length);
+    store.set('shuffle', true, true);
+    window.dispatchEvent(new CustomEvent('vault:play', { detail: { item: tracks[start], queue: tracks, index: start } }));
   });
 
   container.querySelector('#fav-btn').addEventListener('click', async (e) => {

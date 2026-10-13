@@ -132,7 +132,7 @@ const DEFAULT_CONFIG = {
   },
   security: {
     rateLimit: {
-      general: { windowMs: 15 * 60 * 1000, max: 200 },
+      general: { windowMs: 15 * 60 * 1000, max: 2000 },
       auth: { windowMs: 15 * 60 * 1000, max: 10 },
       upload: { windowMs: 15 * 60 * 1000, max: 30 }
     }

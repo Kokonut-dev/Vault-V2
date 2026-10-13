@@ -4,6 +4,7 @@
  * double-connect, missing transcode fallback, swallowed play errors.
  */
 import { store } from '../store.js';
+import { ShufflePlanner } from '../utils/shuffle.js';
 import { api } from '../api.js';
 import { toast } from './toast.js';
 
@@ -233,6 +234,7 @@ export function initAudioPlayer() {
     if (gainNode) gainNode.gain.value = vol;
   });
 
+  store.subscribe('shuffle', () => planner.invalidate());
   store.subscribe('eqGains', applyEQ);
   store.subscribe('eqEnabled', applyEQ);
 
@@ -241,6 +243,7 @@ export function initAudioPlayer() {
     if (queue) {
       store.set('queue', queue, true);
       store.set('queueIndex', index ?? 0, true);
+      planner.start(queue, index ?? 0);
       playItem(queue[index ?? 0]);
     } else if (item) {
       const currentQueue = store.get('queue') || [];
@@ -387,12 +390,30 @@ export async function playItem(item, { forceTranscode = false } = {}) {
 function preloadNext() {
   const queue = store.get('queue') || [];
   const idx = store.get('queueIndex');
-  const nextIdx = idx + 1;
-  if (nextIdx < queue.length && nextAudio) {
+  const nextIdx = nextIndex(queue, idx);
+  preloadedIdx = nextIdx;
+  if (nextIdx >= 0 && nextAudio) {
     const nextItem = queue[nextIdx];
     nextAudio.src = api.getPlaybackUrl(nextItem);
     nextAudio.load();
   }
+}
+
+// Shuffle (Spotify-style) lives in utils/shuffle.js; the player only asks it
+// for the next index and commits what actually plays.
+const planner = new ShufflePlanner();
+let preloadedIdx = -1;
+
+/** Index of the track that follows `idx`, or -1 when playback should end. */
+function nextIndex(queue, idx) {
+  if (store.get('shuffle')) return planner.nextIndex(queue, idx, store.get('repeat'));
+  return idx + 1 < queue.length ? idx + 1 : -1;
+}
+
+/** Commit an advance from `fromIdx` to `toIdx` (history is used by Previous). */
+function commitAdvance(queue, fromIdx, toIdx) {
+  if (store.get('shuffle')) planner.commit(queue, fromIdx);
+  store.set('queueIndex', toIdx, true);
 }
 
 let audioRaf = null;
@@ -471,9 +492,10 @@ function attachAudioListeners(audio) {
 function crossfadeToNext() {
   const queue = store.get('queue') || [];
   const idx = store.get('queueIndex');
-  const nextItem = queue[idx + 1];
+  const nextIdx = nextIndex(queue, idx);
+  const nextItem = nextIdx >= 0 ? queue[nextIdx] : null;
 
-  if (!nextItem || !nextAudio) {
+  if (!nextItem || !nextAudio || preloadedIdx !== nextIdx) {
     isCrossfading = false;
     return;
   }
@@ -508,7 +530,7 @@ function crossfadeToNext() {
         }
         attachAudioListeners(currentAudio);
         if (currentAudio) currentAudio.volume = store.get('volume') || 0.8;
-        store.set('queueIndex', idx + 1, true);
+        commitAdvance(queue, idx, nextIdx);
         store.set('currentTrack', nextItem);
         isCrossfading = false;
         preloadNext();
@@ -530,28 +552,24 @@ function onEnded() {
 
 function playNext() {
   const queue = store.get('queue') || [];
-  let idx = store.get('queueIndex');
-  const shuffle = store.get('shuffle');
-  const repeat = store.get('repeat');
+  const idx = store.get('queueIndex');
 
   if (!queue.length) {
     store.set('isPlaying', false);
     return;
   }
 
-  if (shuffle) idx = Math.floor(Math.random() * queue.length);
-  else idx++;
-
-  if (idx >= queue.length) {
-    if (repeat === 'all') idx = 0;
+  let nextIdx = nextIndex(queue, idx);
+  if (nextIdx < 0) {
+    if (store.get('repeat') === 'all') nextIdx = 0;
     else {
       store.set('isPlaying', false);
       return;
     }
   }
 
-  store.set('queueIndex', idx, true);
-  playItem(queue[idx]);
+  commitAdvance(queue, idx, nextIdx);
+  playItem(queue[nextIdx]);
 }
 
 function playPrev() {
@@ -559,6 +577,17 @@ function playPrev() {
   let idx = store.get('queueIndex');
   if (currentAudio && currentAudio.currentTime > 3) {
     currentAudio.currentTime = 0;
+    return;
+  }
+  if (store.get('shuffle')) {
+    // Walk back through what actually played, most recent first.
+    const prev = planner.previousIndex(queue);
+    if (prev >= 0) {
+      store.set('queueIndex', prev, true);
+      playItem(queue[prev]);
+    } else if (currentAudio) {
+      currentAudio.currentTime = 0;
+    }
     return;
   }
   idx--;
