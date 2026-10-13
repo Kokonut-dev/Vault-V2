@@ -2,6 +2,7 @@ const jwt = require('jsonwebtoken');
 const { getConfig } = require('../config');
 const fs = require('fs-extra');
 const path = require('path');
+const sessions = require('../services/sessions');
 
 const BLACKLIST_PATH = path.join(__dirname, '../data/token-blacklist.json');
 let blacklist = new Set();
@@ -65,13 +66,21 @@ function authMiddleware(req, res, next) {
     const config = getConfig();
     const decoded = jwt.verify(token, config.auth.jwtSecret);
 
-    // Check if it's a challenge token (should not be used for API)
-    if (decoded.step === 'grid') {
+    // Challenge tokens must never authorise API calls.
+    if (decoded.step && decoded.step !== undefined) {
       return res.status(401).json({ error: 'Grid challenge required', code: 'GRID_REQUIRED' });
     }
 
+    // Per-device sessions: a revoked session invalidates its tokens even though
+    // the JWT itself is still cryptographically valid.
+    if (decoded.sid && !sessions.isValid(decoded.sid)) {
+      return res.status(401).json({ error: 'Session revoked', code: 'TOKEN_REVOKED' });
+    }
+    if (decoded.sid) sessions.touch(decoded.sid);
+
     req.user = decoded;
     req.token = token;
+    req.profileId = decoded.profileId || 'default';
     next();
   } catch (err) {
     if (err.name === 'TokenExpiredError') {
@@ -100,12 +109,17 @@ function optionalAuthMiddleware(req, res, next) {
   try {
     const config = getConfig();
     const decoded = jwt.verify(token, config.auth.jwtSecret);
-    if (decoded.step === 'grid') {
+    if (decoded.step) {
+      req.user = null;
+      return next();
+    }
+    if (decoded.sid && !sessions.isValid(decoded.sid)) {
       req.user = null;
       return next();
     }
     req.user = decoded;
     req.token = token;
+    req.profileId = decoded.profileId || 'default';
   } catch {
     req.user = null;
   }

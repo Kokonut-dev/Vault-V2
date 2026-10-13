@@ -100,6 +100,11 @@ class ApiClient {
       ...options,
       headers,
       signal: options.signal || controller.signal,
+      // Accept plain objects for `body` (the v3 methods pass objects) while
+      // keeping FormData and pre-stringified bodies untouched.
+      body: isFormData || options.body === undefined || typeof options.body === 'string'
+        ? options.body
+        : JSON.stringify(options.body),
     };
 
     // Retry logic for transient failures
@@ -265,9 +270,15 @@ class ApiClient {
     return `${this.baseUrl}/api/media/stream/${id}?token=${encodeURIComponent(token || '')}`;
   }
 
-  getCoverUrl(id) {
+  getCoverUrl(id, size = null) {
     const token = store.get('token') || localStorage.getItem('vault_token');
-    return `${this.baseUrl}/api/media/cover/${id}?token=${encodeURIComponent(token || '')}`;
+    const sizeParam = size ? `&size=${encodeURIComponent(size)}` : '';
+    return `${this.baseUrl}/api/media/cover/${id}?token=${encodeURIComponent(token || '')}${sizeParam}`;
+  }
+
+  getBackdropUrl(id) {
+    const token = store.get('token') || localStorage.getItem('vault_token');
+    return `${this.baseUrl}/api/media/cover/${id}?kind=backdrop&token=${encodeURIComponent(token || '')}`;
   }
 
   getThumbnailUrl(id, time = null) {
@@ -307,11 +318,17 @@ class ApiClient {
 
   getPlaybackUrl(item, { forceTranscode = false } = {}) {
     if (!item) return '';
+    // Items can carry their own source (live TV channels, recordings, plugin
+    // providers). Those must never be rewritten to /api/media/stream/<id>,
+    // which would 404 for anything not in the library index.
+    if (!forceTranscode && item.streamUrl && !this.needsTranscode(item)) {
+      return item.streamUrl;
+    }
     if (forceTranscode || this.needsTranscode(item)) {
       if (item.type === 'music') return this.getAudioTranscodeUrl(item.id);
       return this.getTranscodeUrl(item.id);
     }
-    return this.getStreamUrl(item.id);
+    return item.streamUrl || this.getStreamUrl(item.id);
   }
 
   // Hosts browsers NEVER treat as mixed content. Per the Secure Contexts spec
@@ -478,6 +495,14 @@ class ApiClient {
     return this.request(`/api/playlists/favourites/${id}`, { method: 'DELETE' });
   }
 
+  /** Mark an item fully watched/listened (drives scrobbling + "watched" state). */
+  markCompleted(id, duration = null) {
+    return this.request('/api/playlists/history', {
+      method: 'POST',
+      body: { itemId: id, progress: 100, duration, completed: true, bumpPlayCount: true },
+    });
+  }
+
   // History
   getHistory() {
     return this.request('/api/playlists/history');
@@ -492,6 +517,11 @@ class ApiClient {
 
   clearHistory() {
     return this.request('/api/playlists/history', { method: 'DELETE' });
+  }
+
+  /** Mark an item as fully watched (fires the completed/scrobble path). */
+  markCompleted(id, duration = null) {
+    return this.addHistory({ itemId: id, progress: 100, completed: true, duration: duration ?? undefined });
   }
 
   // Settings
@@ -550,6 +580,478 @@ class ApiClient {
       auth: true,
       body: JSON.stringify(data),
     });
+  }
+
+  // ==========================================================================
+  // v3 API surface — profiles, watchlist, collections, series, system, extras
+  // ==========================================================================
+
+  // --- Auth additions ------------------------------------------------------
+  secondFactor(challengeToken, payload) {
+    return this.request('/api/auth/second-factor', {
+      method: 'POST',
+      body: { challengeToken, ...payload },
+    });
+  }
+
+  refreshToken() {
+    return this.request('/api/auth/refresh', { method: 'POST' });
+  }
+
+  mediaToken() {
+    return this.request('/api/auth/media-token');
+  }
+
+  getSessions() {
+    return this.request('/api/auth/sessions');
+  }
+
+  revokeSession(id) {
+    return this.request(`/api/auth/sessions/${encodeURIComponent(id)}`, { method: 'DELETE' });
+  }
+
+  revokeOtherSessions() {
+    return this.request('/api/auth/sessions/revoke-others', { method: 'POST' });
+  }
+
+  totpStatus() {
+    return this.request('/api/auth/totp');
+  }
+
+  totpSetup() {
+    return this.request('/api/auth/totp/setup', { method: 'POST' });
+  }
+
+  totpEnable(code) {
+    return this.request('/api/auth/totp/enable', { method: 'POST', body: { code } });
+  }
+
+  totpDisable(password) {
+    return this.request('/api/auth/totp/disable', { method: 'POST', body: { password } });
+  }
+
+  totpRecoveryCodes(code) {
+    return this.request('/api/auth/totp/recovery-codes', { method: 'POST', body: { code } });
+  }
+
+  createPairingCode(baseUrl) {
+    return this.request('/api/auth/pair', { method: 'POST', body: { baseUrl }, auth: false });
+  }
+
+  approvePairing(data) {
+    return this.request('/api/auth/pair/approve', { method: 'POST', body: data });
+  }
+
+  pairingStatus(code) {
+    return this.request(`/api/auth/pair/${encodeURIComponent(code)}`, { auth: false });
+  }
+
+  // --- Profiles ------------------------------------------------------------
+  getProfiles() {
+    return this.request('/api/profiles');
+  }
+
+  createProfile(data) {
+    return this.request('/api/profiles', { method: 'POST', body: data });
+  }
+
+  updateProfile(id, data) {
+    return this.request(`/api/profiles/${id}`, { method: 'PUT', body: data });
+  }
+
+  deleteProfile(id) {
+    return this.request(`/api/profiles/${id}`, { method: 'DELETE' });
+  }
+
+  switchProfile(id, pin) {
+    return this.request(`/api/profiles/${id}/switch`, { method: 'POST', body: { pin } });
+  }
+
+  profileSummary(id) {
+    return this.request(`/api/profiles/${id}/summary`);
+  }
+
+  // --- Watchlist -----------------------------------------------------------
+  getWatchlist() {
+    return this.request('/api/extras/watchlist');
+  }
+
+  addToWatchlist(id) {
+    return this.request(`/api/extras/watchlist/${id}`, { method: 'POST' });
+  }
+
+  removeFromWatchlist(id) {
+    return this.request(`/api/extras/watchlist/${id}`, { method: 'DELETE' });
+  }
+
+  // --- Collections ---------------------------------------------------------
+  getCollections() {
+    return this.request('/api/extras/collections');
+  }
+
+  createCollection(data) {
+    return this.request('/api/extras/collections', { method: 'POST', body: data });
+  }
+
+  updateCollection(id, data) {
+    return this.request(`/api/extras/collections/${id}`, { method: 'PUT', body: data });
+  }
+
+  deleteCollection(id) {
+    return this.request(`/api/extras/collections/${id}`, { method: 'DELETE' });
+  }
+
+  addToCollection(id, itemId) {
+    return this.request(`/api/extras/collections/${id}/items`, { method: 'POST', body: { itemId } });
+  }
+
+  removeFromCollection(id, itemId) {
+    return this.request(`/api/extras/collections/${id}/items/${itemId}`, { method: 'DELETE' });
+  }
+
+  // --- Markers / chapters / bookmarks --------------------------------------
+  getMarkers(id) {
+    return this.request(`/api/extras/markers/${id}`);
+  }
+
+  setMarkers(id, data) {
+    return this.request(`/api/extras/markers/${id}`, { method: 'PUT', body: data });
+  }
+
+  getChapters(id) {
+    return this.request(`/api/media/chapters/${id}`);
+  }
+
+  getBookmarks(itemId) {
+    return this.request(`/api/extras/bookmarks${itemId ? `?itemId=${encodeURIComponent(itemId)}` : ''}`);
+  }
+
+  addBookmark(data) {
+    return this.request('/api/extras/bookmarks', { method: 'POST', body: data });
+  }
+
+  removeBookmark(id) {
+    return this.request(`/api/extras/bookmarks/${encodeURIComponent(id)}`, { method: 'DELETE' });
+  }
+
+  // --- Watched state -------------------------------------------------------
+  setWatched(id, watched = true) {
+    return this.request(`/api/extras/watched/${id}`, { method: 'POST', body: { watched } });
+  }
+
+  getWatched() {
+    return this.request('/api/extras/watched');
+  }
+
+  // --- Stats ---------------------------------------------------------------
+  getRecap(period = 'all') {
+    return this.request(`/api/extras/stats/recap?period=${period}`);
+  }
+
+  recordListen(itemId, seconds) {
+    return this.request('/api/extras/listens', { method: 'POST', body: { itemId, seconds } });
+  }
+
+  // --- Series --------------------------------------------------------------
+  getShows() {
+    return this.request('/api/series/shows');
+  }
+
+  getShow(key) {
+    return this.request(`/api/series/shows/${encodeURIComponent(key)}`);
+  }
+
+  getNextUp(limit = 12) {
+    return this.request(`/api/series/next-up?limit=${limit}`);
+  }
+
+  setSeriesWatched(key, { season = null, watched = true } = {}) {
+    return this.request('/api/series/watched', { method: 'POST', body: { key, season, watched } });
+  }
+
+  // --- Trash ---------------------------------------------------------------
+  getTrash() {
+    return this.request('/api/extras/trash');
+  }
+
+  restoreFromTrash(id) {
+    return this.request(`/api/extras/trash/${id}/restore`, { method: 'POST' });
+  }
+
+  purgeTrashEntry(id) {
+    return this.request(`/api/extras/trash/${id}`, { method: 'DELETE' });
+  }
+
+  emptyTrash() {
+    return this.request('/api/extras/trash', { method: 'DELETE' });
+  }
+
+  // --- System console ------------------------------------------------------
+  getJobs() {
+    return this.request('/api/system/jobs');
+  }
+
+  getLogs(limit = 200) {
+    return this.request(`/api/system/logs?limit=${limit}`);
+  }
+
+  exportLogs() {
+    return this.request('/api/system/logs/export', { method: 'POST' });
+  }
+
+  getDisk() {
+    return this.request('/api/system/disk');
+  }
+
+  getIndexStatus() {
+    return this.request('/api/system/index');
+  }
+
+  rebuildIndex() {
+    return this.request('/api/system/index/rebuild', { method: 'POST' });
+  }
+
+  getLibraryHealth(deep = false) {
+    return this.request(`/api/system/health${deep ? '?deep=true' : ''}`);
+  }
+
+  pruneMissing() {
+    return this.request('/api/system/health/prune-missing', { method: 'POST' });
+  }
+
+  clearCaches() {
+    return this.request('/api/system/cache', { method: 'DELETE' });
+  }
+
+  getBackups() {
+    return this.request('/api/system/backups');
+  }
+
+  createBackup(includeMedia = false) {
+    return this.request('/api/system/backups', { method: 'POST', body: { includeMedia } });
+  }
+
+  restoreBackup(file) {
+    return this.request('/api/system/backups/restore', { method: 'POST', body: { file } });
+  }
+
+  deleteBackup(name) {
+    return this.request(`/api/system/backups/${encodeURIComponent(name)}`, { method: 'DELETE' });
+  }
+
+  testNotifications() {
+    return this.request('/api/system/notifications/test', { method: 'POST' });
+  }
+
+  getScrobbles(limit = 50) {
+    return this.request(`/api/system/scrobbles?limit=${limit}`);
+  }
+
+  getAgents() {
+    return this.request('/api/system/agents');
+  }
+
+  setAgent(provider, data) {
+    return this.request(`/api/system/agents/${provider}`, { method: 'POST', body: data });
+  }
+
+  getCapabilities() {
+    return this.request('/api/system/capabilities');
+  }
+
+  getSubsonic() {
+    return this.request('/api/system/subsonic');
+  }
+
+  setSubsonicPassword(password, username) {
+    return this.request('/api/system/subsonic', { method: 'PUT', body: { password, username } });
+  }
+
+  // --- Metadata agents (match / fix) ---------------------------------------
+  searchMetadata(params) {
+    // The server expects `query`; callers often pass the natural `q`.
+    const normalised = { ...params, query: params.query || params.q };
+    const qs = new URLSearchParams(Object.entries(normalised).filter(([, v]) => v));
+    return this.request(`/api/agent/search?${qs}`);
+  }
+
+  applyMetadata(id, match, downloadArtwork = true) {
+    return this.request(`/api/agent/apply/${id}`, { method: 'POST', body: { match, downloadArtwork } });
+  }
+
+  // --- Podcasts ------------------------------------------------------------
+  getFeeds() {
+    return this.request('/api/podcasts/feeds');
+  }
+
+  subscribeFeed(url, autoDownload = false) {
+    return this.request('/api/podcasts/feeds', { method: 'POST', body: { url, autoDownload } });
+  }
+
+  refreshFeed(id) {
+    return this.request(`/api/podcasts/feeds/${id}/refresh`, { method: 'POST' });
+  }
+
+  refreshAllFeeds() {
+    return this.request('/api/podcasts/refresh', { method: 'POST' });
+  }
+
+  updateFeed(id, data) {
+    return this.request(`/api/podcasts/feeds/${id}`, { method: 'PATCH', body: data });
+  }
+
+  deleteFeed(id) {
+    return this.request(`/api/podcasts/feeds/${id}`, { method: 'DELETE' });
+  }
+
+  downloadEpisode(feedId, guid) {
+    return this.request(`/api/podcasts/feeds/${feedId}/episodes/${encodeURIComponent(guid)}/download`, { method: 'POST' });
+  }
+
+  // --- Comics --------------------------------------------------------------
+  getComic(id) {
+    return this.request(`/api/comics/${id}`);
+  }
+
+  getComicPages(id) {
+    return this.request(`/api/comics/${id}/pages`);
+  }
+
+  comicPageUrl(id, index) {
+    const token = this.getToken();
+    return `${this.baseUrl}/api/comics/${id}/page/${index}?token=${encodeURIComponent(token || '')}`;
+  }
+
+  // --- Live TV -------------------------------------------------------------
+  getChannels(withEpg = false) {
+    return this.request(`/api/livetv/channels${withEpg ? '?epg=true' : ''}`);
+  }
+
+  getEpg(channelIds = []) {
+    const qs = channelIds.length ? `?channel=${channelIds.join(',')}` : '';
+    return this.request(`/api/livetv/epg${qs}`);
+  }
+
+  getRecordings() {
+    return this.request('/api/livetv/recordings');
+  }
+
+  startRecording(data) {
+    return this.request('/api/livetv/recordings', { method: 'POST', body: data });
+  }
+
+  stopRecording(id) {
+    return this.request(`/api/livetv/recordings/${id}/stop`, { method: 'POST' });
+  }
+
+  deleteRecording(id) {
+    return this.request(`/api/livetv/recordings/${id}`, { method: 'DELETE' });
+  }
+
+  updateLiveTvSettings(data) {
+    return this.request('/api/livetv/settings', { method: 'PUT', body: data });
+  }
+
+  // --- SyncPlay (watch party) ----------------------------------------------
+  getRooms() {
+    return this.request('/api/syncplay/rooms');
+  }
+
+  createRoom(data) {
+    return this.request('/api/syncplay/rooms', { method: 'POST', body: data });
+  }
+
+  getRoom(id) {
+    return this.request(`/api/syncplay/rooms/${id}`);
+  }
+
+  joinRoom(id, data) {
+    return this.request(`/api/syncplay/rooms/${id}/join`, { method: 'POST', body: data });
+  }
+
+  leaveRoom(id, memberId) {
+    return this.request(`/api/syncplay/rooms/${id}/leave`, { method: 'POST', body: { memberId } });
+  }
+
+  syncPlayState(id, data) {
+    return this.request(`/api/syncplay/rooms/${id}/state`, { method: 'POST', body: data });
+  }
+
+  syncPlayItem(id, itemId, memberId) {
+    return this.request(`/api/syncplay/rooms/${id}/item`, { method: 'POST', body: { itemId, memberId } });
+  }
+
+  syncPlayChat(id, memberId, text) {
+    return this.request(`/api/syncplay/rooms/${id}/chat`, { method: 'POST', body: { memberId, text } });
+  }
+
+  // --- Library additions ---------------------------------------------------
+  getLibraries() {
+    return this.request('/api/library/libraries');
+  }
+
+  getRecent(since = null, limit = 20) {
+    const qs = new URLSearchParams({ limit });
+    if (since) qs.set('since', since);
+    return this.request(`/api/library/recent?${qs}`);
+  }
+
+  startBackgroundScan() {
+    return this.request('/api/library/scan/background', { method: 'POST' });
+  }
+
+  // --- Playlist additions --------------------------------------------------
+  reorderPlaylist(id, payload) {
+    return this.request(`/api/playlists/${id}/order`, { method: 'PUT', body: payload });
+  }
+
+  playlistStats(id) {
+    return this.request(`/api/playlists/${id}/stats`);
+  }
+
+  importPlaylist(name, content) {
+    return this.request('/api/playlists/import', { method: 'POST', body: { name, content } });
+  }
+
+  exportPlaylistUrl(id) {
+    return `${this.baseUrl}/api/playlists/${id}/export?token=${encodeURIComponent(this.getToken() || '')}`;
+  }
+
+  // --- Media additions -----------------------------------------------------
+  getSources(id) {
+    return this.request(`/api/media/sources/${id}`);
+  }
+
+  getPlan(id, quality = 'auto') {
+    return this.request(`/api/media/plan/${id}?quality=${encodeURIComponent(quality)}`);
+  }
+
+  getArtwork(id) {
+    return this.request(`/api/media/artwork/${id}`);
+  }
+
+  getLyrics(id) {
+    return this.request(`/api/media/lyrics/${id}`);
+  }
+
+  getTrickplay(id) {
+    return this.request(`/api/media/trickplay/${id}`);
+  }
+
+  trailerUrl(id) {
+    return `${this.baseUrl}/api/media/trailer/${id}?token=${encodeURIComponent(this.getToken() || '')}`;
+  }
+
+  extraUrl(id, index) {
+    return `${this.baseUrl}/api/media/extra/${id}/${index}?token=${encodeURIComponent(this.getToken() || '')}`;
+  }
+
+  hlsMasterUrl(id) {
+    return `${this.baseUrl}/api/transcode/hls/${id}/master.m3u8?token=${encodeURIComponent(this.getToken() || '')}`;
+  }
+
+  getEventsUrl() {
+    return `${this.baseUrl}/api/events?token=${encodeURIComponent(this.getToken() || '')}`;
   }
 }
 

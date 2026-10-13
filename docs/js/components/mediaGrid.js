@@ -4,9 +4,13 @@
 import { createMediaCard } from './mediaCard.js';
 import { escapeHtml } from '../utils/format.js';
 import { icon } from '../utils/icons.js';
+import { createVirtualGrid } from '../utils/virtualGrid.js';
+
+/** Above this many items the grid switches to windowed rendering (F-12). */
+const VIRTUAL_THRESHOLD = 150;
 
 export function renderMediaGrid(container, items, options = {}) {
-  const { onPlay, onClick, emptyMessage = 'No items found' } = options;
+  const { onPlay, onClick, emptyMessage = 'No items found', virtual } = options;
   
   container.innerHTML = '';
   
@@ -21,6 +25,23 @@ export function renderMediaGrid(container, items, options = {}) {
     return;
   }
   
+  // Large libraries: only keep the visible slice of cards in the DOM.
+  // Below the threshold we keep the simple path (and its stagger animation).
+  if (virtual !== false && items.length > VIRTUAL_THRESHOLD) {
+    container._vaultVirtualGrid?.destroy?.();
+    const grid = createVirtualGrid(container, {
+      itemHeight: options.itemHeight || 300,
+      columns: options.columns || 0,
+      gap: 16,
+      threshold: VIRTUAL_THRESHOLD,
+    });
+    grid.setItems(items, item => createMediaCard(item, { onPlay, onClick }));
+    container._vaultVirtualGrid = grid;
+    return grid;
+  }
+  container._vaultVirtualGrid?.destroy?.();
+  container._vaultVirtualGrid = null;
+
   const grid = document.createElement('div');
   grid.className = 'media-grid stagger';
   

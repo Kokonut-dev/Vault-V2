@@ -69,9 +69,15 @@ Vault is a split architecture:
 - `js/router.js` — route definitions, guards.
 - `js/store.js` — global state, localStorage persistence.
 - `js/api.js` — fetch wrapper with auth, error handling, retry.
-- `js/components/*` — sidebar, search modal, video player, audio player, EQ, etc.
-- `js/views/*` — home, movies, music, videos, playlists, upload, settings, detail pages.
-- `js/utils/*` — fuzzy search (Fuse.js vendored or CDN), formatters, keyboard shortcuts, lazy loader, icon set (`icons.js` — every UI glyph is an inline SVG from one registry), etc.
+- `js/components/*` — sidebar, search modal, video/audio players, EQ, queue panel, lyrics,
+  context menu, quick actions (playlist/collection/metadata/offline), QR pairing, HLS loader,
+  playback preferences, video extras (skip intro, chapters, trickplay), toast/modal primitives.
+- `js/views/*` — one module per route: home, movies, music, videos, playlists, favourites,
+  history, upload, settings (+ extras), shows, watchlist/continue, stats, profiles, system,
+  trash, podcasts, comics reader, live TV/DVR, SyncPlay, artists, audiobooks.
+- `js/utils/*` — formatters, icon registry (`icons.js` — every UI glyph is one inline SVG),
+  lazy loading, per-view lifecycle (`lifecycle.js` — subscriptions/cleanups per route),
+  windowed grid renderer (`virtualGrid.js`), colour extraction, clipboard, focus trap, Fuse.
 - `css/*` — themes, components, glass, grain, animations.
 
 ### Back-end Architecture (Node.js)
@@ -147,40 +153,63 @@ Vault-V2/
 │   │   ├── keyboard.js             # Global key layer (never steals typing)
 │   │   ├── pwa.js
 │   │   ├── components/
-│   │   │   ├── sidebar.js
-│   │   │   ├── toast.js
-│   │   │   ├── modal.js
-│   │   │   ├── searchModal.js
-│   │   │   ├── videoPlayer.js
 │   │   │   ├── audioPlayer.js
-│   │   │   ├── miniPlayer.js
+│   │   │   ├── confirmDialog.js
+│   │   │   ├── contextMenu.js
 │   │   │   ├── eqPanel.js
-│   │   │   ├── uploadModal.js
+│   │   │   ├── hlsLoader.js
+│   │   │   ├── lyrics.js
 │   │   │   ├── mediaCard.js
 │   │   │   ├── mediaGrid.js
 │   │   │   ├── mediaList.js
-│   │   │   ├── detailView.js
-│   │   │   ├── metadataEditor.js
-│   │   │   ├── collections.js
-│   │   │   └── shortcutsPanel.js
+│   │   │   ├── miniPlayer.js
+│   │   │   ├── modal.js
+│   │   │   ├── playbackPrefs.js
+│   │   │   ├── playerExtras.js
+│   │   │   ├── qrPair.js
+│   │   │   ├── queuePanel.js
+│   │   │   ├── quickActions.js
+│   │   │   ├── searchModal.js
+│   │   │   ├── shortcutsPanel.js
+│   │   │   ├── sidebar.js
+│   │   │   ├── toast.js
+│   │   │   ├── videoExtras.js
+│   │   │   └── videoPlayer.js
 │   │   ├── views/
-│   │   │   ├── home.js
-│   │   │   ├── movies.js
-│   │   │   ├── music.js
-│   │   │   ├── videos.js
-│   │   │   ├── playlists.js
+│   │   │   ├── artists.js
+│   │   │   ├── audiobooks.js
+│   │   │   ├── comics.js
+│   │   │   ├── detail.js
 │   │   │   ├── favourites.js
 │   │   │   ├── history.js
-│   │   │   ├── upload.js
+│   │   │   ├── home.js
+│   │   │   ├── livetv.js
+│   │   │   ├── movies.js
+│   │   │   ├── music.js
+│   │   │   ├── playlists.js
+│   │   │   ├── podcasts.js
+│   │   │   ├── profiles.js
 │   │   │   ├── settings.js
-│   │   │   └── login.js
-│   │   └── utils/
-│   │       ├── fuse.js             # Vendored Fuse.js (fuzzy search)
-│   │       ├── format.js           # Time, size, etc.
-│   │       ├── icons.js            # Inline SVG icon set (single source of artwork)
-│   │       ├── lazyLoad.js         # IntersectionObserver
-│   │       ├── validators.js
-│   │       └── constants.js
+│   │   │   ├── settingsExtras.js
+│   │   │   ├── shows.js
+│   │   │   ├── stats.js
+│   │   │   ├── syncplay.js
+│   │   │   ├── system.js
+│   │   │   ├── trash.js
+│   │   │   ├── upload.js
+│   │   │   ├── videos.js
+│   │   │   └── watchlist.js
+│   │   ├── utils/
+│   │   │   ├── clipboard.js
+│   │   │   ├── color.js
+│   │   │   ├── constants.js
+│   │   │   ├── focusTrap.js
+│   │   │   ├── format.js
+│   │   │   ├── fuse.js
+│   │   │   ├── icons.js
+│   │   │   ├── lazyLoad.js
+│   │   │   ├── lifecycle.js
+│   │   │   └── virtualGrid.js
 │   └── assets/
 │       ├── grain.png               # Tiny noise texture (base64 or file)
 │       ├── icons/                  # SVG icons
@@ -287,7 +316,39 @@ Vault-V2/
 
 ---
 
-## 1.4 API Specification
+## 1.4 Performance notes
+
+Kept deliberately boring: no build step, no bundler, no framework. The parts
+that matter for large libraries are:
+
+**Client**
+- Grids render a window of cards once a list passes 150 items
+  (`utils/virtualGrid.js`), so a 20 000-item library keeps ~a screenful of
+  nodes in the DOM. Two spacers preserve scroll height; the column count is
+  measured from the real gap, not assumed.
+- Anything registered on a route change goes through `utils/lifecycle.js`
+  (`subscribeView`, `onUnmount`): store subscriptions *and* `window` listeners
+  are torn down before the next view mounts, so navigation cannot stack
+  duplicate handlers or keep detached DOM alive.
+- Requests are made against the in-memory store when possible; list endpoints
+  are only re-fetched on the events that invalidate them (`vault:library-changed`
+  and friends).
+
+**Server**
+- Library look-ups are index-based: `idMap`/`pathMap` (O(1)) and a per-type
+  index. `updateItem` merges in place and `removeItem` splices only the
+  affected type bucket — a full rescan used to be O(n²) because each write
+  scanned the array and rebuilt every index.
+- `/api/system/disk` walks the cache tree once and derives the
+  transcoded/thumbnails/covers sub-totals from the same pass (it used to walk
+  the tree four times), and file sizes are `stat`-ed in parallel batches.
+- `/api/system/health` probes the filesystem with bounded concurrency instead
+  of one serialised `await` per item; both reports are memoised for a short
+  TTL and invalidated by scans, prunes, cache clears and restores.
+- JSON stores write atomically (tmp + rename) and debounce; every writer
+  registers its in-flight promise so `flush()` on shutdown never loses data.
+
+## 1.5 API Specification
 
 Base URL: `http://localhost:4000` (configurable via `config.js`)
 

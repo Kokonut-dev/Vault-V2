@@ -1,19 +1,3 @@
-export const APP_NAME = 'Vault';
-export const APP_VERSION = '2.0.0';
-
-export const THEMES = ['dark', 'light', 'warm', 'cold'];
-
-export const MEDIA_TYPES = ['movie', 'music', 'video'];
-
-export const SORT_OPTIONS = [
-  { value: 'addedAt', label: 'Date Added' },
-  { value: 'title', label: 'Title' },
-  { value: 'year', label: 'Year' },
-  { value: 'rating', label: 'Rating' },
-  { value: 'duration', label: 'Duration' },
-  { value: 'fileSize', label: 'Size' },
-];
-
 export const EQ_PRESETS = {
   flat: { name: 'Flat', gains: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0] },
   bassBoost: { name: 'Bass Boost', gains: [6, 5, 4, 2, 0, 0, 0, 0, 0, 0] },
@@ -65,5 +49,3 @@ export const KEYBOARD_SHORTCUTS = {
   ],
 };
 
-export const SUPPORTED_AUDIO = ['.mp3', '.flac', '.wav', '.ogg', '.opus', '.m4a', '.aac', '.wma', '.aiff'];
-export const SUPPORTED_VIDEO = ['.mp4', '.mkv', '.webm', '.avi', '.mov', '.wmv', '.flv', '.m4v'];

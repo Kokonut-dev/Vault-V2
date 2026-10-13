@@ -6,11 +6,24 @@ const { cleanCache } = require('../utils/fileUtils');
 
 let ffmpeg = null;
 try {
-  const ffmpegStatic = require('ffmpeg-static');
-  const ffprobeStatic = require('ffprobe-static');
+  // Same fallback as transcodePlan: a bundled path that does not exist on
+  // disk (installs with --ignore-scripts, containers with apt ffmpeg) must
+  // not stop us from using the system binaries.
+  const path_ = require('path');
+  const fs_ = require('fs-extra');
+  let ffmpegPath = 'ffmpeg';
+  let ffprobePath = 'ffprobe';
+  try {
+    const bundled = require('ffmpeg-static');
+    if (bundled && fs_.existsSync(path_.resolve(bundled))) ffmpegPath = bundled;
+  } catch { /* not installed */ }
+  try {
+    const bundled = require('ffprobe-static').path;
+    if (bundled && fs_.existsSync(path_.resolve(bundled))) ffprobePath = bundled;
+  } catch { /* not installed */ }
   ffmpeg = require('fluent-ffmpeg');
-  ffmpeg.setFfmpegPath(ffmpegStatic);
-  ffmpeg.setFfprobePath(ffprobeStatic.path);
+  ffmpeg.setFfmpegPath(ffmpegPath);
+  ffmpeg.setFfprobePath(ffprobePath);
 } catch {
   try {
     ffmpeg = require('fluent-ffmpeg');

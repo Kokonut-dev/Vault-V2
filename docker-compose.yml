@@ -1,0 +1,48 @@
+# Vault — one-command self-hosting.
+#
+#   docker compose up -d      start (http://localhost:4000)
+#   docker compose logs -f    follow logs
+#   docker compose down       stop (data survives in the named volumes)
+#
+# Edit the two media volumes below to point at your own folders.
+services:
+  vault:
+    build: .
+    image: vault:latest
+    container_name: vault
+    restart: unless-stopped
+    ports:
+      - "${VAULT_PORT:-4000}:4000"
+    environment:
+      # Set these to override the defaults from server/config.json.
+      VAULT_PORT: 4000
+      VAULT_HOST: 0.0.0.0
+      # Enable the mDNS announcement (vault.local) — needs host networking to
+      # reach the LAN; see deploy/README.md for the trade-offs.
+      # VAULT_MDNS: "1"
+      TZ: "${TZ:-UTC}"
+      LOG_LEVEL: "${LOG_LEVEL:-info}"
+    volumes:
+      # Persistent server state: config.json, library.json, trash, backups, cache.
+      - vault-data:/app/server/data
+      - vault-cache:/app/server/cache
+      - vault-logs:/app/server/logs
+      # Your media. Add one line per library folder.
+      - ${MEDIA_MOVIES:-./server/media/movies}:/media/movies:ro
+      - ${MEDIA_TV:-./server/media/tv}:/media/tv:ro
+      - ${MEDIA_MUSIC:-./server/media/music}:/media/music:ro
+      - ${MEDIA_VIDEOS:-./server/media/videos}:/media/videos:ro
+      - ${MEDIA_AUDIOBOOKS:-./server/media/audiobooks}:/media/audiobooks:ro
+      - ${MEDIA_COMICS:-./server/media/comics}:/media/comics:ro
+      - ${MEDIA_PODCASTS:-./server/media/podcasts}:/media/podcasts
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:4000/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
+volumes:
+  vault-data:
+  vault-cache:
+  vault-logs:

@@ -1,5 +1,103 @@
 # Changelog
 
+## [3.0.0] — in progress (branch `arena/0deefe55-vault-v2`)
+
+### Efficiency pass — dead code stripped, hot paths fixed
+Five-stage scan (dead modules/exports/imports → DOM & CSS → duplication →
+client hot paths → server hot paths), then the findings were removed or fixed:
+
+**Removed (nothing was reachable)**
+- Dead stub modules: `components/collections.js`, `detailView.js`,
+  `metadataEditor.js`, `uploadModal.js`, `utils/validators.js`
+  (the AUDIT.md F-28 list, now gone).
+- 21 exports nothing referenced (`getAudioElement`, `openLyricsModal`,
+  `sleepStatus`, `toggleSidebar`, `manageProfile`, `formatDuration`,
+  `slugify`, `parseYear`, `getFileExtension`, `preloadImage`, the unused
+  constants, …) and 12 unused imports.
+- **`renderStatsPanel` / "Playback stats"** was unreachable too — instead of
+  deleting the feature it is now wired into the player's quality menu.
+
+**Fixed**
+- Three leaked `window` listeners that stacked on every route change
+  (Continue Watching, the EQ panel, Settings → Devices) — they now register
+  through `utils/lifecycle.js` and detach on unmount.
+- A stale-view write in Settings (`#server-info`) that threw once the request
+  resolved after navigating away.
+- mDNS cache-flush TTL overflow (`ttl | 0x80000000` is negative in JS and
+  Buffer rejects it) — the announcement previously failed with a warning.
+- Install-to-home-screen prompt was never wired: `initInstallPrompt()` now
+  exposes `window.vaultInstall` and Settings → Devices offers the button.
+- `searchMetadata()` accepts `q` (the server expects `query`).
+
+**Server performance**
+- Library index operations are O(1): `updateItem` merged in place via `idMap`
+  instead of `findIndex` + array swap, `removeItem` splices only the affected
+  type bucket instead of rebuilding every index, `addItem` de-dupes through
+  `idMap`/`pathMap`. A 20 000-item rescan no longer degrades to O(n²)
+  (isolated benchmark: 20 000 updates 3 633 ms → 4 ms; 500 removals
+  1 445 ms → 2 ms).
+- `/api/system/disk` walks the cache tree once (sub-totals from the same pass)
+  with batched `stat` calls — 5.2× faster on 3 400 files — and is memoised for
+  15 s; `/api/system/health` probes the filesystem with bounded concurrency
+  and a 30 s TTL, invalidated by scans, prunes, cache clears and restores.
+- `prune-missing` uses the parallel probe pass; the deep health scan's
+  sidecar check went from O(n²) to set lookups.
+
+**Tooling**
+- `scripts/import-check.js` now also reports imported-but-unused bindings
+  (warnings; `--strict` fails) — the class of dead weight this pass removed.
+- `scripts/config-example.js` regenerates `server/config.example.json` from
+  `DEFAULT_CONFIG` with portable paths and placeholders (`npm run
+  config:example`).
+- Server tests 24 → 35 (mDNS packet builders, library index consistency).
+
+### Added
+- **Server subsystems (18):** events (SSE bus + job tracking), trash (soft
+  delete with retention + restore), extras (watchlist, collections, smart
+  rules, markers, bookmarks, podcast feeds, listen stats), profiles + sessions
+  (per-profile libraries/history, PINs, session list/revoke), stats
+  (Wrapped-style recap), SQLite index (optional, `node:sqlite`), transcode plan
+  (quality ladder, hardware-accel detection), metadata agents (TMDB/MusicBrainz/
+  NFO), podcasts (RSS/Atom + episode download), comics (CBZ reader), live TV
+  (M3U/HDHomeRun/XMLTV + DVR), SyncPlay (rooms, drift correction, chat),
+  notifications (webhook/ntfy/Discord/Telegram + Last.fm/ListenBrainz
+  scrobbling), system (health, backups, log ring, disk usage), Subsonic API,
+  HLS streaming (on-demand segmenter + playlists), JSON store utility, TOTP,
+  ignore rules.
+- **REST surface:** `/api/extras`, `/api/series`, `/api/profiles`,
+  `/api/system`, `/api/podcasts`, `/api/comics`, `/api/livetv`,
+  `/api/syncplay`, `/api/agent`, `/rest` (Subsonic), live `/api/events`;
+  artwork/trailer/extras/trickplay/lyrics/chapters/plan/sources endpoints;
+  playlist order/export/import/stats; HLS playlists; `/api/library/libraries`
+  and `/api/library/recent`.
+- **Client:** context menus with queue/watchlist/watched/trash-undo, Up Next
+  queue panel (drag to reorder, save as playlist), synced lyrics with offset
+  nudge, sleep timer + stop-after with fade, cast button, bookmarks,
+  "stats for nerds", skip intro/recap/outro, chapter chips, trickplay scrub
+  previews, quality selector, home hero + "Next up" + "Because you watched"
+  rows, shows/seasons/episodes pages, My List, Continue Watching, Stats/Wrapped,
+  profiles picker, server console, trash, downloads, podcasts, comics reader,
+  live TV/DVR, SyncPlay rooms, QR pairing, multi-select batch actions, mobile
+  gestures, bottom navigation, ambient artwork colours, offline downloads,
+  quality badges, playlist export/import/drag-reorder, live updates over SSE.
+- **Docs/config:** `server/config.example.json` regenerated from the real
+  defaults (TOTP, profiles, Subsonic, libraries, ignore rules, scan schedule,
+  storage backend, trickplay, trash, extras, notifications, Live TV, podcasts,
+  metadata providers). Vendored `hls.js` + `qrcode-generator` under
+  `docs/vendor/` with licences.
+
+### Changed
+- `docs/js/api.js` accepts plain-object request bodies (normalised to JSON) and
+  gained the full v3 method surface + `markCompleted`.
+- Video player emits `vault:video-opened` / `vault:timeupdate` /
+  `vault:item-finished` and marks items completed on `ended`.
+- `docs/css/v3.css` added to the CSS build (13 sheets → 93.5 KB minified,
+  16.7 KB gzip).
+
+### Verification
+- `npm run lint` (syntax-check): 129 files OK · `node --test`: 24/24 pass ·
+  server boots and serves `/api/health` 3.0.0.
+
 ## [Unreleased]
 
 ### Added

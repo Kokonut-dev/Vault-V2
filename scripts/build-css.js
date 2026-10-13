@@ -43,6 +43,7 @@ const SHEETS = [
   'eq.css',
   'animations.css',
   'accessibility.css',
+  'v3.css',
 ];
 
 // One marker string per sheet (verified unique across sources) — proves the
@@ -60,6 +61,7 @@ const MARKERS = {
   'eq.css': 'eq-panel',
   'animations.css': 'pageEnter',
   'accessibility.css': 'skip-link',
+  'v3.css': 'queue-panel',
 };
 
 function loadCleanCss() {
