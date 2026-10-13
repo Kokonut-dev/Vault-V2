@@ -270,6 +270,38 @@ class ApiClient {
     return `${this.baseUrl}/api/media/stream/${id}?token=${encodeURIComponent(token || '')}`;
   }
 
+  // Attachment download of the original file (works over remote access:
+  // the token rides in the query string and the server answers with
+  // Content-Disposition, so no custom headers or CORS preflight are needed
+  // and the browser saves instead of playing the stream).
+  getDownloadUrl(id) {
+    const token = store.get('token') || localStorage.getItem('vault_token');
+    return `${this.baseUrl}/api/media/download/${id}?token=${encodeURIComponent(token || '')}`;
+  }
+
+  /** Trigger a browser download of an item's original file. */
+  downloadItemFile(itemOrId) {
+    const id = typeof itemOrId === 'string' ? itemOrId : itemOrId?.id;
+    if (!id) return false;
+    const link = document.createElement('a');
+    link.href = this.getDownloadUrl(id);
+    link.download = (typeof itemOrId === 'object' && itemOrId?.filename) || '';
+    link.rel = 'noopener';
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    return true;
+  }
+
+  /** True when the UI is being used away from the server's own origin. */
+  isRemoteAccess() {
+    try {
+      return new URL(this.baseUrl, window.location.href).origin !== window.location.origin;
+    } catch {
+      return false;
+    }
+  }
+
   getCoverUrl(id, size = null) {
     const token = store.get('token') || localStorage.getItem('vault_token');
     const sizeParam = size ? `&size=${encodeURIComponent(size)}` : '';

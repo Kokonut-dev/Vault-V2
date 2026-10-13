@@ -73,6 +73,7 @@ export function initVideoPlayer() {
   const eqBtn = document.getElementById('video-eq');
   const speedBtn = document.getElementById('video-speed');
   const nextBtn = document.getElementById('video-next');
+  const downloadBtn = document.getElementById('video-download');
   const retryBtn = document.getElementById('video-retry-transcode');
 
   if (!videoEl || !modal) return;
@@ -309,6 +310,11 @@ export function initVideoPlayer() {
   nextBtn?.addEventListener('click', () => {
     window.dispatchEvent(new CustomEvent('vault:play-next-episode'));
   });
+  downloadBtn?.addEventListener('click', () => {
+    if (!currentItem) return;
+    if (api.downloadItemFile(currentItem)) toast.success(`Downloading "${currentItem.title}"`);
+  });
+
 
   retryBtn?.addEventListener('click', () => {
     if (currentItem) openPlayer(currentItem, { forceTranscode: true });

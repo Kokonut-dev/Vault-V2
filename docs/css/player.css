@@ -555,6 +555,43 @@
   transform: translateY(0);
 }
 
+/* Frosted cover-art backdrop (Spotify-style): the current track's artwork,
+   heavily blurred and scaled up (to hide blur edge falloff), dimmed under a
+   frosted-glass shade so foreground text/controls stay readable. Only shown
+   once artwork has loaded (.has-cover-art is set from the player). */
+.now-playing-bg {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  z-index: 0;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity var(--duration-slow) var(--ease-out);
+}
+.now-playing.has-cover-art .now-playing-bg { opacity: 1; }
+.now-playing-bg img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  filter: blur(70px) saturate(150%) brightness(0.85);
+  transform: scale(1.35);
+}
+.now-playing-bg-shade {
+  position: absolute;
+  inset: 0;
+  background: color-mix(in srgb, var(--bg-primary) 52%, transparent);
+  backdrop-filter: blur(18px) saturate(150%);
+  -webkit-backdrop-filter: blur(18px) saturate(150%);
+}
+.now-playing > .now-playing-header,
+.now-playing > .now-playing-content {
+  position: relative;
+  z-index: 1;
+}
+@media (prefers-reduced-motion: reduce) {
+  .now-playing-bg { transition: none; }
+}
+
 .now-playing-header {
   height: var(--header-height);
   display: flex;
