@@ -99,6 +99,10 @@ class FakeDocument extends El {
     this.visible = visible;
     this.listeners = { keydown: [] };
     this.activeElement = null;
+    // Modules that build DOM at import time — e.g. components/toast.js mounts
+    // its container from `export const toast = new ToastManager()` — need a
+    // body to append to, and mediaCard.js now reaches it via contextMenu.js.
+    this.body = new El('body');
   }
   addEventListener(type, fn) { (this.listeners[type] ||= []).push(fn); }
   querySelector(sel) { return this.visible.find((el) => el.matches(sel)) || null; }

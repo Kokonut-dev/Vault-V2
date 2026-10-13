@@ -85,6 +85,13 @@ client hot paths → server hot paths), then the findings were removed or fixed:
   storage backend, trickplay, trash, extras, notifications, Live TV, podcasts,
   metadata providers). Vendored `hls.js` + `qrcode-generator` under
   `docs/vendor/` with licences.
+- **`scripts/music-view-check.js`** (`npm run test:music`) — 14 checks driving
+  the real `views/music.js` + `views/detail.js` in a jsdom DOM: album cards open
+  instead of playing, their play button still plays, Enter/Space reach both,
+  genre rows expand, and the grouping survives navigation. It fails 9 checks on
+  the pre-fix code and passes now. Unlike the other checks it needs a real DOM
+  (the views build markup with `innerHTML`), so jsdom is an optional devDep —
+  with none installed it reports SKIPPED and exits 0 instead of failing a build.
 
 ### Changed
 - `docs/js/api.js` accepts plain-object request bodies (normalised to JSON) and
@@ -93,10 +100,38 @@ client hot paths → server hot paths), then the findings were removed or fixed:
   `vault:item-finished` and marks items completed on `ended`.
 - `docs/css/v3.css` added to the CSS build (13 sheets → 93.5 KB minified,
   16.7 KB gzip).
+- The Music page remembers its grouping (`vault_music_group_by`, validated
+  against the four known filters). Opening an album is now a navigation, so Back
+  returns to the Albums grid instead of dropping you back on All Tracks.
+
+### Fixed
+- **The Albums filter played the album instead of opening it.** Every album card
+  in `views/music.js` dispatched `vault:play` on click, so the album page — which
+  already lists the album's tracks with Play Album / Shuffle — was unreachable
+  from that filter, and its play affordance was an unfocusable `<div>`. Activating
+  a card now opens the album; playback moved onto a real labelled `<button>`, and
+  the card is focusable (`role`/`tabindex`, Enter/Space) like every other card.
+- **The Genres filter had the same shape** — clicking a row played the genre.
+  Genres have no page of their own, so the row now expands into its track list
+  (`aria-expanded`, rows built on first open) and playback sits on its own button.
+- **The album page mis-grouped untagged tracks.** It matched album siblings with
+  `i.album === item.album`, so opening the "Unknown Album" group (tracks carry
+  `undefined`, `''` or no key at all) showed an empty heading and a partial list;
+  it now uses the same `album || 'Unknown Album'` key as the Albums filter.
+- **An album was credited to whichever track you clicked.** The album byline now
+  reads "Various Artists" when its tracks disagree on the artist.
+- **`npm run test:keyboard` crashed before it could report.** `components/toast.js`
+  mounts its container at module scope, and `mediaCard.js` now reaches it through
+  `contextMenu.js`, so the harness's fake `document` had no `body` to append to
+  and the "media cards / list rows (real modules)" phase died on import.
+  `FakeDocument` gained a `body`; 25/25 again.
 
 ### Verification
 - `npm run lint` (syntax-check): 129 files OK · `node --test`: 24/24 pass ·
   server boots and serves `/api/health` 3.0.0.
+- After merging `main` into this branch: `npm run lint` 136 files OK ·
+  `npm run check:imports` 323 imports across 67 files OK · `node --test` 35/35
+  pass · `npm run test:music` 14/14 · `npm run test:keyboard` 25/25.
 
 ## [Unreleased]
 

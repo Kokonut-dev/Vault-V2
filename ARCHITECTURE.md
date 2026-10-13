@@ -259,10 +259,13 @@ Vault-V2/
 └── scripts/
     ├── setup.js                    # Interactive setup for server config
     ├── generate-cert.js            # mkcert helper
-    ├── build-css.js                # 12 CSS sources → docs/css/vault.css
+    ├── build-css.js                # 13 CSS sources → docs/css/vault.css
+    ├── config-example.js           # Regenerates server/config.example.json
     ├── syntax-check.js             # Parses every JS file (zero-dep)
+    ├── import-check.js             # Import-graph check on docs/js (zero-dep)
     ├── contrast-check.js           # WCAG AA check on the theme tokens
-    └── keyboard-check.js           # Global key layer regression suite
+    ├── keyboard-check.js           # Global key layer regression suite
+    └── music-view-check.js         # Music groupings regression suite (jsdom)
 ```
 
 ---
