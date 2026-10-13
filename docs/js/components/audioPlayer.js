@@ -18,6 +18,7 @@ let nextAudio = null;
 let isCrossfading = false;
 let graphReady = false;
 let unlockBound = false;
+let silenceMonitor = null;
 
 const EQ_FREQUENCIES = [32, 64, 125, 250, 500, 1000, 2000, 4000, 8000, 16000];
 
@@ -29,6 +30,7 @@ function initAudioContext() {
     compressorNode = audioContext.createDynamicsCompressor();
     analyserNode = audioContext.createAnalyser();
     analyserNode.fftSize = 256;
+    applyNormalization(readAudioPrefs().normalize);
 
     eqNodes = EQ_FREQUENCIES.map(freq => {
       const filter = audioContext.createBiquadFilter();
@@ -125,6 +127,88 @@ function warnMixedContent(url) {
   return false;
 }
 
+/** Read the shared playback prefs (single localStorage key, see
+ * components/playbackPrefs.js). Kept defensive: the audio player must work
+ * even if the settings module has not been loaded yet. */
+function readAudioPrefs() {
+  try {
+    const prefs = JSON.parse(localStorage.getItem('vault_playback_prefs')) || {};
+    return { normalize: !!prefs.normalize, skipSilence: !!prefs.skipSilence, speed: Number(prefs.speed) || 1 };
+  } catch {
+    return { normalize: false, skipSilence: false, speed: 1 };
+  }
+}
+
+/**
+ * Loudness normalisation through the existing DynamicsCompressor node —
+ * quiet dialogue and loud action end up at a similar level, the way Plex and
+ * Jellyfin's "normalize volume" option behaves.
+ */
+export function applyNormalization(enabled) {
+  if (!compressorNode || !audioContext) return false;
+  try {
+    if (enabled) {
+      compressorNode.threshold.value = -26;
+      compressorNode.knee.value = 28;
+      compressorNode.ratio.value = 6;
+      compressorNode.attack.value = 0.005;
+      compressorNode.release.value = 0.25;
+    } else {
+      // Transparent: ratio 1 makes the compressor a pass-through.
+      compressorNode.threshold.value = 0;
+      compressorNode.knee.value = 0;
+      compressorNode.ratio.value = 1;
+      compressorNode.attack.value = 0.003;
+      compressorNode.release.value = 0.25;
+    }
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Skip-silence approximation: watch the analyser's RMS while playing and, if
+ * the track stays below the noise floor for longer than ~2 s, nudge forward.
+ * Default off (settings toggle) because it changes the timeline.
+ */
+function startSilenceMonitor() {
+  if (silenceMonitor || !analyserNode) return;
+  const buffer = new Uint8Array(analyserNode.fftSize);
+  let silentFor = 0;
+  let lastJump = 0;
+  silenceMonitor = setInterval(() => {
+    if (!currentAudio || currentAudio.paused) { silentFor = 0; return; }
+    const prefs = readAudioPrefs();
+    if (!prefs.skipSilence) { silentFor = 0; return; }
+    analyserNode.getByteTimeDomainData(buffer);
+    let sum = 0;
+    for (let i = 0; i < buffer.length; i++) {
+      const centred = (buffer[i] - 128) / 128;
+      sum += centred * centred;
+    }
+    const rms = Math.sqrt(sum / buffer.length);
+    if (rms < 0.01) {
+      silentFor += 0.25;
+      const now = Date.now();
+      if (silentFor > 2 && now - lastJump > 1200) {
+        // Step forward a second at a time; stop near the end of the track.
+        if (currentAudio.duration && currentAudio.currentTime < currentAudio.duration - 3) {
+          currentAudio.currentTime += 1;
+          lastJump = now;
+        }
+      }
+    } else {
+      silentFor = 0;
+    }
+  }, 250);
+}
+
+export function stopSilenceMonitor() {
+  if (silenceMonitor) clearInterval(silenceMonitor);
+  silenceMonitor = null;
+}
+
 export function initAudioPlayer() {
   initAudioContext();
 
@@ -178,10 +262,21 @@ export function initAudioPlayer() {
     handleAction(action, percent);
   });
 
+  window.addEventListener('vault:audio-prefs', (event) => {
+    const prefs = event.detail || readAudioPrefs();
+    applyNormalization(prefs.normalize);
+    if (prefs.skipSilence) startSilenceMonitor();
+    else stopSilenceMonitor();
+  });
+  const initialPrefs = readAudioPrefs();
+  applyNormalization(initialPrefs.normalize);
+  if (initialPrefs.skipSilence) startSilenceMonitor();
+
   window.VAULT_AUDIO = {
     getAnalyser: () => analyserNode,
     getContext: () => audioContext,
     unlock: unlockAudio,
+    applyNormalization,
   };
 
 }
@@ -476,10 +571,6 @@ function onLoadedMetadata() {
   window.dispatchEvent(new CustomEvent('vault:durationchange', {
     detail: { duration: currentAudio?.duration || 0 }
   }));
-}
-
-export function getAudioElement() {
-  return currentAudio;
 }
 
 export function getAnalyser() {

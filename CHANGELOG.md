@@ -1,5 +1,138 @@
 # Changelog
 
+## [3.0.0] — in progress (branch `arena/0deefe55-vault-v2`)
+
+### Efficiency pass — dead code stripped, hot paths fixed
+Five-stage scan (dead modules/exports/imports → DOM & CSS → duplication →
+client hot paths → server hot paths), then the findings were removed or fixed:
+
+**Removed (nothing was reachable)**
+- Dead stub modules: `components/collections.js`, `detailView.js`,
+  `metadataEditor.js`, `uploadModal.js`, `utils/validators.js`
+  (the AUDIT.md F-28 list, now gone).
+- 21 exports nothing referenced (`getAudioElement`, `openLyricsModal`,
+  `sleepStatus`, `toggleSidebar`, `manageProfile`, `formatDuration`,
+  `slugify`, `parseYear`, `getFileExtension`, `preloadImage`, the unused
+  constants, …) and 12 unused imports.
+- **`renderStatsPanel` / "Playback stats"** was unreachable too — instead of
+  deleting the feature it is now wired into the player's quality menu.
+
+**Fixed**
+- Three leaked `window` listeners that stacked on every route change
+  (Continue Watching, the EQ panel, Settings → Devices) — they now register
+  through `utils/lifecycle.js` and detach on unmount.
+- A stale-view write in Settings (`#server-info`) that threw once the request
+  resolved after navigating away.
+- mDNS cache-flush TTL overflow (`ttl | 0x80000000` is negative in JS and
+  Buffer rejects it) — the announcement previously failed with a warning.
+- Install-to-home-screen prompt was never wired: `initInstallPrompt()` now
+  exposes `window.vaultInstall` and Settings → Devices offers the button.
+- `searchMetadata()` accepts `q` (the server expects `query`).
+
+**Server performance**
+- Library index operations are O(1): `updateItem` merged in place via `idMap`
+  instead of `findIndex` + array swap, `removeItem` splices only the affected
+  type bucket instead of rebuilding every index, `addItem` de-dupes through
+  `idMap`/`pathMap`. A 20 000-item rescan no longer degrades to O(n²)
+  (isolated benchmark: 20 000 updates 3 633 ms → 4 ms; 500 removals
+  1 445 ms → 2 ms).
+- `/api/system/disk` walks the cache tree once (sub-totals from the same pass)
+  with batched `stat` calls — 5.2× faster on 3 400 files — and is memoised for
+  15 s; `/api/system/health` probes the filesystem with bounded concurrency
+  and a 30 s TTL, invalidated by scans, prunes, cache clears and restores.
+- `prune-missing` uses the parallel probe pass; the deep health scan's
+  sidecar check went from O(n²) to set lookups.
+
+**Tooling**
+- `scripts/import-check.js` now also reports imported-but-unused bindings
+  (warnings; `--strict` fails) — the class of dead weight this pass removed.
+- `scripts/config-example.js` regenerates `server/config.example.json` from
+  `DEFAULT_CONFIG` with portable paths and placeholders (`npm run
+  config:example`).
+- Server tests 24 → 35 (mDNS packet builders, library index consistency).
+
+### Added
+- **Server subsystems (18):** events (SSE bus + job tracking), trash (soft
+  delete with retention + restore), extras (watchlist, collections, smart
+  rules, markers, bookmarks, podcast feeds, listen stats), profiles + sessions
+  (per-profile libraries/history, PINs, session list/revoke), stats
+  (Wrapped-style recap), SQLite index (optional, `node:sqlite`), transcode plan
+  (quality ladder, hardware-accel detection), metadata agents (TMDB/MusicBrainz/
+  NFO), podcasts (RSS/Atom + episode download), comics (CBZ reader), live TV
+  (M3U/HDHomeRun/XMLTV + DVR), SyncPlay (rooms, drift correction, chat),
+  notifications (webhook/ntfy/Discord/Telegram + Last.fm/ListenBrainz
+  scrobbling), system (health, backups, log ring, disk usage), Subsonic API,
+  HLS streaming (on-demand segmenter + playlists), JSON store utility, TOTP,
+  ignore rules.
+- **REST surface:** `/api/extras`, `/api/series`, `/api/profiles`,
+  `/api/system`, `/api/podcasts`, `/api/comics`, `/api/livetv`,
+  `/api/syncplay`, `/api/agent`, `/rest` (Subsonic), live `/api/events`;
+  artwork/trailer/extras/trickplay/lyrics/chapters/plan/sources endpoints;
+  playlist order/export/import/stats; HLS playlists; `/api/library/libraries`
+  and `/api/library/recent`.
+- **Client:** context menus with queue/watchlist/watched/trash-undo, Up Next
+  queue panel (drag to reorder, save as playlist), synced lyrics with offset
+  nudge, sleep timer + stop-after with fade, cast button, bookmarks,
+  "stats for nerds", skip intro/recap/outro, chapter chips, trickplay scrub
+  previews, quality selector, home hero + "Next up" + "Because you watched"
+  rows, shows/seasons/episodes pages, My List, Continue Watching, Stats/Wrapped,
+  profiles picker, server console, trash, downloads, podcasts, comics reader,
+  live TV/DVR, SyncPlay rooms, QR pairing, multi-select batch actions, mobile
+  gestures, bottom navigation, ambient artwork colours, offline downloads,
+  quality badges, playlist export/import/drag-reorder, live updates over SSE.
+- **Docs/config:** `server/config.example.json` regenerated from the real
+  defaults (TOTP, profiles, Subsonic, libraries, ignore rules, scan schedule,
+  storage backend, trickplay, trash, extras, notifications, Live TV, podcasts,
+  metadata providers). Vendored `hls.js` + `qrcode-generator` under
+  `docs/vendor/` with licences.
+- **`scripts/music-view-check.js`** (`npm run test:music`) — 14 checks driving
+  the real `views/music.js` + `views/detail.js` in a jsdom DOM: album cards open
+  instead of playing, their play button still plays, Enter/Space reach both,
+  genre rows expand, and the grouping survives navigation. It fails 9 checks on
+  the pre-fix code and passes now. Unlike the other checks it needs a real DOM
+  (the views build markup with `innerHTML`), so jsdom is an optional devDep —
+  with none installed it reports SKIPPED and exits 0 instead of failing a build.
+
+### Changed
+- `docs/js/api.js` accepts plain-object request bodies (normalised to JSON) and
+  gained the full v3 method surface + `markCompleted`.
+- Video player emits `vault:video-opened` / `vault:timeupdate` /
+  `vault:item-finished` and marks items completed on `ended`.
+- `docs/css/v3.css` added to the CSS build (13 sheets → 93.5 KB minified,
+  16.7 KB gzip).
+- The Music page remembers its grouping (`vault_music_group_by`, validated
+  against the four known filters). Opening an album is now a navigation, so Back
+  returns to the Albums grid instead of dropping you back on All Tracks.
+
+### Fixed
+- **The Albums filter played the album instead of opening it.** Every album card
+  in `views/music.js` dispatched `vault:play` on click, so the album page — which
+  already lists the album's tracks with Play Album / Shuffle — was unreachable
+  from that filter, and its play affordance was an unfocusable `<div>`. Activating
+  a card now opens the album; playback moved onto a real labelled `<button>`, and
+  the card is focusable (`role`/`tabindex`, Enter/Space) like every other card.
+- **The Genres filter had the same shape** — clicking a row played the genre.
+  Genres have no page of their own, so the row now expands into its track list
+  (`aria-expanded`, rows built on first open) and playback sits on its own button.
+- **The album page mis-grouped untagged tracks.** It matched album siblings with
+  `i.album === item.album`, so opening the "Unknown Album" group (tracks carry
+  `undefined`, `''` or no key at all) showed an empty heading and a partial list;
+  it now uses the same `album || 'Unknown Album'` key as the Albums filter.
+- **An album was credited to whichever track you clicked.** The album byline now
+  reads "Various Artists" when its tracks disagree on the artist.
+- **`npm run test:keyboard` crashed before it could report.** `components/toast.js`
+  mounts its container at module scope, and `mediaCard.js` now reaches it through
+  `contextMenu.js`, so the harness's fake `document` had no `body` to append to
+  and the "media cards / list rows (real modules)" phase died on import.
+  `FakeDocument` gained a `body`; 25/25 again.
+
+### Verification
+- `npm run lint` (syntax-check): 129 files OK · `node --test`: 24/24 pass ·
+  server boots and serves `/api/health` 3.0.0.
+- After merging `main` into this branch: `npm run lint` 136 files OK ·
+  `npm run check:imports` 323 imports across 67 files OK · `node --test` 35/35
+  pass · `npm run test:music` 14/14 · `npm run test:keyboard` 25/25.
+
 ## [Unreleased]
 
 ### Added
@@ -19,13 +152,6 @@
   browser or npm install required. It fails on the pre-fix handler (13 of its
   cases) and passes now; run it with `scripts/syntax-check.js` when touching the
   global key layer.
-- **`scripts/music-view-check.js`** (`npm run test:music`) — 14 checks driving
-  the real `views/music.js` + `views/detail.js` in a jsdom DOM: album cards open
-  instead of playing, their play button still plays, Enter/Space reach both,
-  genre rows expand, and the grouping survives navigation. It fails 9 checks on
-  the pre-fix code and passes now. Unlike the other checks it needs a real DOM
-  (the views build markup with `innerHTML`), so jsdom is an optional devDep —
-  with none installed it reports SKIPPED and exits 0 instead of failing a build.
 
 ### Fixed
 - **Space could not be typed into any form field.** The global shortcut layer
@@ -46,21 +172,6 @@
 - Browser/OS chords (`Cmd+P`, `Cmd+S`, `Cmd+R`, `Ctrl+N`) are no longer
   swallowed by player shortcuts, and a focused control keeps its own keys
   (Space on a button/checkbox, arrows on a slider or `<select>`).
-- **The Albums filter played the album instead of opening it.** Every album card
-  in `views/music.js` dispatched `vault:play` on click, so the album page — which
-  already lists the album's tracks with Play Album / Shuffle — was unreachable
-  from that filter, and its play affordance was an unfocusable `<div>`. Activating
-  a card now opens the album; playback moved onto a real labelled `<button>`, and
-  the card is focusable (`role`/`tabindex`, Enter/Space) like every other card.
-- **The Genres filter had the same shape** — clicking a row played the genre.
-  Genres have no page of their own, so the row now expands into its track list
-  (`aria-expanded`, rows built on first open) and playback sits on its own button.
-- **The album page mis-grouped untagged tracks.** It matched album siblings with
-  `i.album === item.album`, so opening the "Unknown Album" group (tracks carry
-  `undefined`, `''` or no key at all) showed an empty heading and a partial list;
-  it now uses the same `album || 'Unknown Album'` key as the Albums filter.
-- **An album was credited to whichever track you clicked.** The album byline now
-  reads "Various Artists" when its tracks disagree on the artist.
 
 ### Changed
 - Replaced emoji/dingbats in: header (menu, search, theme, shortcuts), mini
@@ -83,9 +194,6 @@
   rendering everywhere (launchers/tools without system-ui fonts included).
 - Favourite buttons gained `aria-pressed` + a stateful `aria-label`; the
   fullscreen control now reflects state; attribute labels use `escapeAttr()`.
-- The Music page remembers its grouping (`vault_music_group_by`, validated
-  against the four known filters). Opening an album is now a navigation, so Back
-  returns to the Albums grid instead of dropping you back on All Tracks.
 
 ## [2.2.0] - 2026-09-27
 

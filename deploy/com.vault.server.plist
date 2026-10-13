@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Vault media server — launchd agent (macOS). See deploy/README.md.
+
+  1. Edit the two paths below to match your install.
+  2. cp deploy/com.vault.server.plist ~/Library/LaunchAgents/
+  3. launchctl load ~/Library/LaunchAgents/com.vault.server.plist
+-->
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.vault.server</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/usr/local/bin/node</string>
+    <string>index.js</string>
+  </array>
+
+  <key>WorkingDirectory</key>
+  <string>/opt/vault/server</string>
+
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <true/>
+
+  <key>StandardOutPath</key>
+  <string>/opt/vault/server/logs/vault.out.log</string>
+  <key>StandardErrorPath</key>
+  <string>/opt/vault/server/logs/vault.err.log</string>
+
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>VAULT_PORT</key>
+    <string>4000</string>
+    <key>LOG_LEVEL</key>
+    <string>info</string>
+  </dict>
+</dict>
+</plist>

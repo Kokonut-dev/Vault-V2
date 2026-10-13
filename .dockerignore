@@ -1,0 +1,13 @@
+.git
+.github
+node_modules
+**/node_modules
+server/data
+server/cache
+server/logs
+server/media
+server/uploads
+server/config.json
+server/.env
+*.log
+docs-copy

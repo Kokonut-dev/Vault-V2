@@ -101,9 +101,29 @@ export function initVideoPlayer() {
   videoEl.addEventListener('error', () => {
     const err = videoEl.error;
     console.error('[VideoPlayer] error', err);
+
+    // Attempt ladder: direct play → progressive transcode → HLS (if the
+    // browser supports MSE and the vendored hls.js loads). Each step is only
+    // taken once per item so a broken file cannot loop forever.
     if (currentItem && !usingTranscode) {
       toast.info('Direct play failed — trying transcode…');
       openPlayer(currentItem, { forceTranscode: true });
+      return;
+    }
+    if (currentItem && usingTranscode && !currentItem._triedHls) {
+      currentItem._triedHls = true;
+      import('./hlsLoader.js').then(async ({ attachHls }) => {
+        const started = await attachHls(videoEl, api.hlsMasterUrl(currentItem.id), {
+          startPosition: videoEl.currentTime || 0,
+        });
+        if (!started) {
+          setError('This file could not be played. The codec may be unsupported or the server is unreachable.', false);
+          return;
+        }
+        clearError();
+        toast.info('Switched to adaptive streaming (HLS)');
+        videoEl.play().catch(() => player?.classList.add('paused', 'show-controls'));
+      });
       return;
     }
     setError('This file could not be played. The codec may be unsupported or the server is unreachable.', false);
@@ -127,11 +147,70 @@ export function initVideoPlayer() {
         lastProgressSave = now;
         store.addToHistory(currentItem.id, percent);
       }
+      // v3: one shared tick for lyrics highlighting, skip-intro prompts,
+      // chapter highlighting and the trickplay preview.
+      window.dispatchEvent(new CustomEvent('vault:timeupdate', {
+        detail: { currentTime: videoEl.currentTime, duration: videoEl.duration, item: currentItem },
+      }));
     });
   });
 
   videoEl.addEventListener('loadedmetadata', () => {
     if (durationEl) durationEl.textContent = formatTime(videoEl.duration);
+  });
+
+  // OS-level media controls (lock screen, Windows/macOS media keys, Android
+  // notification). Audio had this; video did not (Tier 3 item).
+  function updateMediaSession() {
+    if (!('mediaSession' in navigator) || !currentItem) return;
+    try {
+      navigator.mediaSession.metadata = new MediaMetadata({
+        title: currentItem.title || 'Vault',
+        artist: currentItem.artist || currentItem.genre || '',
+        album: currentItem.season ? `S${String(currentItem.season).padStart(2, '0')}E${String(currentItem.episode || 0).padStart(2, '0')}` : (currentItem.album || 'Vault'),
+        artwork: currentItem.poster || currentItem.cover
+          ? [{ src: currentItem.poster || currentItem.cover, sizes: '512x512', type: 'image/jpeg' }]
+          : [{ src: api.getThumbnailUrl(currentItem.id), sizes: '320x180', type: 'image/jpeg' }],
+      });
+    } catch { /* MediaMetadata unsupported */ }
+
+    const video = videoEl;
+    navigator.mediaSession.setActionHandler?.('play', () => video?.play().catch(() => {}));
+    navigator.mediaSession.setActionHandler?.('pause', () => video?.pause());
+    navigator.mediaSession.setActionHandler?.('seekbackward', () => {
+      if (video) video.currentTime = Math.max(0, video.currentTime - 10);
+    });
+    navigator.mediaSession.setActionHandler?.('seekforward', () => {
+      if (video) video.currentTime = Math.min(video.duration || Infinity, video.currentTime + 10);
+    });
+    navigator.mediaSession.setActionHandler?.('seekto', (details) => {
+      if (video && details.seekTime != null) video.currentTime = details.seekTime;
+    });
+    try {
+      navigator.mediaSession.setActionHandler?.('nexttrack', nextBtn && !nextBtn.disabled ? () => nextBtn.click() : null);
+    } catch { /* handler unsupported */ }
+  }
+
+  window.addEventListener('vault:video-opened', () => {
+    updateMediaSession();
+    if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'playing';
+  });
+  videoEl.addEventListener('pause', () => {
+    if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'paused';
+  });
+  videoEl.addEventListener('play', () => {
+    if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'playing';
+  });
+
+  videoEl.addEventListener('ended', () => {
+    // Two things used to be missing here (audit note): nothing told the
+    // server the item finished, and no event fired for the "stop after N"
+    // sleep timer / next-episode logic to hook into.
+    if (currentItem) {
+      api.markCompleted?.(currentItem.id).catch(() => {});
+      store.addToHistory?.(currentItem.id, 100);
+    }
+    window.dispatchEvent(new CustomEvent('vault:item-finished', { detail: { item: currentItem } }));
   });
 
   videoEl.addEventListener('progress', () => {
@@ -350,11 +429,19 @@ export function openPlayer(item, { forceTranscode = false } = {}) {
   });
 
   if (item.season && item.episode) checkNextEpisode(item);
+
+  // Let the v3 extras layer load markers (skip intro/outro), chapters,
+  // trickplay metadata and the transcode plan for this item.
+  window.dispatchEvent(new CustomEvent('vault:video-opened', { detail: { item } }));
 }
 
 export function closePlayer() {
   const modal = document.getElementById('video-modal');
   const vEl = document.getElementById('video-element');
+  window.dispatchEvent(new CustomEvent('vault:video-closed'));
+  if (vEl) {
+    import('./hlsLoader.js').then(({ detachHls }) => detachHls(vEl)).catch(() => {});
+  }
 
   if (rafId) { cancelAnimationFrame(rafId); rafId = null; }
   if (controlsTimeout) { clearTimeout(controlsTimeout); controlsTimeout = null; }

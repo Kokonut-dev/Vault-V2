@@ -2,7 +2,6 @@
  * History view
  */
 import { store } from '../store.js';
-import { renderMediaList } from '../components/mediaList.js';
 import { formatRelativeTime, escapeHtml } from '../utils/format.js';
 import { api } from '../api.js';
 import { toast } from '../components/toast.js';
