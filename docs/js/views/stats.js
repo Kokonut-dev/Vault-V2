@@ -23,12 +23,12 @@ function statCard(label, value, hint = '') {
 
 function bars(days) {
   if (!days?.length) return '';
-  const max = Math.max(...days.map(d => d.seconds || d.count || 0), 1);
+  const max = Math.max(...days.map(d => d.seconds || 0), 1);
   return `<div class="bar-chart" role="img" aria-label="Daily activity for the last ${days.length} days">
     ${days.map(day => {
-      const value = day.seconds || day.count || 0;
+      const value = day.seconds || 0;
       const height = Math.max(2, Math.round((value / max) * 100));
-      return `<span style="height:${height}%" title="${escapeHtml(day.date)}: ${day.count || Math.round(value / 60)}"></span>`;
+      return `<span style="height:${height}%" title="${escapeHtml(day.date)}: ${Math.round(value / 60)} min"></span>`;
     }).join('')}
   </div>`;
 }
@@ -56,41 +56,46 @@ export async function renderStats(container) {
   `;
 
   const body = container.querySelector('#stats-body');
+  // Guards against an older (slower) response overwriting a newer period.
+  let requestId = 0;
 
   async function load(period) {
+    const id = ++requestId;
     body.innerHTML = `<div class="skeleton skeleton-block"></div>`;
     let data;
     try {
       data = await api.getRecap(period);
     } catch (err) {
+      if (id !== requestId) return;
       body.innerHTML = `<div class="empty-state"><div class="empty-state-title">Stats unavailable</div>
         <div class="empty-state-message">${escapeHtml(err.message)}</div></div>`;
       return;
     }
+    if (id !== requestId) return;
 
     const library = data.library || {};
     const watching = data.watching || {};
-    const audio = data.audio || data.listening || {};
-    const totalSeconds = watching.sessionSeconds || watching.seconds || 0;
-    const days = Math.round(totalSeconds / 86400 * 10) / 10;
+    const listening = data.listening || {};
+    const byType = library.byType || {};
+    const watchedHours = ((watching.seconds || 0) / 3600).toFixed(1);
 
     body.innerHTML = `
       <div class="wrapped-hero">
         <div class="stat-label">${escapeHtml(PERIODS.find(p => p[0] === period)?.[1] || '')}</div>
-        <div class="stat-value">${days} day${days === 1 ? '' : 's'} watched</div>
-        <div class="row-meta">${watching.sessions || 0} sessions · ${watching.items || 0} titles touched</div>
+        <div class="stat-value">${watchedHours} hour${watchedHours === '1.0' ? '' : 's'} watched</div>
+        <div class="row-meta">${watching.sessions || 0} sessions · ${watching.items || 0} titles touched · ${listening.tracks || 0} tracks played</div>
       </div>
 
       <div class="stat-grid" style="margin-bottom:24px">
-        ${statCard('Titles', library.total ?? 0, `${library.movies ?? 0} movies · ${library.episodes ?? 0} episodes`)}
-        ${statCard('Hours watched', (totalSeconds / 3600).toFixed(1))}
-        ${statCard('Tracks played', audio.plays ?? 0, audio.seconds ? formatTime(audio.seconds) : '')}
-        ${statCard('Library size', formatBytes(library.bytes || 0), `${library.artists ?? 0} artists`)}
+        ${statCard('Titles', library.items ?? 0, `${byType.movie ?? 0} movies · ${byType.video ?? 0} videos`)}
+        ${statCard('Hours watched', watchedHours, watching.items ? `${watching.items} titles` : '')}
+        ${statCard('Tracks played', listening.tracks ?? 0, listening.seconds ? formatTime(listening.seconds) : '')}
+        ${statCard('Library size', formatBytes(library.storage || 0), `${library.artists ?? 0} artists`)}
       </div>
 
       <section class="section">
         <h2 class="section-title">Last 90 days</h2>
-        ${bars(watching.daily || watching.buckets)}
+        ${bars(watching.daily)}
       </section>
 
       <div class="two-col">
@@ -100,13 +105,13 @@ export async function renderStats(container) {
         </section>
         <section class="section">
           <h2 class="section-title">Top artists</h2>
-          ${topList(audio.topArtists || audio.artists, 'name')}
+          ${topList(listening.topArtists, 'name')}
         </section>
       </div>
 
       <section class="section">
         <h2 class="section-title">Genres</h2>
-        ${topList((library.genres || []).map(g => ({ title: g.name || g.genre, count: g.count, seconds: g.seconds })))}
+        ${topList((library.topGenres || []).map(g => ({ title: g.key, count: g.value })))}
       </section>
     `;
   }
