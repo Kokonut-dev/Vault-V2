@@ -10,7 +10,12 @@ class ApiClient {
     this._tokenCacheTime = 0;
     this._cache = new Map(); // simple GET cache
     this._cacheTTL = 30 * 1000; // 30s for stats/genres
-    this._abortControllers = new Map();
+    // Identical GETs are shared instead of cancelling one another. A library
+    // mutation is announced over SSE before its HTTP response is received, so
+    // both the live-event handler and the view can refresh `/api/library` at
+    // nearly the same time. Cancelling the first request made a successful
+    // album reorder surface as "The operation was aborted" in the UI.
+    this._inflightGets = new Map();
   }
 
   // Always read the live base URL. Previously this was captured once in the
@@ -72,7 +77,40 @@ class ApiClient {
     this._cache.clear();
   }
 
-  async request(path, options = {}) {
+  request(path, options = {}) {
+    const isGet = !options.method || options.method === 'GET';
+    const shareRequest = isGet && options.dedupe !== false && !options.signal;
+    const authScope = options.auth === false ? 'public' : (this.getToken() || 'anonymous');
+    const inflightKey = `${this._getCacheKey(path)}|${authScope}`;
+
+    // Two consumers asking for the exact same resource want the same result.
+    // Sharing also prevents one consumer (notably an SSE refresh) from
+    // cancelling the other and turning a successful edit into an AbortError.
+    if (shareRequest && this._inflightGets.has(inflightKey)) {
+      const shared = this._inflightGets.get(inflightKey);
+      // A Response body is single-use. JSON requests return parsed values, but
+      // clone the occasional image/audio Response for a second consumer.
+      return shared.then(result => (
+        typeof Response !== 'undefined' && result instanceof Response
+          ? result.clone()
+          : result
+      ));
+    }
+
+    const pending = this._performRequest(path, options);
+    if (shareRequest) {
+      this._inflightGets.set(inflightKey, pending);
+      const clear = () => {
+        if (this._inflightGets.get(inflightKey) === pending) {
+          this._inflightGets.delete(inflightKey);
+        }
+      };
+      pending.then(clear, clear);
+    }
+    return pending;
+  }
+
+  async _performRequest(path, options = {}) {
     const url = `${this.baseUrl}${path}`;
     const isFormData = options.body instanceof FormData;
     const isGet = !options.method || options.method === 'GET';
@@ -89,23 +127,22 @@ class ApiClient {
     };
     if (isFormData) delete headers['Content-Type'];
 
-    // Abort previous same-path request to avoid race
-    if (isGet && this._abortControllers.has(path)) {
-      try { this._abortControllers.get(path).abort(); } catch {}
-    }
-    const controller = new AbortController();
-    if (isGet) this._abortControllers.set(path, controller);
-
     const fetchOptions = {
       ...options,
       headers,
-      signal: options.signal || controller.signal,
       // Accept plain objects for `body` (the v3 methods pass objects) while
       // keeping FormData and pre-stringified bodies untouched.
       body: isFormData || options.body === undefined || typeof options.body === 'string'
         ? options.body
         : JSON.stringify(options.body),
     };
+    // Client-only controls are not part of RequestInit. Most browsers ignore
+    // unknown keys, but removing them keeps strict fetch implementations happy.
+    delete fetchOptions.auth;
+    delete fetchOptions.dedupe;
+    delete fetchOptions.retries;
+    delete fetchOptions.retry;
+    if (fetchOptions.cache === false) delete fetchOptions.cache;
 
     // Retry logic for transient failures
     const maxRetries = options.retry === false ? 0 : (options.retries ?? 1);
@@ -114,8 +151,6 @@ class ApiClient {
     for (let attempt = 0; attempt <= maxRetries; attempt++) {
       try {
         const res = await fetch(url, fetchOptions);
-
-        if (isGet) this._abortControllers.delete(path);
 
         if (res.status === 401) {
           const data = await res.json().catch(() => ({}));
@@ -150,6 +185,8 @@ class ApiClient {
           const err = new Error(data.error || `Request failed: ${res.status}`);
           err.status = res.status;
           err.code = data.code || 'REQUEST_FAILED';
+          err.path = data.path || path;
+          err.endpointNotFound = data.code === 'NOT_FOUND' && typeof data.path === 'string';
           throw err;
         }
 
@@ -167,8 +204,6 @@ class ApiClient {
         break;
       }
     }
-
-    if (isGet) this._abortControllers.delete(path);
 
     if (lastErr) {
       if (lastErr.message === 'Failed to fetch' || lastErr.name === 'TypeError') {
@@ -429,6 +464,7 @@ class ApiClient {
   // Upload
   async upload(type, files, metadata = {}, onProgress = null) {
     const formData = new FormData();
+    const includesCover = Boolean(metadata.cover);
     
     if (Array.isArray(files)) {
       files.forEach(file => formData.append('files', file));
@@ -468,14 +504,27 @@ class ApiClient {
       }
 
       xhr.onload = () => {
-        try {
-          const data = JSON.parse(xhr.responseText);
-          if (xhr.status >= 200 && xhr.status < 300) resolve(data);
-          else reject(new Error(data.error || 'Upload failed'));
-        } catch {
-          if (xhr.status >= 200 && xhr.status < 300) resolve({ message: 'Upload complete' });
-          else reject(new Error('Upload failed'));
+        let data = {};
+        try { data = JSON.parse(xhr.responseText); } catch {}
+        if (xhr.status >= 200 && xhr.status < 300) {
+          resolve(Object.keys(data).length ? data : { message: 'Upload complete' });
+          return;
         }
+
+        const missingEndpoint = xhr.status === 404 && (
+          data.code === 'NOT_FOUND'
+          || /^not found$/i.test(data.error || '')
+          || !data.error
+        );
+        const uploadPath = data.path || `/api/upload/${type}`;
+        const message = missingEndpoint
+          ? `${includesCover ? 'Media and cover upload' : 'Media upload'} endpoint was not found (${url}). Check that the Server URL points to your Vault backend; if it does, update and restart the server, then try again.`
+          : (data.error || 'Upload failed');
+        const error = new Error(message);
+        error.status = xhr.status;
+        error.code = missingEndpoint ? 'UPLOAD_UNAVAILABLE' : (data.code || 'UPLOAD_FAILED');
+        error.path = uploadPath;
+        reject(error);
       };
 
       xhr.onerror = () => reject(new Error('Network error during upload'));
@@ -1051,17 +1100,57 @@ class ApiClient {
     return this.request('/api/library/albums/metadata', { method: 'PUT', body: { ids, album } });
   }
 
+  _isMissingEndpoint(err) {
+    if (err?.status !== 404) return false;
+    return err.endpointNotFound === true
+      || /^not found$/i.test(err.message || '')
+      || /^request failed:\s*404$/i.test(err.message || '');
+  }
+
+  async _uploadCover(paths, buildForm) {
+    let lastError;
+    for (const path of paths) {
+      try {
+        return await this.request(path, { method: 'POST', body: buildForm() });
+      } catch (err) {
+        lastError = err;
+        if (!this._isMissingEndpoint(err)) throw err;
+      }
+    }
+
+    // A separately hosted UI is often updated before the self-hosted server.
+    // Replace the opaque reverse-proxy/Express "Not found" with the action that
+    // fixes that version skew. Alias routes let current servers recover when a
+    // proxy only forwards one of the route shapes.
+    const attempted = paths.map(path => `${this.baseUrl}${path}`).join(', ');
+    const unavailable = new Error(`Cover upload endpoints were not found (${attempted}). Check that the Server URL points to your Vault backend; if it does, update and restart the server, then try again.`);
+    unavailable.status = 404;
+    unavailable.code = 'COVER_UPLOAD_UNAVAILABLE';
+    unavailable.path = lastError?.path || paths[paths.length - 1];
+    unavailable.cause = lastError;
+    throw unavailable;
+  }
+
   uploadAlbumCover(ids, file) {
-    const form = new FormData();
-    form.append('cover', file);
-    form.append('ids', JSON.stringify(ids));
-    return this.request('/api/library/albums/cover', { method: 'POST', body: form });
+    const buildForm = () => {
+      const form = new FormData();
+      form.append('cover', file);
+      form.append('ids', JSON.stringify(ids));
+      return form;
+    };
+    return this._uploadCover(['/api/library/albums/cover', '/api/library/cover'], buildForm);
   }
 
   uploadPlaylistCover(id, file) {
-    const form = new FormData();
-    form.append('cover', file);
-    return this.request(`/api/playlists/${id}/cover`, { method: 'POST', body: form });
+    const buildForm = () => {
+      const form = new FormData();
+      form.append('cover', file);
+      return form;
+    };
+    return this._uploadCover([
+      `/api/playlists/${id}/cover`,
+      `/api/playlists/cover/${id}`,
+    ], buildForm);
   }
 
   removePlaylistCover(id) {

@@ -43,6 +43,20 @@ function trackWrite(name, filePath, data) {
 
 let genreDirty = false;
 
+// JSON remains the source of truth, but when the optional SQLite read index is
+// enabled every runtime mutation must be mirrored immediately. Without this,
+// album track numbers were saved in memory/JSON while the next GET /library
+// returned the old order from SQLite until the server restarted.
+function mirrorSqlite(action, value) {
+  if (getConfig().media?.storage !== 'sqlite') return;
+  try {
+    const index = require('./sqliteIndex');
+    if (typeof index[action] === 'function') index[action](value);
+  } catch (err) {
+    logger.warn(`[Index] ${action} mirror failed: ${err.message}`);
+  }
+}
+
 function rebuildIndexes() {
   idMap.clear();
   typeIndex = { movie: [], music: [], video: [] };
@@ -194,6 +208,7 @@ function addItem(item) {
   // library for every scanned file, i.e. O(n²) per scan).
   const existing = idMap.get(item.id) || (item.path ? pathMap.get(item.path) : null) || null;
   const now = new Date().toISOString();
+  let replacedId = null;
   if (existing) {
     const previousType = existing.type;
     const previousPath = existing.path;
@@ -202,7 +217,10 @@ function addItem(item) {
     // Re-key the id index when a rescan assigns a new id to a known path:
     // without this, getById (array fallback) finds the item but updateItem
     // (idMap only) returns null, so every metadata edit silently fails.
-    if (previousId && previousId !== existing.id) idMap.delete(previousId);
+    if (previousId && previousId !== existing.id) {
+      idMap.delete(previousId);
+      replacedId = previousId;
+    }
     idMap.set(existing.id, existing);
     searchTextCache.delete(existing);
     if (previousPath && previousPath !== existing.path) pathMap.delete(previousPath);
@@ -219,8 +237,11 @@ function addItem(item) {
       else genreSet.add(newItem.genre);
     }
   }
+  const saved = idMap.get(item.id);
+  if (replacedId) mirrorSqlite('remove', replacedId);
+  mirrorSqlite('upsert', saved);
   saveLibrary();
-  return idMap.get(item.id);
+  return saved;
 }
 
 function updateItem(id, updates) {
@@ -236,6 +257,7 @@ function updateItem(id, updates) {
     if (Array.isArray(updates.genre)) updates.genre.forEach(g => genreSet.add(g));
     else genreSet.add(updates.genre);
   }
+  mirrorSqlite('upsert', existing);
   saveLibrary();
   return existing;
 }
@@ -285,6 +307,7 @@ function removeItem(id) {
   history = history.filter(h => h.itemId !== id);
   if (history.length !== beforeHistory) saveHistory();
 
+  mirrorSqlite('remove', id);
   saveLibraryImmediate(); // immediate for removal
   return true;
 }

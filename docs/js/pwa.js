@@ -44,17 +44,35 @@ export function initPWA() {
       }
       const basePath = window.VAULT_CONFIG?.basePath || '/Vault-V2';
       const swPath = `${basePath}/sw.js`;
-      const reg = await navigator.serviceWorker.register(swPath);
-
-      reg.addEventListener('updatefound', () => {
-        const newWorker = reg.installing;
-        newWorker.addEventListener('statechange', () => {
-          if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
-            // New version available — UI listens for this event
-            window.dispatchEvent(new CustomEvent('vault:update-available'));
-          }
+      // Never let the HTTP cache hide a changed worker script. The worker then
+      // fetches JS/CSS network-first, keeping api.js and dynamically imported
+      // views on the same deployment instead of mixing incompatible versions.
+      const reg = await navigator.serviceWorker.register(swPath, { updateViaCache: 'none' });
+      let updateAnnounced = false;
+      const announceUpdate = () => {
+        if (updateAnnounced || !navigator.serviceWorker.controller) return;
+        updateAnnounced = true;
+        window.dispatchEvent(new CustomEvent('vault:update-available'));
+      };
+      const watchInstalling = (worker) => {
+        if (!worker) return;
+        worker.addEventListener('statechange', () => {
+          if (worker.state === 'installed') announceUpdate();
         });
-      });
+      };
+
+      reg.addEventListener('updatefound', () => watchInstalling(reg.installing));
+      // updatefound can fire while register() itself is resolving.
+      watchInstalling(reg.installing);
+      if (reg.waiting) announceUpdate();
+      // Explicitly check on every app load rather than waiting for the
+      // browser's periodic service-worker update window. Registration still
+      // remains usable if a browser rejects a redundant in-progress check.
+      try {
+        await reg.update();
+      } catch (err) {
+        console.warn('[PWA] Update check failed:', err.message);
+      }
     } catch (err) {
       console.warn('[PWA] Service Worker registration failed:', err.message);
     }

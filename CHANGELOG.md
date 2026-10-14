@@ -2,6 +2,31 @@
 
 ## [3.0.0] — in progress (branch `arena/0deefe55-vault-v2`)
 
+### Fixed — cover art uploads reporting "Not Found"
+- Album and playlist artwork uploads now have compatibility route aliases and
+  retry only when the server reports that the endpoint itself is missing.
+  A missing endpoint now names the failed API paths and asks the user to update
+  and restart the self-hosted server instead of surfacing an opaque `Not Found`.
+- Optional artwork on a multi-file media upload is persisted once and shared by
+  every indexed item. Previously the first item moved the temporary image and
+  the second item failed while trying to move the now-missing file again.
+- Authenticated integration tests exercise album editing, playlist editing,
+  compatibility aliases, and optional artwork on new-media batch uploads.
+
+### Fixed — album and playlist track reordering
+- Album reorders no longer report an `AbortError` after they have succeeded.
+  The mutation response is merged into the library immediately, and identical
+  live-event/view refreshes now share one GET instead of cancelling each other.
+- Installed PWAs no longer mix a permanently cached `api.js` with newly
+  deployed views (the source of `updateAlbumOrder/reorderPlaylist is not a
+  function`). The v4 shell repairs existing caches, checks for updates on every
+  load, and fetches shell modules network-first with an offline fallback.
+  Compatibility fallbacks also let an already-open stale client call the
+  reorder endpoints without clearing site data.
+- SQLite-backed libraries mirror add/update/remove operations immediately, so
+  saved album track numbers are visible without restarting the server.
+- Service-worker activation now preserves explicitly downloaded offline media.
+
 ### Fixed — "Too many requests" at login, again (follow-up to PR #13)
 PR #13 exempted `/api/auth/*` from the general limiter, but users with
 correct credentials could still get 429 at login. Three remaining causes:
