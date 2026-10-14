@@ -6,6 +6,8 @@ import { formatTime, formatDuration, durationSeconds, formatBytes, escapeHtml } 
 import { api } from '../api.js';
 import { toast } from '../components/toast.js';
 import { confirmDialog, alertDialog } from '../components/confirmDialog.js';
+import { renderMediaList } from '../components/mediaList.js';
+import { makeReorderable } from '../components/reorderableList.js';
 import { copyText } from '../utils/clipboard.js';
 import { icon, setIcon } from '../utils/icons.js';
 
@@ -270,15 +272,16 @@ function renderMusicDetail(container, item) {
     store.set('library', [...store.get('library')]);
   };
 
-  const renderTracks = async () => {
-    const { renderMediaList } = await import('../components/mediaList.js');
+  const renderTracks = () => {
     renderMediaList(trackListEl, tracks, {
       onClick: (track) => {
         window.dispatchEvent(new CustomEvent('vault:play', { detail: { item: track, queue: tracks, index: tracks.findIndex(t => t.id === track.id) } }));
       }
     });
     if (!isAlbumView) return;
-    const { makeReorderable } = await import('../components/reorderableList.js');
+    // Attach the reorder controls in the same tick as the rows. They used to
+    // arrive from a second dynamic import, which left the rows on screen
+    // without their ↑/↓ buttons until that module finished loading.
     makeReorderable(trackListEl, {
       onEdit: (index) => showTrackEditModal(tracks[index], async () => { await refreshLibrary(); renderMusicDetail(container, item); }),
       onMove: async (from, to) => {

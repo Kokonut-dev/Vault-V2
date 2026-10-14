@@ -2,6 +2,22 @@
 
 ## [3.0.0] — in progress (branch `arena/0deefe55-vault-v2`)
 
+### Fixed — deploy failing on the reorder UI test
+The GitHub Pages deploy of the previous merge failed in the `Server tests` step,
+so none of those changes reached the site. `detail.js` and `playlists.js`
+attached the ↑/↓ reorder buttons from a *second* dynamic import that resolved
+after the rows had already rendered, while `server/test/reorder-ui.test.js`
+waited only for the rows and then clicked a button that did not exist yet on a
+slower, cold runner (`Cannot read properties of null (reading 'click')`).
+- Rows and their reorder controls are now attached in the same tick: the
+  `mediaList.js` and `reorderableList.js` imports are static, so no async gap
+  remains between the two (users no longer see reorderable rows appear without
+  their move buttons).
+- `reorder-ui.test.js` now waits for the move button it clicks, so a future
+  regression reports "move buttons did not render" instead of a `TypeError`.
+- Verified on Node 20 (the CI version) with the full deploy verification
+  sequence: 52/52 server tests pass.
+
 ### Fixed — cover art uploads reporting "Not Found"
 - Album and playlist artwork uploads now have compatibility route aliases and
   retry only when the server reports that the endpoint itself is missing.

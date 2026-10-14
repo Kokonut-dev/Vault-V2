@@ -98,6 +98,10 @@ test('album and playlist move buttons persist and render the new order', async (
     () => albumContainer.querySelectorAll('#track-list .media-list-item').length === 3,
     'album rows did not render',
   );
+  await waitFor(
+    () => albumContainer.querySelector('#track-list .media-list-item [data-move="1"]'),
+    'album move buttons did not render',
+  );
   albumContainer.querySelector('#track-list .media-list-item [data-move="1"]').click();
   await waitFor(() => Array.isArray(albumIds), 'album reorder API was not called');
   await waitFor(
@@ -123,6 +127,10 @@ test('album and playlist move buttons persist and render the new order', async (
   await waitFor(
     () => playlistContainer.querySelectorAll('#pl-items .media-list-item').length === 3,
     'playlist rows did not render',
+  );
+  await waitFor(
+    () => playlistContainer.querySelector('#pl-items .media-list-item [data-move="1"]'),
+    'playlist move buttons did not render',
   );
   playlistContainer.querySelector('#pl-items .media-list-item [data-move="1"]').click();
   await waitFor(() => playlistPayload, 'playlist reorder API was not called');

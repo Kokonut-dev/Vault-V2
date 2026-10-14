@@ -5,6 +5,8 @@ import { store } from '../store.js';
 import { api } from '../api.js';
 import { toast } from '../components/toast.js';
 import { renderSkeletonGrid } from '../components/mediaGrid.js';
+import { renderMediaList } from '../components/mediaList.js';
+import { makeReorderable } from '../components/reorderableList.js';
 import { confirmDialog } from '../components/confirmDialog.js';
 import { escapeHtml, formatTime } from '../utils/format.js';
 import { icon } from '../utils/icons.js';
@@ -275,55 +277,51 @@ export function renderPlaylists(container) {
     if (items.length === 0) {
       itemsContainer.innerHTML = '<div class="empty-state"><div class="empty-state-title">No items in this playlist</div></div>';
     } else {
-      import('../components/mediaList.js').then(({ renderMediaList }) => {
-        renderMediaList(itemsContainer, items, {
-          onClick: (item) => {
-            if (item.type === 'music') {
-              window.dispatchEvent(new CustomEvent('vault:play', { detail: { item, queue: items, index: items.findIndex(i => i.id === item.id) } }));
-            } else {
-              window.dispatchEvent(new CustomEvent('vault:open-video', { detail: { item } }));
-            }
+      renderMediaList(itemsContainer, items, {
+        onClick: (item) => {
+          if (item.type === 'music') {
+            window.dispatchEvent(new CustomEvent('vault:play', { detail: { item, queue: items, index: items.findIndex(i => i.id === item.id) } }));
+          } else {
+            window.dispatchEvent(new CustomEvent('vault:open-video', { detail: { item } }));
           }
-        });
-        import('../components/reorderableList.js').then(({ makeReorderable }) => {
-          makeReorderable(itemsContainer, {
-            onEdit: async (index) => {
-              const { showTrackEditModal } = await import('./detail.js');
-              showTrackEditModal(items[index], () => openPlaylist(playlist));
-            },
-            onMove: async (from, to) => {
-              // `from`/`to` are indices into the *rendered* rows, which skip
-              // playlist entries whose track is missing from the library. Apply
-              // the move to the visible ids, then write them back into the full
-              // list so hidden entries keep their slots and the right track moves.
-              const visibleIds = items.map(i => i.id);
-              const nextVisible = [...visibleIds];
-              const [moved] = nextVisible.splice(from, 1);
-              nextVisible.splice(to, 0, moved);
-              const visibleSet = new Set(visibleIds);
-              let cursor = 0;
-              const next = (playlist.items || []).map(id => (visibleSet.has(id) ? nextVisible[cursor++] : id));
-              try {
-                // Older installed PWA shells can still have an api.js from
-                // before reorderPlaylist existed. Fall back to the public
-                // request primitive so reordering works without clearing the
-                // browser cache; the service worker update fixes future loads.
-                const updated = typeof api.reorderPlaylist === 'function'
-                  ? await api.reorderPlaylist(playlist.id, { items: next })
-                  : await api.request(`/api/playlists/${playlist.id}/order`, {
-                    method: 'PUT',
-                    body: JSON.stringify({ items: next }),
-                  });
-                playlist.items = Array.isArray(updated?.items) ? updated.items : next;
-                playlist.updatedAt = updated?.updatedAt || playlist.updatedAt;
-                toast.success('Order saved');
-                openPlaylist(playlist);
-              } catch (err) {
-                toast.error(`Could not reorder: ${err.message}`);
-              }
-            },
-          });
-        });
+        }
+      });
+      makeReorderable(itemsContainer, {
+        onEdit: async (index) => {
+          const { showTrackEditModal } = await import('./detail.js');
+          showTrackEditModal(items[index], () => openPlaylist(playlist));
+        },
+        onMove: async (from, to) => {
+          // `from`/`to` are indices into the *rendered* rows, which skip
+          // playlist entries whose track is missing from the library. Apply
+          // the move to the visible ids, then write them back into the full
+          // list so hidden entries keep their slots and the right track moves.
+          const visibleIds = items.map(i => i.id);
+          const nextVisible = [...visibleIds];
+          const [moved] = nextVisible.splice(from, 1);
+          nextVisible.splice(to, 0, moved);
+          const visibleSet = new Set(visibleIds);
+          let cursor = 0;
+          const next = (playlist.items || []).map(id => (visibleSet.has(id) ? nextVisible[cursor++] : id));
+          try {
+            // Older installed PWA shells can still have an api.js from
+            // before reorderPlaylist existed. Fall back to the public
+            // request primitive so reordering works without clearing the
+            // browser cache; the service worker update fixes future loads.
+            const updated = typeof api.reorderPlaylist === 'function'
+              ? await api.reorderPlaylist(playlist.id, { items: next })
+              : await api.request(`/api/playlists/${playlist.id}/order`, {
+                method: 'PUT',
+                body: JSON.stringify({ items: next }),
+              });
+            playlist.items = Array.isArray(updated?.items) ? updated.items : next;
+            playlist.updatedAt = updated?.updatedAt || playlist.updatedAt;
+            toast.success('Order saved');
+            openPlaylist(playlist);
+          } catch (err) {
+            toast.error(`Could not reorder: ${err.message}`);
+          }
+        },
       });
       
       content.querySelector('#play-pl').addEventListener('click', () => {
