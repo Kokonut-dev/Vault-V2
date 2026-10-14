@@ -262,7 +262,9 @@ router.put('/albums/metadata', (req, res) => {
   res.json({ items: updated });
 });
 
-router.post('/albums/cover', (req, res) => {
+// The short alias keeps cover uploads compatible when the UI and a
+// self-hosted server are upgraded at slightly different times.
+router.post(['/albums/cover', '/cover'], (req, res) => {
   coverUpload.single('cover')(req, res, (err) => {
     if (err) return res.status(400).json({ error: err.message });
     if (!req.file) return res.status(400).json({ error: 'cover image required' });

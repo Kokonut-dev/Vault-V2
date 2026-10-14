@@ -2,6 +2,17 @@
 
 ## [3.0.0] — in progress (branch `arena/0deefe55-vault-v2`)
 
+### Fixed — cover art uploads reporting "Not Found"
+- Album and playlist artwork uploads now have compatibility route aliases and
+  retry only when the server reports that the endpoint itself is missing.
+  A missing endpoint now names the failed API paths and asks the user to update
+  and restart the self-hosted server instead of surfacing an opaque `Not Found`.
+- Optional artwork on a multi-file media upload is persisted once and shared by
+  every indexed item. Previously the first item moved the temporary image and
+  the second item failed while trying to move the now-missing file again.
+- Authenticated integration tests exercise album editing, playlist editing,
+  compatibility aliases, and optional artwork on new-media batch uploads.
+
 ### Fixed — album and playlist track reordering
 - Album reorders no longer report an `AbortError` after they have succeeded.
   The mutation response is merged into the library immediately, and identical

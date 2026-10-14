@@ -185,6 +185,8 @@ class ApiClient {
           const err = new Error(data.error || `Request failed: ${res.status}`);
           err.status = res.status;
           err.code = data.code || 'REQUEST_FAILED';
+          err.path = data.path || path;
+          err.endpointNotFound = data.code === 'NOT_FOUND' && typeof data.path === 'string';
           throw err;
         }
 
@@ -462,6 +464,7 @@ class ApiClient {
   // Upload
   async upload(type, files, metadata = {}, onProgress = null) {
     const formData = new FormData();
+    const includesCover = Boolean(metadata.cover);
     
     if (Array.isArray(files)) {
       files.forEach(file => formData.append('files', file));
@@ -501,14 +504,27 @@ class ApiClient {
       }
 
       xhr.onload = () => {
-        try {
-          const data = JSON.parse(xhr.responseText);
-          if (xhr.status >= 200 && xhr.status < 300) resolve(data);
-          else reject(new Error(data.error || 'Upload failed'));
-        } catch {
-          if (xhr.status >= 200 && xhr.status < 300) resolve({ message: 'Upload complete' });
-          else reject(new Error('Upload failed'));
+        let data = {};
+        try { data = JSON.parse(xhr.responseText); } catch {}
+        if (xhr.status >= 200 && xhr.status < 300) {
+          resolve(Object.keys(data).length ? data : { message: 'Upload complete' });
+          return;
         }
+
+        const missingEndpoint = xhr.status === 404 && (
+          data.code === 'NOT_FOUND'
+          || /^not found$/i.test(data.error || '')
+          || !data.error
+        );
+        const uploadPath = data.path || `/api/upload/${type}`;
+        const message = missingEndpoint
+          ? `${includesCover ? 'Media and cover upload' : 'Media upload'} endpoint was not found (${url}). Check that the Server URL points to your Vault backend; if it does, update and restart the server, then try again.`
+          : (data.error || 'Upload failed');
+        const error = new Error(message);
+        error.status = xhr.status;
+        error.code = missingEndpoint ? 'UPLOAD_UNAVAILABLE' : (data.code || 'UPLOAD_FAILED');
+        error.path = uploadPath;
+        reject(error);
       };
 
       xhr.onerror = () => reject(new Error('Network error during upload'));
@@ -1084,17 +1100,57 @@ class ApiClient {
     return this.request('/api/library/albums/metadata', { method: 'PUT', body: { ids, album } });
   }
 
+  _isMissingEndpoint(err) {
+    if (err?.status !== 404) return false;
+    return err.endpointNotFound === true
+      || /^not found$/i.test(err.message || '')
+      || /^request failed:\s*404$/i.test(err.message || '');
+  }
+
+  async _uploadCover(paths, buildForm) {
+    let lastError;
+    for (const path of paths) {
+      try {
+        return await this.request(path, { method: 'POST', body: buildForm() });
+      } catch (err) {
+        lastError = err;
+        if (!this._isMissingEndpoint(err)) throw err;
+      }
+    }
+
+    // A separately hosted UI is often updated before the self-hosted server.
+    // Replace the opaque reverse-proxy/Express "Not found" with the action that
+    // fixes that version skew. Alias routes let current servers recover when a
+    // proxy only forwards one of the route shapes.
+    const attempted = paths.map(path => `${this.baseUrl}${path}`).join(', ');
+    const unavailable = new Error(`Cover upload endpoints were not found (${attempted}). Check that the Server URL points to your Vault backend; if it does, update and restart the server, then try again.`);
+    unavailable.status = 404;
+    unavailable.code = 'COVER_UPLOAD_UNAVAILABLE';
+    unavailable.path = lastError?.path || paths[paths.length - 1];
+    unavailable.cause = lastError;
+    throw unavailable;
+  }
+
   uploadAlbumCover(ids, file) {
-    const form = new FormData();
-    form.append('cover', file);
-    form.append('ids', JSON.stringify(ids));
-    return this.request('/api/library/albums/cover', { method: 'POST', body: form });
+    const buildForm = () => {
+      const form = new FormData();
+      form.append('cover', file);
+      form.append('ids', JSON.stringify(ids));
+      return form;
+    };
+    return this._uploadCover(['/api/library/albums/cover', '/api/library/cover'], buildForm);
   }
 
   uploadPlaylistCover(id, file) {
-    const form = new FormData();
-    form.append('cover', file);
-    return this.request(`/api/playlists/${id}/cover`, { method: 'POST', body: form });
+    const buildForm = () => {
+      const form = new FormData();
+      form.append('cover', file);
+      return form;
+    };
+    return this._uploadCover([
+      `/api/playlists/${id}/cover`,
+      `/api/playlists/cover/${id}`,
+    ], buildForm);
   }
 
   removePlaylistCover(id) {

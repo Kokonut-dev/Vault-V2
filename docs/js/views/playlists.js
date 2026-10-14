@@ -24,6 +24,35 @@ function exportPlaylistUrl(id) {
   return `${api.baseUrl}/api/playlists/${id}/export?token=${encodeURIComponent(token)}`;
 }
 
+function isMissingCoverEndpoint(err) {
+  return err?.status === 404 && (
+    err.endpointNotFound === true
+    || /^not found$/i.test(err.message || '')
+    || /^request failed:\s*404$/i.test(err.message || '')
+  );
+}
+
+async function uploadPlaylistCover(id, cover) {
+  if (typeof api.uploadPlaylistCover === 'function') return api.uploadPlaylistCover(id, cover);
+  let lastError;
+  for (const path of [`/api/playlists/${id}/cover`, `/api/playlists/cover/${id}`]) {
+    const form = new FormData();
+    form.append('cover', cover);
+    try {
+      return await api.request(path, { method: 'POST', body: form });
+    } catch (err) {
+      lastError = err;
+      if (!isMissingCoverEndpoint(err)) throw err;
+    }
+  }
+  const base = api.baseUrl || '';
+  const err = new Error(`Cover upload endpoints were not found (${base}/api/playlists/${id}/cover, ${base}/api/playlists/cover/${id}). Check that the Server URL points to your Vault backend; if it does, update and restart the server, then try again.`);
+  err.code = 'COVER_UPLOAD_UNAVAILABLE';
+  err.path = lastError?.path || `/api/playlists/cover/${id}`;
+  err.cause = lastError;
+  throw err;
+}
+
 export function renderPlaylists(container) {
   container.className = 'page';
   container.innerHTML = `
@@ -182,7 +211,7 @@ export function renderPlaylists(container) {
           description: backdrop.querySelector('#edit-pl-desc').value.trim(),
         });
         const cover = backdrop.querySelector('#edit-pl-cover').files?.[0];
-        if (cover) updated = await api.uploadPlaylistCover(playlist.id, cover);
+        if (cover) updated = await uploadPlaylistCover(playlist.id, cover);
         else if (backdrop.querySelector('#edit-pl-cover-remove')?.checked) updated = await api.removePlaylistCover(playlist.id);
         Object.assign(playlist, updated);
         toast.success('Playlist updated');

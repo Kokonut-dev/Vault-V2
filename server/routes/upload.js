@@ -149,6 +149,19 @@ router.post('/:type', (req, res) => {
         return res.status(400).json({ error: 'No files uploaded', code: 'NO_FILES' });
       }
 
+      // Store optional artwork once and share it across every uploaded item.
+      // Previously the first item moved Multer's temporary cover file, then a
+      // batch upload tried to move that now-missing file again and failed.
+      let uploadedCoverPath = null;
+      const coverFile = req.files['cover']?.[0];
+      if (coverFile) {
+        const coverExt = path.extname(coverFile.originalname || coverFile.path).toLowerCase();
+        const coverName = `upload-${Date.now()}-${Math.random().toString(36).slice(2, 10)}${coverExt}`;
+        uploadedCoverPath = path.join(__dirname, '../cache/covers', coverName);
+        fs.ensureDirSync(path.dirname(uploadedCoverPath));
+        fs.moveSync(coverFile.path, uploadedCoverPath, { overwrite: false });
+      }
+
       const results = [];
       for (const file of files) {
         // Scan the file to index it
@@ -165,14 +178,9 @@ router.post('/:type', (req, res) => {
           if (metadata.episode) item.episode = parseInt(metadata.episode, 10);
           if (metadata.tags) item.tags = Array.isArray(metadata.tags) ? metadata.tags : [metadata.tags];
 
-          // If cover uploaded, handle
-          if (req.files['cover'] && req.files['cover'][0]) {
-            const coverFile = req.files['cover'][0];
-            const coverDest = path.join(__dirname, '../cache/covers', `${item.id}${path.extname(coverFile.path)}`);
-            fs.ensureDirSync(path.dirname(coverDest));
-            fs.moveSync(coverFile.path, coverDest, { overwrite: true });
-            item.coverArtPath = coverDest;
-            item.thumbnailPath = coverDest;
+          if (uploadedCoverPath) {
+            item.coverArtPath = uploadedCoverPath;
+            item.thumbnailPath = uploadedCoverPath;
           }
 
           // If subtitle uploaded
@@ -200,6 +208,10 @@ router.post('/:type', (req, res) => {
           libraryService.updateItem(item.id, item);
           results.push(item);
         }
+      }
+
+      if (results.length === 0 && uploadedCoverPath) {
+        fs.removeSync(uploadedCoverPath);
       }
 
       logger.info(`Uploaded ${results.length} files as ${type}`);

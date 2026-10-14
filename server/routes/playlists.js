@@ -122,7 +122,9 @@ const coverUpload = multer({
   },
 });
 
-router.post('/:id/cover', (req, res) => {
+// Accept both route shapes so an independently cached UI cannot lose cover
+// uploads during a server/UI version transition.
+router.post(['/:id/cover', '/cover/:id'], (req, res) => {
   coverUpload.single('cover')(req, res, (err) => {
     if (err) return res.status(400).json({ error: err.message });
     if (!req.file) return res.status(400).json({ error: 'cover image required' });

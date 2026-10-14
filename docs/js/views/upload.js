@@ -269,6 +269,7 @@ export function renderUpload(container) {
     uploadBtn.textContent = 'Uploading...';
     progressContainer.style.display = 'block';
     
+    const uploadingCover = Boolean(metadata.cover);
     try {
       const result = await api.upload(selectedType, selectedFiles, metadata, (progress) => {
         progressBar.style.width = `${progress}%`;
@@ -291,7 +292,15 @@ export function renderUpload(container) {
       uploadBtn.disabled = true;
       
     } catch (err) {
-      toast.error(err.message || 'Upload failed');
+      const missingEndpoint = err?.status === 404
+        || /^not found$/i.test(err?.message || '')
+        || /^request failed:\s*404$/i.test(err?.message || '');
+      if (missingEndpoint && !['UPLOAD_UNAVAILABLE', 'COVER_UPLOAD_UNAVAILABLE'].includes(err?.code)) {
+        const endpoint = `${api.baseUrl || ''}/api/upload/${selectedType}`;
+        toast.error(`${uploadingCover ? 'Media and cover upload' : 'Media upload'} endpoint was not found (${endpoint}). Check that the Server URL points to your Vault backend; if it does, update and restart the server, then try again.`);
+      } else {
+        toast.error(err.message || 'Upload failed');
+      }
       progressContainer.style.display = 'none';
       uploadBtn.disabled = false;
       uploadBtn.textContent = 'Upload';
