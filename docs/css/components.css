@@ -45,7 +45,7 @@
 }
 
 .btn-primary {
-  background: linear-gradient(140deg, var(--accent-solid), var(--btn-accent-end));
+  background: linear-gradient(140deg in oklch, var(--accent-solid), var(--btn-accent-end));
   color: var(--on-accent);
   border-color: transparent;
   box-shadow: 0 6px 18px var(--accent-muted), inset 0 1px 0 rgba(255, 255, 255, 0.28);
@@ -203,7 +203,7 @@
 .media-card-overlay {
   position: absolute;
   inset: 0;
-  background: linear-gradient(180deg, rgba(0, 0, 0, 0.1) 0%, rgba(0, 0, 0, 0.72) 100%);
+  background: linear-gradient(180deg in oklch, rgba(0, 0, 0, 0.1) 0%, rgba(0, 0, 0, 0.72) 100%);
   opacity: 0;
   transition: opacity var(--duration-normal) var(--ease-out);
   display: flex;
@@ -253,7 +253,7 @@
   justify-content: center;
   font-size: 32px;
   color: var(--text-tertiary);
-  background: linear-gradient(160deg, var(--bg-tertiary), var(--bg-secondary));
+  background: linear-gradient(160deg in oklch, var(--bg-tertiary), var(--bg-secondary));
 }
 
 .media-card-placeholder.visible {
@@ -273,7 +273,7 @@
   font-weight: 600;
   font-family: var(--font-mono);
   padding: 2px 6px;
-  border-radius: 6px;
+  border-radius: calc(var(--radius-lg) - 8px);
   z-index: 2;
 }
 
@@ -563,7 +563,7 @@
 }
 
 .modal {
-  background: rgba(var(--glass-tint), calc(var(--glass-fill-strong) + 0.04));
+  background: var(--surface-elevated, rgba(var(--glass-tint), calc(var(--glass-fill-strong) + 0.04)));
   backdrop-filter: blur(calc(var(--glass-blur-effective) + 12px)) saturate(190%);
   -webkit-backdrop-filter: blur(calc(var(--glass-blur-effective) + 12px)) saturate(190%);
   border-radius: var(--radius-xl);
@@ -928,9 +928,41 @@
 
 .progress-bar {
   height: 100%;
-  background: linear-gradient(90deg, var(--accent), var(--accent-strong));
+  background: linear-gradient(90deg in oklch, var(--accent), var(--accent-strong));
   border-radius: var(--radius-full);
   transition: width var(--duration-fast) var(--ease-out);
+}
+
+/* ============================================================
+   Icons — stroke width matches weight of adjacent typography
+   ============================================================ */
+.icon,
+svg.icon {
+  stroke-width: var(--icon-stroke, 1.75px);
+}
+
+/* 400 normal weight text */
+:is(p, span, td, .text-regular, .meta, .card-meta) > .icon,
+:is(p, span, td, .text-regular, .meta, .card-meta) > svg.icon {
+  stroke-width: var(--icon-stroke-normal, 1.5px);
+}
+
+/* 500 medium weight (chips, tabs, nav) */
+:is(.btn-ghost, .settings-tab, .filter-chip, .chapter-chip, [style*="font-weight: 500"], [style*="font-weight:500"]) .icon,
+:is(.btn-ghost, .settings-tab, .filter-chip, .chapter-chip, [style*="font-weight: 500"], [style*="font-weight:500"]) svg.icon {
+  stroke-width: var(--icon-stroke-medium, 1.75px);
+}
+
+/* 600 semibold weight (buttons, badges, labels, subtitles) */
+:is(.btn, .btn-primary, .btn-secondary, .btn-danger, button, .context-menu-item, .card-title, .row-title, [style*="font-weight: 600"], [style*="font-weight:600"]) .icon,
+:is(.btn, .btn-primary, .btn-secondary, .btn-danger, button, .context-menu-item, .card-title, .row-title, [style*="font-weight: 600"], [style*="font-weight:600"]) svg.icon {
+  stroke-width: var(--icon-stroke-semibold, 2px);
+}
+
+/* 700+ bold weight (headings, page titles, section titles, strong) */
+:is(h1, h2, h3, h4, h5, h6, strong, b, .page-title, .section-title, .modal-title, .stat-value, [style*="font-weight: 700"], [style*="font-weight:700"], [style*="font-weight: bold"], [style*="font-weight:bold"]) .icon,
+:is(h1, h2, h3, h4, h5, h6, strong, b, .page-title, .section-title, .modal-title, .stat-value, [style*="font-weight: 700"], [style*="font-weight:700"], [style*="font-weight: bold"], [style*="font-weight:bold"]) svg.icon {
+  stroke-width: var(--icon-stroke-bold, 2.25px);
 }
 
 /* ---------- Slider ---------- */

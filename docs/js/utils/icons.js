@@ -245,10 +245,45 @@ export function iconEl(name, options = {}) {
 /**
  * Replace an element's contents with a single icon — the "swap the glyph"
  * helper used for play/pause, mute and favourite toggles.
+ * Blurs the outgoing icon as it fades out (filter: blur(4px)).
  */
 export function setIcon(el, name, options = {}) {
   if (!el) return null;
+  const existing = el.querySelector('svg');
   const svg = iconEl(name, options);
+
+  if (existing && typeof window !== 'undefined' && !window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches) {
+    existing.style.position = 'absolute';
+    existing.classList.add('icon-swap-exit');
+    existing.style.transition = 'opacity 150ms ease, filter 150ms ease, transform 150ms ease';
+    existing.style.pointerEvents = 'none';
+
+    requestAnimationFrame(() => {
+      existing.style.opacity = '0';
+      existing.style.filter = 'blur(4px)';
+      existing.style.transform = 'scale(0.85)';
+    });
+
+    setTimeout(() => {
+      if (existing.parentNode === el) {
+        existing.remove();
+      }
+    }, 160);
+
+    svg.classList.add('icon-swap-enter');
+    svg.style.transition = 'opacity 150ms ease, filter 150ms ease, transform 150ms ease';
+    svg.style.opacity = '0';
+    svg.style.filter = 'blur(4px)';
+    el.appendChild(svg);
+
+    requestAnimationFrame(() => {
+      svg.style.opacity = '1';
+      svg.style.filter = 'blur(0)';
+    });
+
+    return svg;
+  }
+
   el.replaceChildren(svg);
   return svg;
 }

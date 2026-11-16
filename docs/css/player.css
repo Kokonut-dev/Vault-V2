@@ -23,6 +23,7 @@
 .video-modal .video-player {
   width: min(100vw, 100%);
   height: min(100vh, 100%);
+  height: min(100dvh, 100%);
   max-width: 100%;
   aspect-ratio: auto;
   border-radius: 0;
@@ -72,6 +73,7 @@
   border-radius: 0;
   aspect-ratio: auto;
   height: 100vh;
+  height: 100dvh;
 }
 
 .video-player video {
@@ -86,7 +88,7 @@
   bottom: 0;
   left: 0;
   right: 0;
-  background: linear-gradient(180deg, transparent 0%, rgba(0, 0, 0, 0.82) 100%);
+  background: linear-gradient(180deg in oklch, transparent 0%, rgba(0, 0, 0, 0.82) 100%);
   padding: var(--space-lg) var(--space-md) var(--space-md);
   display: flex;
   flex-direction: column;
@@ -418,7 +420,7 @@
 .mini-player-cover {
   width: 44px;
   height: 44px;
-  border-radius: var(--radius-md);
+  border-radius: calc(var(--radius-xl) - var(--space-md));
   background: var(--bg-tertiary);
   overflow: hidden;
   flex-shrink: 0;
@@ -530,7 +532,7 @@
 
 .mini-player-progress-bar {
   height: 100%;
-  background: linear-gradient(90deg, var(--accent), var(--accent-strong));
+  background: linear-gradient(90deg in oklch, var(--accent), var(--accent-strong));
   box-shadow: 0 0 12px var(--accent-muted);
   transition: width 0.1s linear;
 }
@@ -645,7 +647,7 @@
   justify-content: center;
   gap: 2px;
   padding: var(--space-md);
-  background: linear-gradient(180deg, transparent 0%, rgba(0, 0, 0, 0.6) 100%);
+  background: linear-gradient(180deg in oklch, transparent 0%, rgba(0, 0, 0, 0.6) 100%);
 }
 
 .visualizer-bar {
