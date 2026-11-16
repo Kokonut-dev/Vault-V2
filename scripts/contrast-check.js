@@ -49,10 +49,43 @@ function hexToRgb(hex) {
   return [parseInt(h.slice(0, 2), 16), parseInt(h.slice(2, 4), 16), parseInt(h.slice(4, 6), 16)];
 }
 
-/** Resolve a CSS color (hex / rgb / rgba) to opaque [r,g,b] over `bg`. */
+function oklchToRgb(L, C, H) {
+  const hRad = (H * Math.PI) / 180;
+  const a = C * Math.cos(hRad);
+  const b = C * Math.sin(hRad);
+  const l_ = L + 0.3963377774 * a + 0.2158037573 * b;
+  const m_ = L - 0.1055613458 * a - 0.0638541728 * b;
+  const s_ = L - 0.0894841775 * a - 1.2914855480 * b;
+  const l = l_ ** 3;
+  const m = m_ ** 3;
+  const s = s_ ** 3;
+  const rLin = +4.0767416621 * l - 3.3077115913 * m + 0.2309699292 * s;
+  const gLin = -1.2684380046 * l + 2.6097574011 * m - 0.3413193965 * s;
+  const bLin = -0.0041960863 * l - 0.7034186147 * m + 1.7076147010 * s;
+  const gamma = x => (x <= 0.0031308 ? 12.92 * x : 1.055 * Math.pow(x, 1 / 2.4) - 0.055);
+  const clamp = x => Math.min(255, Math.max(0, Math.round(gamma(x) * 255)));
+  return [clamp(rLin), clamp(gLin), clamp(bLin)];
+}
+
+/** Resolve a CSS color (hex / rgb / rgba / oklch) to opaque [r,g,b] over `bg`. */
 function resolveColor(value, bg) {
   const v = value.trim();
   if (v.startsWith('#')) return hexToRgb(v);
+  const oklchM = /^oklch\(\s*([\d.]+%?)\s+([\d.]+)\s+([\d.]+)(?:\s*\/\s*([\d.]+%?))?\s*\)$/i.exec(v);
+  if (oklchM) {
+    let L = parseFloat(oklchM[1]);
+    if (oklchM[1].endsWith('%')) L = L / 100;
+    const C = parseFloat(oklchM[2]);
+    const H = parseFloat(oklchM[3]);
+    let a = 1;
+    if (oklchM[4] !== undefined) {
+      a = parseFloat(oklchM[4]);
+      if (oklchM[4].endsWith('%')) a = a / 100;
+    }
+    const c = oklchToRgb(L, C, H);
+    if (a >= 1) return c;
+    return c.map((ch, i) => ch * a + bg[i] * (1 - a));
+  }
   const m = /^rgba?\(\s*([\d.]+)[,\s]+([\d.]+)[,\s]+([\d.]+)\s*(?:[,/]\s*([\d.]+))?\s*\)$/.exec(v);
   if (!m) throw new Error(`Cannot parse color: ${value}`);
   const a = m[4] === undefined ? 1 : parseFloat(m[4]);

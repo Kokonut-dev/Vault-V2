@@ -6,6 +6,7 @@
 .app {
   display: flex;
   min-height: 100vh;
+  min-height: 100dvh;
   background: transparent;          /* the ambient layer paints the page */
   color: var(--text-primary);
   position: relative;
@@ -56,8 +57,8 @@
 .sidebar-logo {
   width: 32px;
   height: 32px;
-  background: linear-gradient(140deg, var(--accent), var(--accent-strong));
-  border-radius: var(--radius-md);
+  background: linear-gradient(140deg in oklch, var(--accent), var(--accent-strong));
+  border-radius: calc(var(--radius-xl) - var(--space-sm));
   display: flex;
   align-items: center;
   justify-content: center;
@@ -136,7 +137,7 @@
   align-items: center;
   gap: var(--space-sm);
   padding: 9px 12px;
-  border-radius: var(--radius-md);
+  border-radius: calc(var(--radius-xl) - var(--space-sm));
   color: var(--text-secondary);
   font-size: 14px;
   font-weight: 500;
@@ -214,7 +215,7 @@
   align-items: center;
   justify-content: center;
   padding: var(--space-sm);
-  border-radius: var(--radius-md);
+  border-radius: calc(var(--radius-xl) - var(--space-sm));
   background: rgba(var(--glass-tint), 0.06);
   border: 1px solid rgba(var(--glass-tint), 0.07);
   color: var(--text-secondary);
@@ -239,6 +240,7 @@
   flex: 1;
   margin-left: var(--sidebar-track);
   min-height: 100vh;
+  min-height: 100dvh;
   display: flex;
   flex-direction: column;
   transition: margin-left var(--duration-normal) var(--ease-out);
@@ -579,7 +581,7 @@
 
 .view-toggle button {
   padding: 6px 12px;
-  border-radius: var(--radius-sm);
+  border-radius: calc(var(--radius-md) - 3px);
   font-size: 13px;
   font-weight: 500;
   color: var(--text-secondary);

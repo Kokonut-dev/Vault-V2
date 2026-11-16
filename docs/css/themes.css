@@ -62,13 +62,34 @@
 }
 
 [data-theme="dark"] .media-card {
-  background: linear-gradient(180deg,
-    rgba(var(--glass-tint), 0.075) 0%,
-    rgba(var(--glass-tint), 0.03) 100%);
+  background: linear-gradient(180deg in oklch,
+    rgba(var(--glass-tint), 0.08) 0%,
+    rgba(var(--glass-tint), 0.035) 100%);
 }
 
 [data-theme="dark"] .player-controls {
-  background: linear-gradient(180deg, rgba(0, 0, 0, 0) 0%, rgba(0, 0, 0, 0.8) 100%);
+  background: linear-gradient(180deg in oklch, rgba(0, 0, 0, 0) 0%, rgba(0, 0, 0, 0.8) 100%);
+}
+
+/* Dark mode depth: lighter surfaces show elevation where shadows barely show up */
+[data-theme="dark"] .surface-raised,
+[data-theme="dark"] .stat-card,
+[data-theme="dark"] .profile-card,
+[data-theme="dark"] .backup-row,
+[data-theme="dark"] .health-item {
+  background: var(--surface-raised);
+  border-color: var(--border-subtle);
+}
+
+[data-theme="dark"] .surface-elevated,
+[data-theme="dark"] .modal,
+[data-theme="dark"] .search-modal,
+[data-theme="dark"] .context-menu,
+[data-theme="dark"] .queue-panel,
+[data-theme="dark"] .bottom-nav,
+[data-theme="dark"] .multi-select-bar {
+  background: var(--surface-elevated);
+  border-color: var(--border-subtle);
 }
 
 /* ---------- Light theme ---------- */
@@ -77,7 +98,7 @@
 }
 
 [data-theme="light"] .media-card {
-  background: linear-gradient(180deg,
+  background: linear-gradient(180deg in oklch,
     rgba(255, 255, 255, 0.82) 0%,
     rgba(255, 255, 255, 0.62) 100%);
 }
@@ -88,14 +109,14 @@
 }
 
 [data-theme="warm"] .media-card {
-  background: linear-gradient(180deg,
+  background: linear-gradient(180deg in oklch,
     rgba(255, 253, 247, 0.84) 0%,
     rgba(255, 253, 247, 0.62) 100%);
   box-shadow: 0 2px 10px rgba(61, 43, 31, 0.07), inset 0 1px 0 rgba(255, 255, 255, 0.7);
 }
 
 [data-theme="warm"] .btn-primary {
-  background: linear-gradient(140deg, var(--accent-solid) 0%, var(--btn-accent-end) 100%);
+  background: linear-gradient(140deg in oklch, var(--accent-solid) 0%, var(--btn-accent-end) 100%);
 }
 
 /* ---------- Cold theme ---------- */
@@ -104,9 +125,29 @@
 }
 
 [data-theme="cold"] .media-card {
-  background: linear-gradient(180deg,
+  background: linear-gradient(180deg in oklch,
     rgba(148, 163, 184, 0.1) 0%,
     rgba(148, 163, 184, 0.04) 100%);
+}
+
+[data-theme="cold"] .surface-raised,
+[data-theme="cold"] .stat-card,
+[data-theme="cold"] .profile-card,
+[data-theme="cold"] .backup-row,
+[data-theme="cold"] .health-item {
+  background: var(--surface-raised);
+  border-color: var(--border-subtle);
+}
+
+[data-theme="cold"] .surface-elevated,
+[data-theme="cold"] .modal,
+[data-theme="cold"] .search-modal,
+[data-theme="cold"] .context-menu,
+[data-theme="cold"] .queue-panel,
+[data-theme="cold"] .bottom-nav,
+[data-theme="cold"] .multi-select-bar {
+  background: var(--surface-elevated);
+  border-color: var(--border-subtle);
 }
 
 [data-theme="cold"] .accent-glow {
