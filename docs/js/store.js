@@ -75,6 +75,7 @@ class Store {
       glassIntensity: safeInt('vault_glass', 20),
       grainIntensity: safeInt('vault_grain', 15),
       sidebarCollapsed: localStorage.getItem('vault_sidebar_collapsed') === 'true',
+      sidebarSectionsCollapsed: safeParse('vault_sidebar_sections_collapsed', {}),
       theatreMode: false,
 
       // Playlists
@@ -138,6 +139,7 @@ class Store {
       recentSearches: 'vault_recent_searches',
       searchHistory: 'vault_search_history',
       sidebarCollapsed: 'vault_sidebar_collapsed',
+      sidebarSectionsCollapsed: 'vault_sidebar_sections_collapsed',
     };
 
     const storageKey = persistMap[key];

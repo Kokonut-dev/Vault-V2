@@ -17,6 +17,9 @@ export function getApiBaseUrl() {
   // Allow override via localStorage
   const stored = localStorage.getItem('vault_api_url');
   if (stored) return stored.replace(/\/$/, '');
+  if (typeof window !== 'undefined' && window.location?.origin && window.location.protocol.startsWith('http') && !isGitHubPages()) {
+    return window.location.origin.replace(/\/$/, '');
+  }
   return (config.apiBaseUrl || 'http://localhost:4000').replace(/\/$/, '');
 }
 
