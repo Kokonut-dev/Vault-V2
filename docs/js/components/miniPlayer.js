@@ -90,6 +90,8 @@ export function initMiniPlayer() {
     // Icons are inline SVGs (utils/icons.js) — swap the glyph, keep the label.
     setIcon(miniPlayBtn, isPlaying ? 'pause' : 'play', { size: 16 });
     setIcon(npPlayBtn, isPlaying ? 'pause' : 'play', { size: 22 });
+    if (miniPlayBtn) miniPlayBtn.setAttribute('aria-label', isPlaying ? 'Pause' : 'Play');
+    if (npPlayBtn) npPlayBtn.setAttribute('aria-label', isPlaying ? 'Pause' : 'Play');
   }
 
   function syncMuteIcon() {

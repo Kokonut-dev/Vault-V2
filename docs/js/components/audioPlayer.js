@@ -338,7 +338,6 @@ export async function playItem(item, { forceTranscode = false } = {}) {
   try {
     await unlockAudio();
     store.set('currentTrack', item);
-    store.set('isPlaying', true);
 
     if ('mediaSession' in navigator) {
       try {
