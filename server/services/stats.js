@@ -54,11 +54,11 @@ function secondsByItem(period, listens, since) {
   return totals;
 }
 
-function build({ period = 'all' } = {}) {
+function build({ period = 'all', profileId = 'default' } = {}) {
   if (!PERIODS.includes(period)) period = 'all';
 
   const items = libraryService.getAll();
-  const history = libraryService.getHistory();
+  const history = (libraryService.forProfile ? libraryService.forProfile(profileId) : libraryService).getHistory();
   const listens = extras.getListens();
   const since = periodStart(period);
   const byId = secondsByItem(period, listens, since);
@@ -81,6 +81,8 @@ function build({ period = 'all' } = {}) {
   const musicTracks = new Set();
   const videoTitles = new Set();
   const artistSeconds = {};
+  const albumSeconds = {};
+  const trackSeconds = [];
   const titleSeconds = [];
   for (const [itemId, secs] of Object.entries(byId)) {
     const item = itemById.get(itemId);
@@ -90,21 +92,55 @@ function build({ period = 'all' } = {}) {
       musicTracks.add(itemId);
       const artist = item.artist || 'Unknown artist';
       artistSeconds[artist] = (artistSeconds[artist] || 0) + secs;
+      if (item.album) {
+        albumSeconds[item.album] = (albumSeconds[item.album] || 0) + secs;
+      }
+      trackSeconds.push({
+        id: item.id,
+        title: item.title || 'Unknown title',
+        artist: item.artist || 'Unknown artist',
+        album: item.album || '',
+        seconds: secs,
+        playCount: item.playCount || 0,
+        coverArtPath: item.coverArtPath || null,
+      });
     } else {
       videoSeconds += secs;
       videoTitles.add(itemId);
-      titleSeconds.push({ id: item.id, title: item.title, type: item.type, poster: !!item.posterPath, seconds: secs });
+      titleSeconds.push({
+        id: item.id,
+        title: item.title,
+        type: item.type,
+        poster: !!item.posterPath,
+        seconds: secs,
+        playCount: item.playCount || 0,
+      });
     }
   }
 
-  // Daily activity for the last 90 days (all media types).
+  // Daily activity tailored to period:
+  // week: 7 days
+  // month: 30 days
+  // year/all: 90 days
+  let numDays = DAILY_DAYS;
+  if (period === 'week') numDays = 7;
+  else if (period === 'month') numDays = 30;
+
   const daily = [];
   const dailyMap = listens.daily || {};
-  for (let i = DAILY_DAYS - 1; i >= 0; i--) {
+  for (let i = numDays - 1; i >= 0; i--) {
     const date = new Date();
     date.setDate(date.getDate() - i);
     const key = date.toISOString().slice(0, 10);
     daily.push({ date: key, seconds: dailyMap[key]?.seconds || 0 });
+  }
+
+  const days90 = [];
+  for (let i = DAILY_DAYS - 1; i >= 0; i--) {
+    const date = new Date();
+    date.setDate(date.getDate() - i);
+    const key = date.toISOString().slice(0, 10);
+    days90.push({ date: key, seconds: dailyMap[key]?.seconds || 0 });
   }
 
   const sinceForHistory = since || new Date(0);
@@ -119,6 +155,15 @@ function build({ period = 'all' } = {}) {
     .slice(0, TOP_N)
     .map(([name, seconds]) => ({ name, seconds }));
 
+  const topTracks = trackSeconds
+    .sort((a, b) => b.seconds - a.seconds)
+    .slice(0, TOP_N);
+
+  const topAlbums = Object.entries(albumSeconds)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, TOP_N)
+    .map(([name, seconds]) => ({ name, seconds }));
+
   const biggest = [...items]
     .filter(i => i.fileSize)
     .sort((a, b) => (b.fileSize || 0) - (a.fileSize || 0))
@@ -128,9 +173,22 @@ function build({ period = 'all' } = {}) {
   const lifetimeVideoSeconds = Object.entries(listens.total || {})
     .reduce((sum, [id, secs]) => (itemById.get(id)?.type !== 'music' ? sum + secs : sum), 0);
 
+  const totalPlaybackSeconds = Math.round(videoSeconds + musicSeconds);
+  const activeDays = daily.filter(d => d.seconds > 0).length;
+
   return {
     period,
     generatedAt: new Date().toISOString(),
+    summary: {
+      totalSeconds: totalPlaybackSeconds,
+      totalFormatted: formatDuration(totalPlaybackSeconds),
+      activeDays,
+      watchSeconds: Math.round(videoSeconds),
+      listenSeconds: Math.round(musicSeconds),
+      musicTracks: musicTracks.size,
+      videoItems: videoTitles.size,
+      sessions: recentHistory.length,
+    },
     library: {
       items: items.length,
       byType,
@@ -158,6 +216,7 @@ function build({ period = 'all' } = {}) {
       completed,
       inProgress,
       daily,
+      days90,
       mostWatched,
     },
     listening: {
@@ -165,6 +224,8 @@ function build({ period = 'all' } = {}) {
       seconds: Math.round(musicSeconds),
       tracks: musicTracks.size,
       topArtists,
+      topTracks,
+      topAlbums,
     },
   };
 }
