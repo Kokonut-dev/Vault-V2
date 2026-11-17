@@ -163,14 +163,14 @@
   padding: 12px;
   background: rgba(var(--glass-tint), 0.05);
   border: 1px solid rgba(var(--glass-tint), 0.1);
-  border-radius: 12px;
+  border-radius: 20px;
 }
 
 .onboarding-feature-icon {
   width: 32px;
   height: 32px;
   background: rgba(var(--glass-tint), 0.09);
-  border-radius: 8px;
+  border-radius: calc(20px - 12px);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -544,7 +544,7 @@
 .onboarding-theme {
   padding: 12px;
   border: 2px solid var(--border);
-  border-radius: 12px;
+  border-radius: 16px;
   cursor: pointer;
   transition: all 0.15s ease;
   text-align: center;
@@ -574,7 +574,7 @@
 .onboarding-theme-preview span {
   width: 16px;
   height: 16px;
-  border-radius: 4px;
+  border-radius: calc(16px - 12px);
 }
 
 /* Responsive */

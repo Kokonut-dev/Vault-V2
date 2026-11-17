@@ -41,7 +41,7 @@
   inset: 0;
   border-radius: inherit;
   pointer-events: none;
-  background: linear-gradient(180deg, var(--glass-highlight-soft) 0%, transparent 45%);
+  background: linear-gradient(180deg in oklch, var(--glass-highlight-soft) 0%, transparent 45%);
 }
 
 /* ---------- Variants ---------- */
