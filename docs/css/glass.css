@@ -107,18 +107,22 @@
 /* ---------- Theme tuning ---------- */
 [data-theme="light"] .glass,
 [data-theme="warm"] .glass,
+[data-theme="white"] .glass,
 [data-theme="light"] .glass-island,
-[data-theme="warm"] .glass-island {
+[data-theme="warm"] .glass-island,
+[data-theme="white"] .glass-island {
   --glass-fill: calc(0.34 + var(--glass-intensity) * 0.0028);
 }
 
 [data-theme="light"] .glass-strong,
-[data-theme="warm"] .glass-strong {
+[data-theme="warm"] .glass-strong,
+[data-theme="white"] .glass-strong {
   --glass-fill-strong: calc(0.5 + var(--glass-intensity) * 0.003);
 }
 
 [data-theme="light"] .glass-subtle,
-[data-theme="warm"] .glass-subtle {
+[data-theme="warm"] .glass-subtle,
+[data-theme="white"] .glass-subtle {
   --glass-fill-subtle: calc(0.28 + var(--glass-intensity) * 0.002);
 }
 
@@ -165,6 +169,7 @@
 }
 
 [data-theme="light"] .media-card.glass:hover,
-[data-theme="warm"] .media-card.glass:hover {
+[data-theme="warm"] .media-card.glass:hover,
+[data-theme="white"] .media-card.glass:hover {
   background: rgba(255, 255, 255, 0.9);
 }

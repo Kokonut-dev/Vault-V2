@@ -1,11 +1,11 @@
 /**
- * Theme manager — handles dark/light/warm/cold + glass + grain
+ * Theme manager — handles dark/light/warm/cold/midnight/white + glass + grain
  */
 import { store } from './store.js';
 
 export class ThemeManager {
   constructor() {
-    this.themes = ['dark', 'light', 'warm', 'cold'];
+    this.themes = ['dark', 'light', 'warm', 'cold', 'midnight', 'white'];
   }
 
   init() {

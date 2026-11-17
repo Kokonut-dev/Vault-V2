@@ -46,7 +46,8 @@
 }
 
 [data-theme="light"] .ambient::after,
-[data-theme="warm"] .ambient::after {
+[data-theme="warm"] .ambient::after,
+[data-theme="white"] .ambient::after {
   background: radial-gradient(120% 100% at 50% 50%, transparent 60%, rgba(20, 24, 40, 0.07) 100%);
 }
 
@@ -152,6 +153,71 @@
 
 [data-theme="cold"] .accent-glow {
   box-shadow: 0 0 24px rgba(34, 211, 238, 0.35);
+}
+
+/* ---------- Midnight theme — sleek dynamic OLED dark ---------- */
+[data-theme="midnight"] {
+  color-scheme: dark;
+}
+
+[data-theme="midnight"] .media-card {
+  background: linear-gradient(180deg in oklch,
+    rgba(255, 255, 255, 0.06) 0%,
+    rgba(255, 255, 255, 0.02) 100%);
+}
+
+[data-theme="midnight"] .player-controls {
+  background: linear-gradient(180deg in oklch, rgba(0, 0, 0, 0) 0%, rgba(0, 0, 0, 0.85) 100%);
+}
+
+[data-theme="midnight"] .surface-raised,
+[data-theme="midnight"] .stat-card,
+[data-theme="midnight"] .profile-card,
+[data-theme="midnight"] .backup-row,
+[data-theme="midnight"] .health-item {
+  background: var(--surface-raised);
+  border-color: var(--border-subtle);
+}
+
+[data-theme="midnight"] .surface-elevated,
+[data-theme="midnight"] .modal,
+[data-theme="midnight"] .search-modal,
+[data-theme="midnight"] .context-menu,
+[data-theme="midnight"] .queue-panel,
+[data-theme="midnight"] .bottom-nav,
+[data-theme="midnight"] .multi-select-bar {
+  background: var(--surface-elevated);
+  border-color: var(--border-subtle);
+}
+
+[data-theme="midnight"] .btn-primary {
+  background: linear-gradient(140deg in oklch, var(--accent-solid) 0%, var(--btn-accent-end) 100%);
+  color: var(--on-accent);
+}
+
+[data-theme="midnight"] .accent-glow {
+  box-shadow: 0 0 24px rgba(16, 185, 129, 0.4);
+}
+
+/* ---------- White theme — modern architectural pure white ---------- */
+[data-theme="white"] {
+  color-scheme: light;
+}
+
+[data-theme="white"] .media-card {
+  background: linear-gradient(180deg in oklch,
+    rgba(255, 255, 255, 0.95) 0%,
+    rgba(248, 250, 252, 0.75) 100%);
+  box-shadow: 0 2px 12px rgba(15, 23, 42, 0.05), inset 0 1px 0 rgba(255, 255, 255, 0.9);
+}
+
+[data-theme="white"] .btn-primary {
+  background: linear-gradient(140deg in oklch, var(--accent-solid) 0%, var(--btn-accent-end) 100%);
+  color: var(--on-accent);
+}
+
+[data-theme="white"] .accent-glow {
+  box-shadow: 0 0 24px rgba(37, 99, 235, 0.25);
 }
 
 /* Accent glow helper used by the active states */
