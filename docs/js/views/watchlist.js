@@ -84,7 +84,7 @@ export async function renderContinue(container) {
         card.dataset.contextMenuFor = item.id;
         card.innerHTML = `
           <div class="media-card-cover">
-            <img loading="lazy" src="${api.getThumbnailUrl(item.id)}" alt="">
+            <img loading="lazy" src="${api.getThumbnailUrl(item.id)}" alt="" class="loaded" onload="this.classList.add('loaded')" onerror="this.style.display='none'">
             ${item.progress ? `<div class="media-card-progress"><div class="media-card-progress-bar" style="width:${item.progress}%"></div></div>` : ''}
           </div>
           <div class="media-card-info">

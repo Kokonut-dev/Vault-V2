@@ -85,6 +85,9 @@ export function createMediaCard(item, options = {}) {
     img.addEventListener('load', () => {
       img.classList.add('loaded');
     });
+    if (img.complete && img.naturalWidth > 0) {
+      img.classList.add('loaded');
+    }
     lazyLoadElement(img);
   }
 

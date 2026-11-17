@@ -54,7 +54,7 @@ export async function renderShows(container) {
       card.dataset.type = 'movie';
       card.innerHTML = `
         <div class="media-card-cover">
-          <img loading="lazy" src="${show.poster ? (show.poster.startsWith('http') ? show.poster : `${api.baseUrl}${show.poster}`) : api.getCoverUrl(show.key)}" alt="${escapeHtml(show.title)}">
+          <img loading="lazy" src="${show.poster ? (show.poster.startsWith('http') ? show.poster : `${api.baseUrl}${show.poster}`) : api.getCoverUrl(show.key)}" alt="${escapeHtml(show.title)}" class="loaded" onload="this.classList.add('loaded')" onerror="this.style.display='none';this.parentElement.querySelector('.media-card-placeholder')?.classList.add('visible')">
           <div class="media-card-placeholder" aria-hidden="true">${icon('tv', { size: 34 })}</div>
           ${show.unwatchedCount ? `<div class="media-card-badge">${show.unwatchedCount} new</div>` : ''}
         </div>
