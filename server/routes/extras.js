@@ -170,7 +170,7 @@ router.post('/listens', (req, res) => {
 });
 
 router.get('/stats/recap', (req, res) => {
-  res.json(stats.build({ period: req.query.period || 'all' }));
+  res.json(stats.build({ period: req.query.period || 'all', profileId: req.profileId || 'default' }));
 });
 
 // ---------------------------------------------------------------------------
