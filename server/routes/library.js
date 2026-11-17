@@ -269,10 +269,24 @@ router.post(['/albums/cover', '/cover'], (req, res) => {
     if (err) return res.status(400).json({ error: err.message });
     if (!req.file) return res.status(400).json({ error: 'cover image required' });
     let ids = [];
-    try { ids = JSON.parse(req.body?.ids || '[]'); } catch { /* handled below */ }
+    try {
+      ids = Array.isArray(req.body?.ids) ? req.body.ids : JSON.parse(req.body?.ids || '[]');
+    } catch { /* handled below */ }
     const items = musicItemsForIds(ids);
     if (!items) { fs.remove(req.file.path).catch(() => {}); return res.status(400).json({ error: 'ids required' }); }
-    const updated = items.map(item => libraryService.updateItem(item.id, { coverArtPath: req.file.path }));
+    const previousCovers = new Set(items.map(i => i.coverArtPath).filter(Boolean));
+    const updated = items.map(item => libraryService.updateItem(item.id, {
+      coverArtPath: req.file.path,
+      posterPath: req.file.path,
+    }));
+    // Clean up previous cover files in cache that are no longer used by any other item
+    for (const prev of previousCovers) {
+      if (prev !== req.file.path && path.resolve(prev).startsWith(path.resolve(COVERS_DIR))) {
+        const stillInUse = libraryService.getAll().some(i => i.coverArtPath === prev || i.posterPath === prev);
+        if (!stillInUse) fs.remove(prev).catch(() => {});
+      }
+    }
+    libraryService.saveLibrary();
     events.broadcast('library:changed', { reason: 'album-cover' });
     res.json({ items: updated, coverArtPath: req.file.path });
   });
@@ -338,7 +352,11 @@ router.put('/:id', (req, res) => {
     // album-cover upload above) — never an arbitrary path from the client.
     if (coverArtPath !== undefined) {
       const resolved = path.resolve(String(coverArtPath));
-      if (resolved.startsWith(path.resolve(COVERS_DIR))) updates.coverArtPath = resolved;
+      if (resolved.startsWith(path.resolve(COVERS_DIR))) {
+        updates.coverArtPath = resolved;
+        const current = libraryService.getById(req.params.id);
+        if (current?.type === 'music') updates.posterPath = resolved;
+      }
     }
 
     const updated = libraryService.updateItem(req.params.id, updates);

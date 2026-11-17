@@ -373,7 +373,7 @@ async function libraryHealthUncached({ deep = false } = {}) {
     if (!exists[i]) missing.push({ id: item.id, title: item.title, path: item.path });
 
     if (item.type === 'music' || item.type === 'audiobook') {
-      const hasArt = item.coverArtPath && fs.existsSync(item.coverArtPath);
+      const hasArt = (item.coverArtPath && fs.existsSync(item.coverArtPath)) || (item.posterPath && fs.existsSync(item.posterPath));
       if (!hasArt) missingArtwork.push({ id: item.id, title: item.title, type: item.type });
     } else if (!item.thumbnailPath && !item.posterPath) {
       missingArtwork.push({ id: item.id, title: item.title, type: item.type });

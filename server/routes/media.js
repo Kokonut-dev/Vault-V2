@@ -50,12 +50,12 @@ router.get('/cover/:id', async (req, res) => {
   const item = libraryService.getById(req.params.id);
   if (!item) return res.status(404).json({ error: 'Item not found' });
 
-  // Artwork priority: explicit poster/backdrop sidecar → embedded cover → frame.
+  // Artwork priority: for music, coverArtPath is the primary album cover; for video, posterPath is primary.
   const poster = item.posterPath && fs.existsSync(item.posterPath) ? item.posterPath : null;
   const cover = item.coverArtPath && fs.existsSync(item.coverArtPath) ? item.coverArtPath : null;
   const source = req.query.kind === 'backdrop'
     ? (item.backdropPath && fs.existsSync(item.backdropPath) ? item.backdropPath : null) || cover || poster || item.thumbnailPath
-    : poster || cover || (item.thumbnailPath && fs.existsSync(item.thumbnailPath) ? item.thumbnailPath : null);
+    : (item.type === 'music' ? (cover || poster) : (poster || cover)) || (item.thumbnailPath && fs.existsSync(item.thumbnailPath) ? item.thumbnailPath : null);
 
   if (!source || !fs.existsSync(source)) {
     return res.status(404).json({ error: 'Cover not found' });
@@ -73,7 +73,7 @@ router.get('/cover/:id', async (req, res) => {
   }
 
   res.setHeader('Content-Type', mime.lookup(source) || 'image/jpeg');
-  res.setHeader('Cache-Control', 'public, max-age=86400');
+  res.setHeader('Cache-Control', 'no-cache');
   fs.createReadStream(source).pipe(res);
 });
 

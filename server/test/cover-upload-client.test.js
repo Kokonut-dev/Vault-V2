@@ -119,3 +119,18 @@ test('missing cover endpoints report an actionable server update instead of Not 
 
   dom.window.close();
 });
+
+test('getCoverUrlVersioned generates cache-busted URLs with version parameter', async () => {
+  const { api, dom } = await loadApi();
+  const urlWithoutVer = api.getCoverUrlVersioned('track-1', '');
+  assert.ok(urlWithoutVer.includes('/api/media/cover/track-1'));
+  assert.ok(!urlWithoutVer.includes('&v='));
+
+  const urlWithVer = api.getCoverUrlVersioned('track-1', 1700000000000);
+  assert.ok(urlWithVer.includes('/api/media/cover/track-1'));
+  assert.ok(urlWithVer.includes('&v=1700000000000'));
+
+  const empty = api.getCoverUrlVersioned('', 1700000000000);
+  assert.equal(empty, '');
+  dom.window.close();
+});

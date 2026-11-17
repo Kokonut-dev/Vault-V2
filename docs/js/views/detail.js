@@ -216,12 +216,16 @@ function renderMusicDetail(container, item) {
   const albumKey = item.album || 'Unknown Album';
   const sortTracks = (list) => [...list].sort((a, b) => (a.track || 0) - (b.track || 0) || String(a.title).localeCompare(String(b.title)));
   let albumTracks = sortTracks(library.filter(i => i.type === 'music' && (i.album || 'Unknown Album') === albumKey));
-  const isAlbumView = albumTracks.length > 1;
+  if (!albumTracks.length) albumTracks = [item];
+  const isAlbumView = albumTracks.length > 1 || Boolean(item.album && item.album !== 'Unknown Album');
   const albumArtists = [...new Set(albumTracks.map(t => t.artist).filter(Boolean))];
   const byline = isAlbumView
     ? (albumArtists.length > 1 ? 'Various Artists' : (albumArtists[0] || ''))
     : (item.artist || '');
-  const coverVersion = Math.max(0, ...albumTracks.map(t => new Date(t.updatedAt || 0).getTime() || 0));
+  const coverVersion = Math.max(
+    item.updatedAt ? new Date(item.updatedAt).getTime() : 0,
+    ...albumTracks.map(t => new Date(t.updatedAt || 0).getTime() || 0)
+  );
   const totalSeconds = albumTracks.reduce((sum, t) => sum + durationSeconds(t.duration), 0);
   const coverUrl = typeof api.getCoverUrlVersioned === 'function'
     ? api.getCoverUrlVersioned(item.id, coverVersion || '')
@@ -265,11 +269,15 @@ function renderMusicDetail(container, item) {
   const trackListEl = container.querySelector('#track-list');
 
   const refreshLibrary = async (updatedItems) => {
+    const currentLib = store.get('library') || [];
     (updatedItems || []).forEach(u => {
-      const local = store.get('library').find(i => i.id === u.id);
+      const local = currentLib.find(i => i.id === u.id);
       if (local) Object.assign(local, u);
+      const inTracks = tracks.find(i => i.id === u.id);
+      if (inTracks) Object.assign(inTracks, u);
+      if (item.id === u.id) Object.assign(item, u);
     });
-    store.set('library', [...store.get('library')]);
+    store.set('library', [...currentLib]);
   };
 
   const renderTracks = () => {
@@ -368,7 +376,10 @@ function renderMusicDetail(container, item) {
     });
   });
   container.querySelector('#edit-track-btn')?.addEventListener('click', () => {
-    showTrackEditModal(item, async () => { await refreshLibrary(); renderMusicDetail(container, item); });
+    showTrackEditModal(item, async (updated) => {
+      await refreshLibrary(updated || [item]);
+      renderMusicDetail(container, updated?.[0] || item);
+    });
   });
 }
 
@@ -383,6 +394,7 @@ export function showTrackEditModal(track, onSaved) {
         <div class="form-group"><label class="form-label">Title</label><input type="text" class="form-input" id="track-title" value="${escapeHtml(track.title || '')}"></div>
         <div class="form-group"><label class="form-label">Artist</label><input type="text" class="form-input" id="track-artist" value="${escapeHtml(track.artist || '')}"></div>
         <div class="form-group"><label class="form-label">Track #</label><input type="number" class="form-input" id="track-num" min="0" value="${track.track || ''}"></div>
+        <div class="form-group"><label class="form-label">Cover art</label><input type="file" class="form-input" id="track-cover" accept="image/*"></div>
       </div>
       <div class="modal-footer"><button class="btn btn-secondary" id="track-cancel">Cancel</button><button class="btn btn-primary" id="track-save">Save</button></div>
     </div>`;
@@ -393,8 +405,15 @@ export function showTrackEditModal(track, onSaved) {
   backdrop.addEventListener('click', (e) => { if (e.target === backdrop) close(); });
   backdrop.querySelector('#track-save').addEventListener('click', async () => {
     const title = backdrop.querySelector('#track-title').value.trim();
+    const cover = backdrop.querySelector('#track-cover')?.files?.[0];
     if (!title) { toast.error('Title is required'); return; }
     try {
+      if (cover) {
+        const coverRes = await uploadAlbumCover([track.id], cover);
+        if (coverRes?.items?.[0]) {
+          Object.assign(track, coverRes.items[0]);
+        }
+      }
       const updated = await api.updateItem(track.id, {
         title,
         artist: backdrop.querySelector('#track-artist').value.trim(),
@@ -403,7 +422,7 @@ export function showTrackEditModal(track, onSaved) {
       Object.assign(track, updated);
       toast.success('Track updated');
       close();
-      await onSaved?.();
+      await onSaved?.([track]);
     } catch (err) { toast.error(err.message); }
   });
 }

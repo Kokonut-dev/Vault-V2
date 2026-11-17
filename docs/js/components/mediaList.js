@@ -63,12 +63,16 @@ export function renderMediaList(container, items, options = {}) {
     row.dataset.id = item.id;
     row.setAttribute('role', 'button');
     row.setAttribute('tabindex', '0');
+    const itemVersion = item.updatedAt ? new Date(item.updatedAt).getTime() : '';
+    const coverSrc = item.type === 'music'
+      ? (itemVersion && typeof api.getCoverUrlVersioned === 'function' ? api.getCoverUrlVersioned(item.id, itemVersion) : api.getCoverUrl(item.id))
+      : api.getThumbnailUrl(item.id);
     
     row.innerHTML = `
       <div class="media-list-item-main">
         <button class="media-list-play" type="button" aria-label="Play">${icon('play', { size: 13 })}</button>
         <div class="media-list-item-cover">
-          <img src="${item.type === 'music' ? api.getCoverUrl(item.id) : api.getThumbnailUrl(item.id)}" alt="" loading="lazy" onerror="this.style.display='none'">
+          <img src="${coverSrc}" alt="" loading="lazy" onerror="this.style.display='none'">
         </div>
         <div style="min-width:0;">
           <div class="media-list-item-title">${escapeHtml(item.title)}</div>

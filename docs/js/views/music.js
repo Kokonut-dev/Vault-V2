@@ -234,9 +234,13 @@ export function renderMusic(container) {
       const card = document.createElement('div');
       card.className = 'media-card';
       const cover = tracks[0];
+      const albumVersion = Math.max(0, ...tracks.map(t => new Date(t.updatedAt || 0).getTime() || 0));
+      const coverUrl = (typeof api.getCoverUrlVersioned === 'function' && albumVersion)
+        ? api.getCoverUrlVersioned(cover.id, albumVersion)
+        : api.getCoverUrl(cover.id);
       card.innerHTML = `
         <div class="media-card-cover music">
-          <img src="${api.getCoverUrl(cover.id)}" alt="" onerror="this.style.display='none'">
+          <img src="${coverUrl}" alt="" onerror="this.style.display='none'">
           <div class="media-card-overlay"><button class="media-card-play" type="button" aria-label="Play ${escapeAttr(album)}">${icon('play', { size: 20 })}</button></div>
         </div>
         <div class="media-card-info">
