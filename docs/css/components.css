@@ -184,7 +184,8 @@
   width: 100%;
   height: 100%;
   object-fit: cover;
-  transition: transform var(--duration-slow) var(--ease-out);
+  opacity: 1;
+  transition: opacity 0.25s ease, transform var(--duration-slow) var(--ease-out);
   /* F-3: no will-change here — promoting every card image to its own
      compositor layer meant 1 000+ GPU textures on large libraries. The
      hover scale transition runs fine without it. */
@@ -279,13 +280,12 @@
   z-index: 2;
 }
 
-.media-card-cover img.loaded {
-  opacity: 1;
+.media-card-cover img[data-src]:not(.loaded) {
+  opacity: 0;
 }
 
-.media-card-cover img {
-  opacity: 0;
-  transition: opacity 0.25s ease, transform var(--duration-slow) var(--ease-out);
+.media-card-cover img.loaded {
+  opacity: 1;
 }
 
 .media-card-info {

@@ -36,7 +36,7 @@ export async function renderComics(container) {
     card.dataset.type = 'movie';
     card.innerHTML = `
       <div class="media-card-cover">
-        <img loading="lazy" src="${api.getCoverUrl(item.id)}" alt="${escapeHtml(item.title)}">
+        <img loading="lazy" src="${api.getCoverUrl(item.id)}" alt="${escapeHtml(item.title)}" class="loaded" onload="this.classList.add('loaded')" onerror="this.style.display='none';this.parentElement.querySelector('.media-card-placeholder')?.classList.add('visible')">
         <div class="media-card-placeholder">${icon('book', { size: 34 })}</div>
       </div>
       <div class="media-card-info">

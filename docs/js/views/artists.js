@@ -63,9 +63,14 @@ export function renderArtists(container) {
         const artistPath = `/artist/${encodeURIComponent(artist)}`;
         card.href = artistPath;
         card.dataset.route = artistPath;
+        const coverTrack = tracks.find(t => t.coverArtPath || t.posterPath) || tracks[0];
+        const artistVersion = Math.max(0, ...tracks.map(t => new Date(t.updatedAt || 0).getTime() || 0));
+        const coverUrl = (typeof api.getCoverUrlVersioned === 'function' && artistVersion)
+          ? api.getCoverUrlVersioned(coverTrack.id, artistVersion)
+          : api.getCoverUrl(coverTrack.id);
         card.innerHTML = `
           <div class="media-card-cover music">
-            <img loading="lazy" src="${api.getCoverUrl(tracks[0].id)}" alt="">
+            <img loading="lazy" src="${coverUrl}" alt="" class="loaded" onload="this.classList.add('loaded')" onerror="this.style.display='none';this.parentElement.querySelector('.media-card-placeholder')?.classList.add('visible')">
             <div class="media-card-placeholder" aria-hidden="true">${icon('mic', { size: 34 })}</div>
           </div>
           <div class="media-card-info">
@@ -100,11 +105,16 @@ export async function renderArtist(container, name) {
 
   const albums = [...new Set(tracks.map(t => t.album).filter(Boolean))];
   const seconds = tracks.reduce((sum, track) => sum + durationSeconds(track.duration), 0);
-  const coverId = tracks[0].id;
+  const coverTrack = tracks.find(t => t.coverArtPath || t.posterPath) || tracks[0];
+  const coverId = coverTrack.id;
+  const coverVersion = Math.max(0, ...tracks.map(t => new Date(t.updatedAt || 0).getTime() || 0));
+  const coverUrl = (typeof api.getCoverUrlVersioned === 'function' && coverVersion)
+    ? api.getCoverUrlVersioned(coverId, coverVersion)
+    : api.getCoverUrl(coverId);
 
   container.innerHTML = `
     <div class="hero artist-hero">
-      <img class="hero-backdrop" src="${api.getCoverUrl(coverId)}" alt="" onerror="this.style.display='none'">
+      <img class="hero-backdrop" src="${coverUrl}" alt="" onerror="this.style.display='none'">
       <div class="hero-meta">
         <span class="quality-badge">Artist</span>
         <span>${albums.length} album(s)</span>

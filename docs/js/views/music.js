@@ -233,24 +233,39 @@ export function renderMusic(container) {
     Object.entries(albums).forEach(([album, tracks]) => {
       const card = document.createElement('div');
       card.className = 'media-card';
-      const cover = tracks[0];
+      card.dataset.type = 'music';
+      const cover = tracks.find(t => t.coverArtPath || t.posterPath) || tracks[0];
       const albumVersion = Math.max(0, ...tracks.map(t => new Date(t.updatedAt || 0).getTime() || 0));
       const coverUrl = (typeof api.getCoverUrlVersioned === 'function' && albumVersion)
         ? api.getCoverUrlVersioned(cover.id, albumVersion)
         : api.getCoverUrl(cover.id);
       card.innerHTML = `
         <div class="media-card-cover music">
-          <img src="${coverUrl}" alt="" onerror="this.style.display='none'">
+          <img src="${coverUrl}" alt="${escapeAttr(album)}" loading="lazy" class="loaded" onload="this.classList.add('loaded')" onerror="this.style.display='none';this.parentElement.querySelector('.media-card-placeholder')?.classList.add('visible')">
+          <div class="media-card-placeholder" aria-hidden="true">${icon('music', { size: 34 })}</div>
           <div class="media-card-overlay"><button class="media-card-play" type="button" aria-label="Play ${escapeAttr(album)}">${icon('play', { size: 20 })}</button></div>
         </div>
         <div class="media-card-info">
           <div class="media-card-title">${escapeHtml(album)}</div>
-          <div class="media-card-meta">${escapeHtml(tracks[0].artist || '')} • ${tracks.length} tracks</div>
+          <div class="media-card-meta">${escapeHtml(cover.artist || tracks[0].artist || '')} • ${tracks.length} tracks</div>
         </div>
       `;
       card.setAttribute('role', 'button');
       card.setAttribute('tabindex', '0');
       card.setAttribute('aria-label', `${album} — ${tracks.length} tracks`);
+
+      const img = card.querySelector('.media-card-cover img');
+      if (img) {
+        img.addEventListener('load', () => img.classList.add('loaded'));
+        img.addEventListener('error', () => {
+          img.style.display = 'none';
+          const ph = card.querySelector('.media-card-placeholder');
+          if (ph) ph.classList.add('visible');
+        });
+        if (img.complete && img.naturalWidth > 0) {
+          img.classList.add('loaded');
+        }
+      }
 
       // An album card is a collection, not a track: activating it opens the
       // album page, which lists its tracks. Playback stays behind the explicit

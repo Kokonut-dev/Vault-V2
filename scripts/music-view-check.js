@@ -30,6 +30,7 @@
 'use strict';
 
 const path = require('node:path');
+const fs = require('node:fs');
 const { pathToFileURL, fileURLToPath } = require('node:url');
 const { createRequire } = require('node:module');
 
@@ -148,6 +149,40 @@ function assert(condition, message) {
   });
 
   const firstLight = cardFor('First Light');
+
+  await test('album card includes cover image with loaded class and placeholder fallback', () => {
+    const img = firstLight.querySelector('.media-card-cover img');
+    assert(img, 'missing img inside .media-card-cover');
+    assert(img.src.includes('/api/media/cover/t1'), `unexpected img src: ${img.src}`);
+    assert(img.classList.contains('loaded'), 'img should have .loaded class so it is visible');
+    const placeholder = firstLight.querySelector('.media-card-cover .media-card-placeholder');
+    assert(placeholder, 'missing placeholder element inside .media-card-cover');
+  });
+
+  await test('CSS styles cover images with opacity 1 by default (not blanket opacity 0)', () => {
+    const css = fs.readFileSync(path.join(REPO_ROOT, 'docs', 'css', 'components.css'), 'utf8');
+    assert(!/\.media-card-cover\s+img\s*\{\s*[^}]*opacity:\s*0/i.test(css),
+      'components.css must not set generic .media-card-cover img to opacity: 0');
+  });
+
+  await test('album card selects track with coverArtPath over first track without cover', async () => {
+    const libWithCover = [
+      { id: 'ca1', type: 'music', title: 'Song 1', artist: 'Artist', album: 'Art Album', track: 1 },
+      { id: 'ca2', type: 'music', title: 'Song 2', artist: 'Artist', album: 'Art Album', track: 2, coverArtPath: '/covers/art.jpg', updatedAt: '2026-11-17T10:00:00.000Z' },
+    ];
+    store.setLibrary(libWithCover);
+    const c = mount();
+    chip('album').click();
+    const artCard = c.querySelector('#albums-grid .media-card');
+    assert(artCard, 'missing artCard');
+    const artImg = artCard.querySelector('.media-card-cover img');
+    assert(artImg.src.includes('/api/media/cover/ca2'), `expected cover url to use ca2 with coverArtPath, got ${artImg.src}`);
+    assert(artImg.src.includes('&v='), `expected versioned cover url, got ${artImg.src}`);
+    // Restore library
+    store.setLibrary(lib);
+    mount();
+    chip('album').click();
+  });
 
   await test('clicking an album card opens the album instead of playing it', () => {
     events.length = 0;
