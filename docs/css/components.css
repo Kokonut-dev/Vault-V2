@@ -960,8 +960,8 @@ svg.icon {
 }
 
 /* 700+ bold weight (headings, page titles, section titles, strong) */
-:is(h1, h2, h3, h4, h5, h6, strong, b, .page-title, .section-title, .modal-title, .stat-value, [style*="font-weight: 700"], [style*="font-weight:700"], [style*="font-weight: bold"], [style*="font-weight:bold"]) .icon,
-:is(h1, h2, h3, h4, h5, h6, strong, b, .page-title, .section-title, .modal-title, .stat-value, [style*="font-weight: 700"], [style*="font-weight:700"], [style*="font-weight: bold"], [style*="font-weight:bold"]) svg.icon {
+:is(h1, h2, h3, h4, h5, h6, strong, b, .page-title, .section-title, .modal-title, .stat-value, .nav-section-header, .nav-section-title, [style*="font-weight: 700"], [style*="font-weight:700"], [style*="font-weight: bold"], [style*="font-weight:bold"]) .icon,
+:is(h1, h2, h3, h4, h5, h6, strong, b, .page-title, .section-title, .modal-title, .stat-value, .nav-section-header, .nav-section-title, [style*="font-weight: 700"], [style*="font-weight:700"], [style*="font-weight: bold"], [style*="font-weight:bold"]) svg.icon {
   stroke-width: var(--icon-stroke-bold, 2.25px);
 }
 

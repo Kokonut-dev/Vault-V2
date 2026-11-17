@@ -52,6 +52,7 @@
   border-bottom: 1px solid rgba(var(--glass-tint), 0.08);
   gap: var(--space-sm);
   flex-shrink: 0;
+  position: relative;
 }
 
 .sidebar-logo {
@@ -67,6 +68,7 @@
   font-size: 18px;
   flex-shrink: 0;
   box-shadow: 0 4px 14px var(--accent-muted), inset 0 1px 0 rgba(255, 255, 255, 0.35);
+  cursor: pointer;
 }
 
 .sidebar-brand {
@@ -77,16 +79,54 @@
   overflow: hidden;
 }
 
+.sidebar-collapse-btn {
+  margin-left: auto;
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: calc(var(--radius-xl) - var(--space-sm));
+  background: rgba(var(--glass-tint), 0.06);
+  border: 1px solid var(--border-subtle);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all var(--duration-fast) var(--ease-out);
+  flex-shrink: 0;
+}
+
+.sidebar-collapse-btn:hover {
+  background: rgba(var(--glass-tint), 0.12);
+  color: var(--text-primary);
+}
+
+.sidebar.collapsed .sidebar-header {
+  padding: 0 var(--space-sm);
+  justify-content: center;
+  cursor: pointer;
+}
+
 .sidebar.collapsed .sidebar-brand,
+.sidebar.collapsed .sidebar-collapse-btn,
 .sidebar.collapsed .nav-label,
+.sidebar.collapsed .nav-section-header,
 .sidebar.collapsed .nav-section-title {
   opacity: 0;
   width: 0;
   pointer-events: none;
+  display: none;
 }
 
-.sidebar.collapsed .nav-section-title {
-  display: none;
+.sidebar.collapsed .nav-section {
+  border-top: 1px solid rgba(var(--glass-tint), 0.08);
+  padding-top: var(--space-xs);
+  margin-top: var(--space-xs);
+}
+
+.sidebar.collapsed .nav-section:first-child {
+  border-top: none;
+  padding-top: 0;
+  margin-top: 0;
 }
 
 .sidebar.collapsed .nav-item {
@@ -120,16 +160,92 @@
   gap: 2px;
 }
 
+.nav-section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 6px var(--space-sm);
+  margin-bottom: 2px;
+  border: 0;
+  background: transparent;
+  color: var(--text-tertiary);
+  cursor: pointer;
+  border-radius: calc(var(--radius-xl) - var(--space-sm));
+  transition: all var(--duration-fast) var(--ease-out);
+  user-select: none;
+  text-align: left;
+}
+
+.nav-section-header:hover {
+  color: var(--text-primary);
+  background: rgba(var(--glass-tint), 0.06);
+}
+
+.nav-section-header:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
 .nav-section-title {
   font-size: 10px;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.1em;
   color: var(--text-tertiary);
-  padding: 0 var(--space-sm);
-  margin-bottom: var(--space-xs);
   white-space: nowrap;
-  transition: opacity var(--duration-fast) var(--ease-out);
+  transition: opacity var(--duration-fast) var(--ease-out), color var(--duration-fast) var(--ease-out);
+}
+
+.nav-section-header:hover .nav-section-title {
+  color: var(--text-secondary);
+}
+
+.nav-section-has-active {
+  display: none;
+  width: 6px;
+  height: 6px;
+  border-radius: var(--radius-full);
+  background: var(--accent);
+  box-shadow: 0 0 8px var(--accent);
+  margin-left: auto;
+  margin-right: 6px;
+  flex-shrink: 0;
+}
+
+.nav-section.collapsed.has-active .nav-section-has-active {
+  display: block;
+}
+
+.nav-section-chevron {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: var(--radius-sm);
+  color: var(--text-tertiary);
+  margin-left: auto;
+  flex-shrink: 0;
+  transition: color var(--duration-fast) var(--ease-out);
+}
+
+.nav-section.collapsed.has-active .nav-section-chevron {
+  margin-left: 0;
+}
+
+.nav-section-header:hover .nav-section-chevron {
+  color: var(--text-primary);
+}
+
+.nav-section-items {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.nav-section.collapsed .nav-section-items {
+  display: none;
 }
 
 .nav-item {
@@ -231,6 +347,24 @@
 
 .sidebar.collapsed .sidebar-toggle .nav-label {
   display: none;
+}
+
+.sidebar-logout {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-xs);
+  border-radius: calc(var(--radius-xl) - var(--space-sm));
+  transition: all var(--duration-fast) var(--ease-out);
+}
+
+.sidebar.collapsed .sidebar-logout .nav-label {
+  display: none;
+}
+
+.sidebar.collapsed .sidebar-logout {
+  padding-left: 0;
+  padding-right: 0;
 }
 
 /* ============================================================

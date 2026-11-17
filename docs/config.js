@@ -15,7 +15,11 @@ window.VAULT_CONFIG = {
   // - Local HTTPS (with mkcert): 'https://localhost:4000'
   // - Cloudflare Tunnel: 'https://your-tunnel.trycloudflare.com'
   // - ngrok: 'https://your-ngrok-id.ngrok.io'
-  apiBaseUrl: localStorage.getItem('vault_api_url') || 'http://localhost:4000',
+  apiBaseUrl: localStorage.getItem('vault_api_url') || (
+    typeof location !== 'undefined' && location.origin && location.protocol.startsWith('http') && !location.hostname.includes('github.io')
+      ? location.origin
+      : 'http://localhost:4000'
+  ),
 
   // App info
   appName: 'Vault',
