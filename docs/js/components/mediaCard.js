@@ -52,9 +52,10 @@ export function createMediaCard(item, options = {}) {
 
   const progress = item.progress || 0;
   const hasProgress = showProgress && progress > 0 && progress < 95;
+  const itemVersion = item.updatedAt ? new Date(item.updatedAt).getTime() : '';
   const coverUrl = (item.coverArtPath || isMusic)
-    ? api.getCoverUrl(item.id)
-    : (item.thumbnailPath ? api.getThumbnailUrl(item.id) : api.getCoverUrl(item.id));
+    ? (itemVersion && typeof api.getCoverUrlVersioned === 'function' ? api.getCoverUrlVersioned(item.id, itemVersion) : api.getCoverUrl(item.id))
+    : (item.thumbnailPath ? api.getThumbnailUrl(item.id) : (itemVersion && typeof api.getCoverUrlVersioned === 'function' ? api.getCoverUrlVersioned(item.id, itemVersion) : api.getCoverUrl(item.id)));
 
   card.innerHTML = `
     <div class="media-card-cover ${coverType}">

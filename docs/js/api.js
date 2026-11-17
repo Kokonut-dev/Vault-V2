@@ -1164,8 +1164,9 @@ class ApiClient {
 
   // Cover URL for a library item, with an optional cache-busting version
   // (pass updatedAt after editing artwork so browsers drop the old image).
-  getCoverUrlVersioned(id, version) {
-    const url = this.getCoverUrl(id);
+  getCoverUrlVersioned(id, version, size = null) {
+    if (!id) return '';
+    const url = this.getCoverUrl(id, size);
     return version ? `${url}&v=${encodeURIComponent(version)}` : url;
   }
 

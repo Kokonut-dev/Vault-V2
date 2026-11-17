@@ -58,8 +58,12 @@ test('authenticated album, playlist, and new-media cover uploads are reachable',
     broadcast: events.broadcast,
   };
 
+  const sidecarPoster = path.join(root, 'music', 'sidecar.jpg');
+  await fs.ensureDir(path.dirname(sidecarPoster));
+  await fs.writeFile(sidecarPoster, Buffer.from('old-sidecar-content'));
+
   const tracks = new Map([
-    ['album-track', { id: 'album-track', type: 'music', title: 'Album track' }],
+    ['album-track', { id: 'album-track', type: 'music', title: 'Album track', posterPath: sidecarPoster }],
   ]);
   const playlist = { id: 'playlist-1', name: 'Test playlist', items: [], coverArt: null };
   const scoped = {
@@ -88,6 +92,7 @@ test('authenticated album, playlist, and new-media cover uploads are reachable',
   const libraryRoutes = require('../routes/library');
   const playlistRoutes = require('../routes/playlists');
   const uploadRoutes = require('../routes/upload');
+  const mediaRoutes = require('../routes/media');
 
   const app = express();
   app.use(express.json());
@@ -95,6 +100,7 @@ test('authenticated album, playlist, and new-media cover uploads are reachable',
   app.use('/api/library', libraryRoutes);
   app.use('/api/playlists', playlistRoutes);
   app.use('/api/upload', uploadRoutes);
+  app.use('/api/media', mediaRoutes);
 
   const server = await new Promise(resolve => {
     const listening = app.listen(0, '127.0.0.1', () => resolve(listening));
@@ -123,8 +129,15 @@ test('authenticated album, playlist, and new-media cover uploads are reachable',
     assert.equal(response.status, 200, `${route} should accept album artwork`);
     const body = await response.json();
     assert.equal(body.items[0].id, 'album-track');
+    assert.equal(body.items[0].posterPath, body.coverArtPath, 'posterPath must be updated with coverArtPath to prevent shadowing');
     assert.ok(await fs.pathExists(body.coverArtPath));
     generatedCovers.add(body.coverArtPath);
+
+    const coverMediaRes = await fetch(`${baseUrl}/api/media/cover/album-track?token=${token}`);
+    assert.equal(coverMediaRes.status, 200);
+    assert.equal(coverMediaRes.headers.get('cache-control'), 'no-cache');
+    const coverText = await coverMediaRes.text();
+    assert.equal(coverText, 'not-a-real-png', 'media cover route should serve newly uploaded artwork over sidecar poster');
   }
 
   for (const route of ['/api/playlists/playlist-1/cover', '/api/playlists/cover/playlist-1']) {

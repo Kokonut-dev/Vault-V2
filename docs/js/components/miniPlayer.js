@@ -54,7 +54,10 @@ export function initMiniPlayer() {
     miniTitle.textContent = item.title;
     miniArtist.textContent = item.artist || item.album || '';
     
-    const coverUrl = api.getCoverUrl(item.id);
+    const itemVersion = item.updatedAt ? new Date(item.updatedAt).getTime() : '';
+    const coverUrl = (itemVersion && typeof api.getCoverUrlVersioned === 'function')
+      ? api.getCoverUrlVersioned(item.id, itemVersion)
+      : api.getCoverUrl(item.id);
     miniCoverImg.src = coverUrl;
     miniCoverImg.style.display = 'block';
     miniCoverImg.onerror = () => miniCoverImg.style.display = 'none';

@@ -181,6 +181,7 @@ router.post('/:type', (req, res) => {
           if (uploadedCoverPath) {
             item.coverArtPath = uploadedCoverPath;
             item.thumbnailPath = uploadedCoverPath;
+            item.posterPath = uploadedCoverPath;
           }
 
           // If subtitle uploaded
