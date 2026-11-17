@@ -22,7 +22,7 @@ const fs = require('fs');
 const path = require('path');
 
 const VARIABLES = path.join(__dirname, '..', 'docs', 'css', 'variables.css');
-const THEMES = ['dark', 'light', 'warm', 'cold'];
+const THEMES = ['dark', 'light', 'warm', 'cold', 'midnight', 'white'];
 const AA = 4.5;
 
 function parseThemeTokens(css) {

@@ -27,7 +27,7 @@ export function renderSettings(container) {
         <div class="form-group">
           <label class="form-label">Theme</label>
           <div style="display:flex; gap:8px; flex-wrap:wrap;">
-            ${['dark', 'light', 'warm', 'cold'].map(theme => `
+            ${['dark', 'light', 'warm', 'cold', 'midnight', 'white'].map(theme => `
               <button class="btn ${store.get('theme') === theme ? 'btn-primary' : 'btn-secondary'} btn-sm" data-theme="${theme}">${theme.charAt(0).toUpperCase() + theme.slice(1)}</button>
             `).join('')}
           </div>

@@ -384,3 +384,150 @@
 
   --overlay: rgba(7, 13, 24, 0.72);
 }
+
+/* ============================================================
+   Midnight theme — ultra-sleek obsidian OLED with cyber emerald light leaks
+   ============================================================ */
+[data-theme="midnight"] {
+  --bg-primary: #030305;
+  --bg-secondary: #0A0A0F;
+  --bg-tertiary: #111118;
+  --bg-elevated: #181822;
+  --bg-hover: #22222E;
+  --bg-active: #2C2C3C;
+
+  /* Surface elevations */
+  --surface-sunken: #000000;
+  --surface-base: #0A0A0F;
+  --surface-raised: #12121A;
+  --surface-elevated: #1A1A24;
+  --surface-overlay: #222230;
+  --surface-hover: #2A2A3A;
+  --surface-active: #343446;
+
+  --text-primary: rgba(255, 255, 255, 0.96);
+  --text-secondary: rgba(255, 255, 255, 0.68);
+  --text-tertiary: rgba(255, 255, 255, 0.50);  /* AA 5.3:1 */
+  --text-inverse: #030305;
+
+  --border: rgb(255 255 255 / 0.10);
+  --border-strong: rgb(255 255 255 / 0.18);
+  --border-subtle: rgb(255 255 255 / 0.08);
+  --border-focus: rgba(16, 185, 129, 0.5);
+
+  --accent: #10B981;
+  --accent-hover: #059669;
+  --accent-muted: rgba(16, 185, 129, 0.16);
+  --accent-strong: #34D399;
+  /* Accent roles */
+  --accent-text: #10B981;   /* AA 8.22:1 on #030305 */
+  --accent-solid: #10B981;  /* AA 8.22:1 with #030305 label */
+  --btn-accent-end: #059669; /* AA 5.12:1 with #030305 label */
+  --on-accent: #030305;
+
+  --success: oklch(0.72 0.20 142);
+  --warning: oklch(0.72 0.17 68);
+  --error: oklch(0.72 0.22 28);
+  --danger: oklch(0.72 0.22 28);
+  --info: oklch(0.72 0.18 250);
+
+  --shadow-color: rgba(0, 0, 0, 0.7);
+  --shadow: 0 6px 24px rgba(0, 0, 0, 0.6);
+  --shadow-strong: 0 16px 52px rgba(0, 0, 0, 0.8);
+
+  /* Glass */
+  --glass-tint: 255, 255, 255;
+  --glass-border: rgba(255, 255, 255, 0.09);
+  --glass-highlight: rgba(255, 255, 255, 0.14);
+  --glass-highlight-soft: rgba(255, 255, 255, 0.04);
+  --glass-shadow: 0 24px 60px rgba(0, 0, 0, 0.7);
+  --glass-ring: inset 0 0 0 1px rgba(255, 255, 255, 0.04);
+  --glass-blur: 26px;
+  --glass-saturate: 190%;
+
+  /* Surfaces */
+  --card-bg: rgba(255, 255, 255, 0.035);
+  --card-hover: rgba(255, 255, 255, 0.07);
+  --card-border: rgba(255, 255, 255, 0.07);
+
+  /* Ambient light behind the glass */
+  --ambient-1: rgba(16, 185, 129, 0.24);
+  --ambient-2: rgba(6, 182, 212, 0.16);
+  --ambient-3: rgba(139, 92, 246, 0.14);
+  --ambient-base: radial-gradient(120% 90% at 50% 0%, #0D1117 0%, #030305 60%);
+
+  --overlay: rgba(2, 2, 4, 0.75);
+}
+
+/* ============================================================
+   White theme — pristine architectural white with electric azure prism
+   ============================================================ */
+[data-theme="white"] {
+  --bg-primary: #FFFFFF;
+  --bg-secondary: #F8F9FC;
+  --bg-tertiary: #EFF2F7;
+  --bg-elevated: #FFFFFF;
+  --bg-hover: #E7ECF3;
+  --bg-active: #DCE2EE;
+
+  --surface-sunken: #EFF2F7;
+  --surface-base: #FFFFFF;
+  --surface-raised: #FFFFFF;
+  --surface-elevated: #FFFFFF;
+  --surface-overlay: #FFFFFF;
+  --surface-hover: #F2F4F8;
+  --surface-active: #E5E9F0;
+
+  --text-primary: rgba(15, 23, 42, 0.95);
+  --text-secondary: rgba(15, 23, 42, 0.72);
+  --text-tertiary: rgba(15, 23, 42, 0.62);   /* AA 5.2:1 */
+  --text-inverse: #FFFFFF;
+
+  --border: rgb(15 23 42 / 0.08);
+  --border-strong: rgb(15 23 42 / 0.15);
+  --border-subtle: rgb(15 23 42 / 0.06);
+  --border-focus: rgba(37, 99, 235, 0.45);
+
+  --accent: #2563EB;
+  --accent-hover: #1D4ED8;
+  --accent-muted: rgba(37, 99, 235, 0.12);
+  --accent-strong: #1E40AF;
+  /* Accent roles */
+  --accent-text: #1D4ED8;   /* AA 7.40:1 on #FFFFFF */
+  --accent-solid: #1D4ED8;  /* AA 7.40:1 with white */
+  --btn-accent-end: #1E40AF; /* AA 9.67:1 with white */
+  --on-accent: #FFFFFF;
+
+  --success: oklch(0.48 0.15 142);
+  --warning: oklch(0.48 0.15 55);
+  --error: oklch(0.48 0.22 28);
+  --danger: oklch(0.48 0.22 28);
+  --info: oklch(0.48 0.18 250);
+
+  --shadow-color: rgba(15, 23, 42, 0.08);
+  --shadow: 0 8px 30px rgba(15, 23, 42, 0.07);
+  --shadow-strong: 0 18px 50px rgba(15, 23, 42, 0.12);
+
+  /* Glass */
+  --glass-tint: 255, 255, 255;
+  --glass-border: rgba(15, 23, 42, 0.07);
+  --glass-highlight: rgba(255, 255, 255, 0.95);
+  --glass-highlight-soft: rgba(255, 255, 255, 0.6);
+  --glass-shadow: 0 24px 60px rgba(15, 23, 42, 0.10);
+  --glass-ring: inset 0 0 0 1px rgba(255, 255, 255, 0.8);
+  --glass-blur: 28px;
+  --glass-saturate: 180%;
+
+  /* Surfaces */
+  --card-bg: rgba(255, 255, 255, 0.75);
+  --card-hover: rgba(255, 255, 255, 0.95);
+  --card-border: rgba(15, 23, 42, 0.06);
+
+  /* Ambient light behind the glass — dynamic prism */
+  --ambient-1: rgba(37, 99, 235, 0.18);
+  --ambient-2: rgba(236, 72, 153, 0.12);
+  --ambient-3: rgba(6, 182, 212, 0.14);
+  --ambient-base: radial-gradient(120% 90% at 50% 0%, #FFFFFF 0%, #F0F4FA 70%);
+
+  --overlay: rgba(255, 255, 255, 0.75);
+}

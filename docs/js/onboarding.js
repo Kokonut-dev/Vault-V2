@@ -636,10 +636,12 @@ export class OnboardingManager {
             <label class="onboarding-label">Theme Preference</label>
             <div class="onboarding-themes" id="ob-themes">
               ${[
-        { id: 'dark', name: 'Dark', colors: ['#0A0A0A', '#1A1A1A', '#FF4D5A'] },
-        { id: 'light', name: 'Light', colors: ['#FFFFFF', '#F5F5F5', '#FF4D5A'] },
-        { id: 'warm', name: 'Warm', colors: ['#1A1207', '#2D1F0E', '#FF8C42'] },
-        { id: 'cold', name: 'Cold', colors: ['#0A1419', '#122530', '#4DA6FF'] },
+        { id: 'dark', name: 'Dark', colors: ['#08080B', '#1A1A22', '#7C5CFF'] },
+        { id: 'light', name: 'Light', colors: ['#F4F5F8', '#ECEEF3', '#6D4BE0'] },
+        { id: 'warm', name: 'Warm', colors: ['#FBF3E4', '#F1E4CC', '#D97706'] },
+        { id: 'cold', name: 'Cold', colors: ['#070D18', '#17243A', '#22D3EE'] },
+        { id: 'midnight', name: 'Midnight', colors: ['#030305', '#111118', '#10B981'] },
+        { id: 'white', name: 'White', colors: ['#FFFFFF', '#EFF2F7', '#2563EB'] },
       ].map(t => `
                 <div class="onboarding-theme ${this.data.theme === t.id ? 'selected' : ''}" data-theme="${t.id}">
                   <div class="onboarding-theme-name">${t.name}</div>
