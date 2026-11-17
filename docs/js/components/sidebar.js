@@ -11,7 +11,7 @@ const NAV_ITEMS = [
     { id: 'home', label: 'Home', icon: 'home', route: '/' },
     { id: 'movies', label: 'Movies & Series', icon: 'film', route: '/movies' },
     { id: 'music', label: 'Music', icon: 'music', route: '/music' },
-    { id: 'artists', label: 'Artists', icon: 'headphones', route: '/artists' },
+    { id: 'artists', label: 'Artists', icon: 'mic', route: '/artists' },
     { id: 'audiobooks', label: 'Audiobooks', icon: 'headphones', route: '/audiobooks' },
     { id: 'videos', label: 'Videos', icon: 'video', route: '/videos' },
   ]},
@@ -35,7 +35,7 @@ const NAV_ITEMS = [
   ]},
   { id: 'manage', section: 'Manage', items: [
     { id: 'upload', label: 'Upload', icon: 'upload', route: '/upload' },
-    { id: 'profiles', label: 'Profiles', icon: 'users', route: '/profiles' },
+    { id: 'profiles', label: 'Profiles', icon: 'user', route: '/profiles' },
     { id: 'system', label: 'Server', icon: 'hard-drive', route: '/system' },
     { id: 'trash', label: 'Trash', icon: 'trash', route: '/trash' },
     { id: 'settings', label: 'Settings', icon: 'settings', route: '/settings' },

@@ -28,7 +28,7 @@ export async function renderProfiles(container) {
 
   container.innerHTML = `
     <div class="page-header">
-      <h1 class="page-title">${icon('users', { size: 26 })}<span>Who's watching?</span></h1>
+      <h1 class="page-title">${icon('user', { size: 26 })}<span>Who's watching?</span></h1>
       <p class="page-subtitle">Each profile keeps its own watchlist, history, playlists and resume positions</p>
     </div>
     <div class="profile-picker">

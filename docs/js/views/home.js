@@ -36,14 +36,9 @@ async function loadHomeContent(container) {
     .filter(Boolean)
     .slice(0, 8);
   
-  // Recently added — sorted by addedAt
+  // Recently added — sorted by addedAt descending
   const recentlyAdded = [...library]
-    .sort((a, b) => new Date(b.addedAt) - new Date(a.addedAt))
-    .slice(0, 12);
-  
-  const recentlyAddedMovies = recentlyAdded.filter(i => i.type === 'movie').slice(0, 8);
-  const recentlyAddedMusic = recentlyAdded.filter(i => i.type === 'music').slice(0, 8);
-  const recentlyAddedVideos = recentlyAdded.filter(i => i.type === 'video').slice(0, 8);
+    .sort((a, b) => new Date(b.addedAt || 0) - new Date(a.addedAt || 0));
   
   // Random pick
   const randomPick = library.length > 0 ? library[Math.floor(Math.random() * library.length)] : null;
@@ -98,22 +93,7 @@ async function loadHomeContent(container) {
   }
 
   if (recentlyAdded.length > 0) {
-    const section = createSection('Recently Added', recentlyAdded, handleItemClick);
-    container.appendChild(section);
-  }
-  
-  if (recentlyAddedMovies.length > 0) {
-    const section = createSection('New Movies & Series', recentlyAddedMovies, handleItemClick);
-    container.appendChild(section);
-  }
-  
-  if (recentlyAddedMusic.length > 0) {
-    const section = createSection('New Music', recentlyAddedMusic, handleItemClick);
-    container.appendChild(section);
-  }
-  
-  if (recentlyAddedVideos.length > 0) {
-    const section = createSection('New Videos', recentlyAddedVideos, handleItemClick);
+    const section = createRecentlyAddedSection(recentlyAdded, handleItemClick);
     container.appendChild(section);
   }
   
@@ -243,6 +223,91 @@ function similarItems(library, seed, limit = 10) {
     .sort((a, b) => b.overlap - a.overlap)
     .slice(0, limit)
     .map(entry => entry.item);
+}
+
+function createRecentlyAddedSection(sortedLibrary, onClick) {
+  const section = document.createElement('div');
+  section.className = 'home-section';
+
+  const isSeries = item => item.type === 'movie' && (item.seriesKey || (item.season != null && item.season !== '') || (item.episode != null && item.episode !== ''));
+  const isMovie = item => item.type === 'movie' && !isSeries(item);
+
+  const hasSeries = sortedLibrary.some(isSeries);
+  const hasMovies = sortedLibrary.some(isMovie);
+  const hasMusic = sortedLibrary.some(i => i.type === 'music');
+  const hasVideos = sortedLibrary.some(i => i.type === 'video');
+  const hasAudiobooks = sortedLibrary.some(i => i.type === 'audiobook');
+  const hasComics = sortedLibrary.some(i => i.type === 'comic');
+
+  const categories = [
+    { key: 'all', label: 'All', filter: () => true },
+    ...(hasMovies ? [{ key: 'movies', label: hasSeries ? 'Movies' : 'Movies & Series', filter: isMovie }] : []),
+    ...(hasSeries ? [{ key: 'series', label: 'Series', filter: isSeries }] : []),
+    ...(hasMusic ? [{ key: 'music', label: 'Music', filter: i => i.type === 'music' }] : []),
+    ...(hasVideos ? [{ key: 'videos', label: 'Videos', filter: i => i.type === 'video' }] : []),
+    ...(hasAudiobooks ? [{ key: 'audiobooks', label: 'Audiobooks', filter: i => i.type === 'audiobook' }] : []),
+    ...(hasComics ? [{ key: 'comics', label: 'Comics', filter: i => i.type === 'comic' }] : []),
+  ];
+
+  let currentCategory = 'all';
+
+  function getItems() {
+    const activeDef = categories.find(c => c.key === currentCategory) || categories[0];
+    return sortedLibrary.filter(activeDef.filter).slice(0, 12);
+  }
+
+  // Only render filter tabs if there is more than 1 distinct category
+  const showChips = categories.length > 2;
+
+  section.innerHTML = `
+    <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:12px; margin-bottom:16px;">
+      <h2 style="margin-bottom:0;">Recently Added</h2>
+      ${showChips ? `
+        <div class="filter-chips" role="tablist" aria-label="Filter recently added media" style="margin-bottom:0;">
+          ${categories.map(c => `
+            <button type="button" 
+                    class="btn btn-secondary btn-sm ${c.key === currentCategory ? 'active' : ''}" 
+                    role="tab" 
+                    aria-selected="${c.key === currentCategory ? 'true' : 'false'}"
+                    data-category="${c.key}">
+              ${escapeHtml(c.label)}
+            </button>
+          `).join('')}
+        </div>
+      ` : ''}
+    </div>
+    <div class="section-content"></div>
+  `;
+
+  const content = section.querySelector('.section-content');
+
+  function renderGrid() {
+    content.innerHTML = '';
+    const items = getItems();
+    renderMediaGrid(content, items, {
+      onClick: (item) => window.dispatchEvent(new CustomEvent('vault:open-detail', { detail: { item } })),
+      onPlay: onClick,
+    });
+  }
+
+  if (showChips) {
+    section.querySelectorAll('.filter-chips button').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const cat = btn.getAttribute('data-category');
+        if (cat === currentCategory) return;
+        currentCategory = cat;
+        section.querySelectorAll('.filter-chips button').forEach(b => {
+          const isActive = b.getAttribute('data-category') === currentCategory;
+          b.classList.toggle('active', isActive);
+          b.setAttribute('aria-selected', isActive ? 'true' : 'false');
+        });
+        renderGrid();
+      });
+    });
+  }
+
+  renderGrid();
+  return section;
 }
 
 function createSection(title, items, onClick) {
