@@ -249,43 +249,18 @@ export function iconEl(name, options = {}) {
 /**
  * Replace an element's contents with a single icon — the "swap the glyph"
  * helper used for play/pause, mute and favourite toggles.
- * Blurs the outgoing icon as it fades out (filter: blur(4px)).
+ * Always ensures exactly one icon exists in the container (no duplicate SVGs).
  */
 export function setIcon(el, name, options = {}) {
   if (!el) return null;
-  const existing = el.querySelector('svg');
+  if (el.dataset.currentIcon === name && el.querySelectorAll('svg').length === 1) {
+    return el.querySelector('svg');
+  }
+  el.dataset.currentIcon = name;
   const svg = iconEl(name, options);
 
-  if (existing && typeof window !== 'undefined' && !window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches) {
-    existing.style.position = 'absolute';
-    existing.classList.add('icon-swap-exit');
-    existing.style.transition = 'opacity 150ms ease, filter 150ms ease, transform 150ms ease';
-    existing.style.pointerEvents = 'none';
-
-    requestAnimationFrame(() => {
-      existing.style.opacity = '0';
-      existing.style.filter = 'blur(4px)';
-      existing.style.transform = 'scale(0.85)';
-    });
-
-    setTimeout(() => {
-      if (existing.parentNode === el) {
-        existing.remove();
-      }
-    }, 160);
-
+  if (typeof window !== 'undefined' && !window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches) {
     svg.classList.add('icon-swap-enter');
-    svg.style.transition = 'opacity 150ms ease, filter 150ms ease, transform 150ms ease';
-    svg.style.opacity = '0';
-    svg.style.filter = 'blur(4px)';
-    el.appendChild(svg);
-
-    requestAnimationFrame(() => {
-      svg.style.opacity = '1';
-      svg.style.filter = 'blur(0)';
-    });
-
-    return svg;
   }
 
   el.replaceChildren(svg);
@@ -303,6 +278,7 @@ export function setIconLabel(el, name, label, options = {}) {
   const svg = iconEl(name, iconOptions);
   const text = document.createElement('span');
   text.textContent = label;
+  el.dataset.currentIcon = name;
   el.replaceChildren(...(position === 'end' ? [text, svg] : [svg, text]));
   return svg;
 }
@@ -329,6 +305,7 @@ export function hydrateIcons(root = document) {
       })
     );
     el.dataset.iconHydrated = 'true';
+    el.dataset.currentIcon = el.dataset.icon;
   });
 }
 

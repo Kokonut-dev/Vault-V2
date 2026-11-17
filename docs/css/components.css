@@ -109,6 +109,8 @@
   color: var(--text-secondary);
   font-size: 15px;
   transition: all var(--duration-fast) var(--ease-out);
+  position: relative;
+  overflow: hidden;
 }
 
 .btn-icon:hover {

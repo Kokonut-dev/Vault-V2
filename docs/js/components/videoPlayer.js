@@ -89,13 +89,19 @@ export function initVideoPlayer() {
   });
 
   videoEl.addEventListener('play', () => {
-    if (playBtn) setIcon(playBtn, 'pause', { size: 20 });
+    if (playBtn) {
+      setIcon(playBtn, 'pause', { size: 20 });
+      playBtn.setAttribute('aria-label', 'Pause');
+    }
     player?.classList.remove('paused');
     clearError();
   });
 
   videoEl.addEventListener('pause', () => {
-    if (playBtn) setIcon(playBtn, 'play', { size: 20 });
+    if (playBtn) {
+      setIcon(playBtn, 'play', { size: 20 });
+      playBtn.setAttribute('aria-label', 'Play');
+    }
     player?.classList.add('paused');
   });
 
