@@ -11,7 +11,7 @@ export async function renderLiveTV(container) {
   container.className = 'page';
   container.innerHTML = `
     <div class="page-header">
-      <h1 class="page-title">${icon('tv', { size: 26 })}<span>Live TV</span></h1>
+      <h1 class="page-title">${icon('radio', { size: 26 })}<span>Live TV</span></h1>
       <p class="page-subtitle">Channels from your M3U playlist or HDHomeRun tuner, with DVR</p>
       <div class="settings-tabs" role="tablist" style="margin-top:12px">
         <button class="settings-tab active" role="tab" data-tab="guide">Guide</button>

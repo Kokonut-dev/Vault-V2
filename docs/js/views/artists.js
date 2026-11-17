@@ -29,7 +29,7 @@ export function renderArtists(container) {
   container.className = 'page';
   container.innerHTML = `
     <div class="page-header">
-      <h1 class="page-title">${icon('headphones', { size: 26 })}<span>Artists</span></h1>
+      <h1 class="page-title">${icon('mic', { size: 26 })}<span>Artists</span></h1>
       <p class="page-subtitle">Your music library, grouped by artist</p>
     </div>
     <div id="artists-content"></div>
@@ -41,7 +41,7 @@ export function renderArtists(container) {
     const items = musicItems();
     const grouped = groupByArtist(items);
     if (!grouped.size) {
-      content.innerHTML = `<div class="empty-state">${icon('headphones', { size: 30 })}
+      content.innerHTML = `<div class="empty-state">${icon('mic', { size: 30 })}
         <div class="empty-state-title">No music yet</div>
         <div class="empty-state-message">Add audio files to a music library and run a scan.</div></div>`;
       return;
@@ -66,7 +66,7 @@ export function renderArtists(container) {
         card.innerHTML = `
           <div class="media-card-cover music">
             <img loading="lazy" src="${api.getCoverUrl(tracks[0].id)}" alt="">
-            <div class="media-card-placeholder" aria-hidden="true">${icon('headphones', { size: 34 })}</div>
+            <div class="media-card-placeholder" aria-hidden="true">${icon('mic', { size: 34 })}</div>
           </div>
           <div class="media-card-info">
             <div class="media-card-title">${escapeHtml(truncate(artist, 40))}</div>
