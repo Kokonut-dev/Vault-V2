@@ -1,4 +1,8 @@
-/* Film Grain / Noise Texture */
+/* Film Grain / Noise Texture
+   "Hearth" (UI_REVAMP_PLAN.md C-4): grain is a faint, STATIC paper/film
+   tooth — tactile warmth, not motion. The old perpetual shake is kept only
+   as an opt-in (.grain-overlay.is-animated) and never runs under reduced
+   motion. */
 
 .grain-overlay {
   position: fixed;
@@ -24,9 +28,17 @@
      1.44× viewport keeps the shake fully covered (keyframe deltas are ≤8% of
      the element's own size) at a fraction of the blend area. */
   inset: -10%;
-  background-image: url("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADIAAAAyCAMAAAAp4XiDAAAAUVBMVEWFhYWDg4N3d3dtbW17e3t1dXWBgYGHh4d5eXlzc3OLi4ubm5uVlZWRkZGZmZlpaWmBgYGbGxsaWlpeXl5YWFhXV1dWVlZbW1tQUFBMTExJSUlDQ0NxcXFhYWFhYWFhYZvJ2aAAAAG3RSTlMAM2BggGBgYGCAgIDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMAAAABYktHRACIBR1IAAAACXBIWXMAAAsSAAALEgHS3X78AAAAB3RJTUUH6AYSETM3K5u4ZQAAABl0RVh0Q29tbWVudABDcmVhdGVkIHdpdGggR0lNUFeBDhcAAABYSURBVEjH7c9BCQAgDMBAjDD//7M2hC1YxJ3s7M7M7M7M7M7M7M7M7M7M7M7M7M7M7M7M7M7M7M7M7M7M7M7M7M7M7M7M7M7M7M7M7M7M7M7M7M7M7M7M7M7M7M7M7M4BvgAKvYD0AAAAAElFTkSuQmCC");
+  /* was a hand-written base64 PNG that did not decode (net::ERR_INVALID_URL
+     on every load, C-18) — replaced by a second, coarser SVG noise octave. */
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 180 180' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='c'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.55' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23c)'/%3E%3C/svg%3E");
+  background-size: 180px 180px;
   opacity: 0.5;
-  animation: grainShift 8s steps(10) infinite;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .grain-overlay.is-animated::after {
+    animation: grainShift 8s steps(10) infinite;
+  }
 }
 
 @keyframes grainShift {

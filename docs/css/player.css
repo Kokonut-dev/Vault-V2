@@ -666,10 +666,13 @@
 }
 
 .now-playing-title {
+  font-family: var(--font-display);
+  font-variation-settings: var(--display-soft);
+  font-optical-sizing: auto;
+  letter-spacing: var(--tracking-display);
   font-size: 40px;
-  font-weight: 800;
+  font-weight: var(--fw-display);
   line-height: 1.1;
-  letter-spacing: -0.03em;
 }
 
 .now-playing-artist {

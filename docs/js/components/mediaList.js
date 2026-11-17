@@ -61,8 +61,11 @@ export function renderMediaList(container, items, options = {}) {
     const row = document.createElement('div');
     row.className = 'media-list-item';
     row.dataset.id = item.id;
-    row.setAttribute('role', 'button');
+    // Focusable group (Enter/Space open it) — not role=button, because the
+    // row contains its own Play <button> (nested-interactive, C-11).
+    row.setAttribute('role', 'group');
     row.setAttribute('tabindex', '0');
+    row.setAttribute('aria-label', [item.title, item.artist].filter(Boolean).join(', '));
     const itemVersion = item.updatedAt ? new Date(item.updatedAt).getTime() : '';
     const coverSrc = item.type === 'music'
       ? (itemVersion && typeof api.getCoverUrlVersioned === 'function' ? api.getCoverUrlVersioned(item.id, itemVersion) : api.getCoverUrl(item.id))

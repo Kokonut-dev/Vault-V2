@@ -9,7 +9,8 @@
  *
  * Kept out of the bundle on purpose:
  *   - onboarding.css  → loaded async (and referenced by CI checks in index.html)
- *   - fonts/*         → no @font-face sources exist (dead stylesheets)
+ *   - fonts.css       → the @font-face rules live in their own sheet so font
+ *                       URLs stay relative to it (linked + preloaded in index.html)
  *
  * Usage:  node scripts/build-css.js          (from repo root, or via
  *         `npm run build:css` from server/)

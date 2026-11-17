@@ -2,7 +2,7 @@
  * Settings view
  */
 import { store } from '../store.js';
-import { themeManager } from '../themes.js';
+import { themeManager, THEME_META, themeSwatch } from '../themes.js';
 import { api } from '../api.js';
 import { toast } from '../components/toast.js';
 import { getApiBaseUrl, setApiBaseUrl } from '../config.js';
@@ -25,10 +25,14 @@ export function renderSettings(container) {
         <h3><span class="settings-card-icon" aria-hidden="true">${icon('palette', { size: 17 })}</span>Appearance</h3>
         
         <div class="form-group">
-          <label class="form-label">Theme</label>
-          <div style="display:flex; gap:8px; flex-wrap:wrap;">
-            ${['dark', 'light', 'warm', 'cold', 'midnight', 'white'].map(theme => `
-              <button class="btn ${store.get('theme') === theme ? 'btn-primary' : 'btn-secondary'} btn-sm" data-theme="${theme}">${theme.charAt(0).toUpperCase() + theme.slice(1)}</button>
+          <span class="form-label" id="theme-picker-label">Theme</span>
+          <div class="theme-picker" role="group" aria-labelledby="theme-picker-label">
+            ${THEME_META.map(meta => `
+              <button type="button" class="theme-option" data-theme-option="${meta.id}"
+                      aria-pressed="${store.get('theme') === meta.id}">
+                ${themeSwatch(meta)}
+                <span class="theme-option-text"><span class="theme-option-name">${meta.name}</span><span class="theme-option-mode">${meta.mode}</span></span>
+              </button>
             `).join('')}
           </div>
         </div>
@@ -42,12 +46,12 @@ export function renderSettings(container) {
         <h3><span class="settings-card-icon" aria-hidden="true">${icon('play', { size: 17 })}</span>Playback</h3>
         
         <div class="form-group">
-          <label class="form-label">Default Volume: <span id="vol-value">${Math.round(store.get('volume') * 100)}%</span></label>
+          <label class="form-label" for="vol-slider">Default Volume: <span id="vol-value">${Math.round(store.get('volume') * 100)}%</span></label>
           <input type="range" class="slider" id="vol-slider" min="0" max="100" value="${store.get('volume') * 100}">
         </div>
         
         <div class="form-group">
-          <label class="form-label">Crossfade Duration: <span id="crossfade-value">${store.get('crossfade')}s</span></label>
+          <label class="form-label" for="crossfade-slider">Crossfade Duration: <span id="crossfade-value">${store.get('crossfade')}s</span></label>
           <input type="range" class="slider" id="crossfade-slider" min="0" max="12" value="${store.get('crossfade')}">
         </div>
         
@@ -67,7 +71,7 @@ export function renderSettings(container) {
         <h3><span class="settings-card-icon" aria-hidden="true">${icon('database', { size: 17 })}</span>Server</h3>
         
         <div class="form-group">
-          <label class="form-label">API Base URL</label>
+          <label class="form-label" for="api-url">API Base URL</label>
           <div style="display:flex; gap:8px;">
             <input type="text" class="form-input" id="api-url" value="${getApiBaseUrl()}" style="flex:1;">
             <button class="btn btn-secondary" id="copy-api-url" type="button">${icon('copy', { size: 16 })}<span>Copy</span></button>
@@ -121,12 +125,13 @@ export function renderSettings(container) {
   renderSettingsExtras(container);
 
   // Theme buttons
-  container.querySelectorAll('[data-theme]').forEach(btn => {
+  // (data-theme-option, NOT data-theme: a data-theme attribute re-scopes every
+  // theme token onto the button itself, which made the labels unreadable.)
+  container.querySelectorAll('[data-theme-option]').forEach(btn => {
     btn.addEventListener('click', () => {
-      themeManager.setTheme(btn.dataset.theme);
-      container.querySelectorAll('[data-theme]').forEach(b => {
-        b.classList.toggle('btn-primary', b.dataset.theme === btn.dataset.theme);
-        b.classList.toggle('btn-secondary', b.dataset.theme !== btn.dataset.theme);
+      themeManager.setTheme(btn.dataset.themeOption);
+      container.querySelectorAll('[data-theme-option]').forEach(b => {
+        b.setAttribute('aria-pressed', String(b === btn));
       });
     });
   });
@@ -139,13 +144,13 @@ export function renderSettings(container) {
     
     glassContainer.innerHTML = `
       <div class="form-group">
-        <label class="form-label">Glass Intensity: <span id="glass-val">${store.get('glassIntensity')}%</span></label>
+        <label class="form-label" for="glass-slider">Glass Intensity: <span id="glass-val">${store.get('glassIntensity')}%</span></label>
         <input type="range" class="slider" id="glass-slider" min="0" max="100" value="${store.get('glassIntensity')}">
       </div>
     `;
     grainContainer.innerHTML = `
       <div class="form-group">
-        <label class="form-label">Grain Intensity: <span id="grain-val">${store.get('grainIntensity')}%</span></label>
+        <label class="form-label" for="grain-slider">Grain Intensity: <span id="grain-val">${store.get('grainIntensity')}%</span></label>
         <input type="range" class="slider" id="grain-slider" min="0" max="100" value="${store.get('grainIntensity')}">
       </div>
     `;

@@ -3,9 +3,29 @@
  */
 import { store } from './store.js';
 
+/**
+ * Display metadata for the six themes. IDs are stable (they are persisted in
+ * localStorage as `vault_theme`); names/swatches belong to the "Hearth" system
+ * (UI_REVAMP_PLAN.md C-1). Swatches = [background, raised surface, accent].
+ */
+export const THEME_META = [
+  { id: 'dark', name: 'Hearth', mode: 'Dark', colors: ['#15110E', '#2C2520', '#F2A877'] },
+  { id: 'light', name: 'Linen', mode: 'Light', colors: ['#F5EFE6', '#FFFBF5', '#8F3815'] },
+  { id: 'warm', name: 'Parchment', mode: 'Light', colors: ['#F3E6CF', '#FCF5E8', '#7E340B'] },
+  { id: 'cold', name: 'Dusk', mode: 'Dark', colors: ['#10151C', '#222C39', '#8FD3C9'] },
+  { id: 'midnight', name: 'Ember', mode: 'OLED', colors: ['#0B0908', '#201B17', '#EFC77A'] },
+  { id: 'white', name: 'Daylight', mode: 'Light', colors: ['#FFFFFF', '#F2EFEA', '#1F4AA8'] },
+];
+
+/** Markup for one theme swatch strip (decorative — the button carries the name). */
+export function themeSwatch(meta) {
+  return `<span class="theme-swatch" aria-hidden="true">${meta.colors
+    .map(c => `<span style="background:${c}"></span>`).join('')}</span>`;
+}
+
 export class ThemeManager {
   constructor() {
-    this.themes = ['dark', 'light', 'warm', 'cold', 'midnight', 'white'];
+    this.themes = THEME_META.map(t => t.id);
   }
 
   init() {
@@ -57,16 +77,19 @@ export class ThemeManager {
     // Single source of truth: glass.css derives blur radius, fill opacity and
     // hairline strength from --glass-intensity.
     document.documentElement.style.setProperty('--glass-intensity', v);
-    store.set('glassIntensity', v, true);
     localStorage.setItem('vault_glass', String(v));
+    // Same idempotence guard as setTheme: store.set re-emits into the
+    // 'glassIntensity' subscriber, which called straight back in here until
+    // the stack overflowed ("Store listener error" on every load, C-18).
+    if (store.get('glassIntensity') !== v) store.set('glassIntensity', v, true);
   }
 
   setGrainIntensity(value) {
     const v = Math.max(0, Math.min(100, parseInt(value, 10) || 0));
     const opacity = v === 0 ? 0 : (v / 100) * 0.15;
     document.documentElement.style.setProperty('--grain-opacity', String(opacity));
-    store.set('grainIntensity', v, true);
     localStorage.setItem('vault_grain', String(v));
+    if (store.get('grainIntensity') !== v) store.set('grainIntensity', v, true);
     
     const grainEl = document.getElementById('grain-overlay');
     if (grainEl) {

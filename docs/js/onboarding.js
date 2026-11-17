@@ -18,6 +18,7 @@ import { store } from './store.js';
 import { toast } from './components/toast.js';
 import { copyText } from './utils/clipboard.js';
 import { icon, setIconLabel } from './utils/icons.js';
+import { THEME_META, themeSwatch } from './themes.js';
 
 export class OnboardingManager {
   constructor() {
@@ -633,22 +634,14 @@ export class OnboardingManager {
       <div class="onboarding-step active">
         <div class="onboarding-form">
           <div class="onboarding-input-group">
-            <label class="onboarding-label">Theme Preference</label>
-            <div class="onboarding-themes" id="ob-themes">
-              ${[
-        { id: 'dark', name: 'Dark', colors: ['#08080B', '#1A1A22', '#7C5CFF'] },
-        { id: 'light', name: 'Light', colors: ['#F4F5F8', '#ECEEF3', '#6D4BE0'] },
-        { id: 'warm', name: 'Warm', colors: ['#FBF3E4', '#F1E4CC', '#D97706'] },
-        { id: 'cold', name: 'Cold', colors: ['#070D18', '#17243A', '#22D3EE'] },
-        { id: 'midnight', name: 'Midnight', colors: ['#030305', '#111118', '#10B981'] },
-        { id: 'white', name: 'White', colors: ['#FFFFFF', '#EFF2F7', '#2563EB'] },
-      ].map(t => `
-                <div class="onboarding-theme ${this.data.theme === t.id ? 'selected' : ''}" data-theme="${t.id}">
-                  <div class="onboarding-theme-name">${t.name}</div>
-                  <div class="onboarding-theme-preview">
-                    ${t.colors.map(c => `<span style="background:${c}; border:1px solid rgba(var(--glass-tint),0.1);"></span>`).join('')}
-                  </div>
-                </div>
+            <span class="onboarding-label" id="ob-theme-label">Theme Preference</span>
+            <div class="onboarding-themes" id="ob-themes" role="group" aria-labelledby="ob-theme-label">
+              ${THEME_META.map(t => `
+                <button type="button" class="onboarding-theme ${this.data.theme === t.id ? 'selected' : ''}" data-theme-option="${t.id}" aria-pressed="${this.data.theme === t.id}">
+                  ${themeSwatch(t)}
+                  <span class="onboarding-theme-name">${t.name}</span>
+                  <span class="onboarding-theme-mode">${t.mode}</span>
+                </button>
               `).join('')}
             </div>
           </div>
@@ -701,9 +694,11 @@ export class OnboardingManager {
     if (themesEl) {
       themesEl.querySelectorAll('.onboarding-theme').forEach(el => {
         el.addEventListener('click', () => {
-          themesEl.querySelectorAll('.onboarding-theme').forEach(t => t.classList.remove('selected'));
-          el.classList.add('selected');
-          this.data.theme = el.dataset.theme;
+          themesEl.querySelectorAll('.onboarding-theme').forEach(t => {
+            t.classList.toggle('selected', t === el);
+            t.setAttribute('aria-pressed', String(t === el));
+          });
+          this.data.theme = el.dataset.themeOption;
           // Apply theme live
           document.documentElement.setAttribute('data-theme', this.data.theme);
           localStorage.setItem('vault_theme', this.data.theme);

@@ -4,6 +4,7 @@
 import { store } from '../store.js';
 import { router } from '../router.js';
 import { icon, setIcon } from '../utils/icons.js';
+import { brandMark } from '../utils/brand.js';
 
 // `icon` values are keys into docs/js/utils/icons.js — never glyphs.
 const NAV_ITEMS = [
@@ -65,14 +66,10 @@ export function renderSidebar(container) {
 
   sidebar.innerHTML = `
     <div class="sidebar-header">
-      <div class="sidebar-logo" title="Vault">V</div>
+      <div class="sidebar-logo" title="Vault">${brandMark({ size: 32 })}</div>
       <div class="sidebar-brand">Vault</div>
-      <button class="sidebar-collapse-btn" id="sidebar-header-toggle" type="button"
-              aria-label="${isCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}"
-              title="${isCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}"
-              aria-expanded="${!isCollapsed}">
-        <span class="sidebar-collapse-icon">${icon(isCollapsed ? 'chevron-right' : 'chevron-left', { size: 16 })}</span>
-      </button>
+      <!-- Single collapse control lives in the footer (C-15: the header
+           chevron duplicated it). -->
     </div>
     <nav class="sidebar-nav">
       ${NAV_ITEMS.map(section => {

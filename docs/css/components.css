@@ -28,9 +28,14 @@
   padding: 10px 18px;
   border-radius: var(--radius-md);
   font-size: 14px;
-  font-weight: 600;
+  font-weight: var(--fw-strong);
   line-height: 1;
-  transition: all var(--duration-fast) var(--ease-out);
+  transition:
+    background-color var(--dur-1) var(--ease-standard),
+    border-color var(--dur-1) var(--ease-standard),
+    color var(--dur-1) var(--ease-standard),
+    box-shadow var(--dur-2) var(--ease-standard),
+    transform var(--dur-1) var(--ease-standard);
   cursor: pointer;
   white-space: nowrap;
   user-select: none;
@@ -45,45 +50,41 @@
 }
 
 .btn-primary {
-  background: linear-gradient(140deg in oklch, var(--accent-solid), var(--btn-accent-end));
+  background: linear-gradient(160deg in oklch, var(--accent-solid), var(--btn-accent-end));
   color: var(--on-accent);
   border-color: transparent;
-  box-shadow: 0 6px 18px var(--accent-muted), inset 0 1px 0 rgba(255, 255, 255, 0.28);
+  box-shadow: 0 4px 14px -4px var(--accent-muted), inset 0 1px 0 rgba(255, 255, 255, 0.22);
 }
 
 .btn-primary:hover {
-  transform: translateY(-1px);
-  box-shadow: 0 10px 26px var(--accent-muted), inset 0 1px 0 rgba(255, 255, 255, 0.3);
-}
-
-.btn-primary:active {
-  transform: translateY(0);
+  background: var(--btn-accent-end);
+  box-shadow: 0 8px 22px -6px var(--accent-muted), inset 0 1px 0 rgba(255, 255, 255, 0.22);
 }
 
 .btn-secondary {
-  background: rgba(var(--glass-tint), calc(var(--glass-fill) + 0.03));
+  background: var(--surface-raised);
   color: var(--text-primary);
-  border-color: rgba(var(--glass-tint), 0.12);
-  backdrop-filter: blur(var(--glass-blur-effective));
-  -webkit-backdrop-filter: blur(var(--glass-blur-effective));
-  box-shadow: inset 0 1px 0 var(--glass-highlight-soft);
+  border-color: var(--border-control);     /* 1.4.11 */
 }
 
 .btn-secondary:hover {
-  background: rgba(var(--glass-tint), calc(var(--glass-fill) + 0.08));
-  border-color: var(--border-strong);
+  background: var(--surface-hover);
+  border-color: var(--text-tertiary);
+}
+
+.btn:active:not(:disabled) {
+  transform: scale(0.97);
 }
 
 .btn-danger {
-  background: rgba(var(--glass-tint), calc(var(--glass-fill) + 0.03));
+  background: var(--surface-raised);
   color: var(--error);
-  border-color: rgba(239, 68, 68, 0.35);
-  box-shadow: inset 0 1px 0 var(--glass-highlight-soft);
+  border-color: color-mix(in srgb, var(--error) 70%, transparent);
 }
 
 .btn-danger:hover {
-  background: rgba(239, 68, 68, 0.12);
-  border-color: rgba(239, 68, 68, 0.55);
+  background: color-mix(in srgb, var(--error) 10%, var(--surface-raised));
+  border-color: var(--error);
 }
 
 .btn-ghost {
@@ -104,8 +105,8 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(var(--glass-tint), 0.06);
-  border: 1px solid rgba(var(--glass-tint), 0.08);
+  background: var(--surface-raised);
+  border: 1px solid var(--border-subtle);
   color: var(--text-secondary);
   font-size: 15px;
   transition: all var(--duration-fast) var(--ease-out);
@@ -130,54 +131,68 @@
   font-size: 12px;
 }
 
-/* ---------- Media cards — tinted glass panels (no backdrop-filter:
-     hundreds of cards would melt the GPU) ---------- */
+/* ---------- Media cards — artwork-led (UI_REVAMP_PLAN.md C-5, C-7, C-14)
+   The artwork IS the card: no glass panel, no hairline border. Title and
+   meta always sit below the art on the page surface (never on the image),
+   and hover lifts only the artwork so text never moves or blurs. ---------- */
 .media-card {
-  background: rgba(var(--glass-tint), calc(var(--glass-fill) * 0.75));
-  border-radius: var(--radius-lg);
-  overflow: hidden;
-  transition:
-    transform var(--duration-normal) var(--ease-out),
-    box-shadow var(--duration-normal) var(--ease-out),
-    background var(--duration-normal) var(--ease-out),
-    border-color var(--duration-normal) var(--ease-out);
+  background: var(--card-bg);
+  border-radius: calc(var(--radius-art) + 4px);
+  padding: 4px 4px 0;
+  margin: -4px -4px 0;
   cursor: pointer;
   position: relative;
-  border: 1px solid rgba(var(--glass-tint), var(--glass-hairline));
-  box-shadow: inset 0 1px 0 var(--glass-highlight-soft);
+  border: 0;
+  transition: background var(--dur-1) var(--ease-standard);
   content-visibility: auto;
   /* F-12: remember the real rendered size once seen (auto <length>) so
      off-screen cards don't make the scrollbar jump; the fixed values are
      progressive-enhancement fallbacks for older engines. */
-  contain-intrinsic-size: 180px 270px;
-  contain-intrinsic-size: auto 180px 270px;
+  contain-intrinsic-size: 180px 330px;
+  contain-intrinsic-size: auto 180px 330px;
 }
 
-/* Per-type estimates: music covers are square (1:1), video covers 16:9 —
-   previously all cards estimated 2:3 and music/video grids jumped while
-   scrolling. */
+/* Per-type estimates: music covers are square (1:1), video covers 16:9. */
 .media-card[data-type="music"] {
-  contain-intrinsic-size: 180px 224px;
-  contain-intrinsic-size: auto 180px 224px;
+  contain-intrinsic-size: 180px 240px;
+  contain-intrinsic-size: auto 180px 240px;
 }
 
 .media-card[data-type="video"] {
-  contain-intrinsic-size: 180px 150px;
-  contain-intrinsic-size: auto 180px 150px;
+  contain-intrinsic-size: 180px 160px;
+  contain-intrinsic-size: auto 180px 160px;
 }
 
 .media-card:hover {
-  transform: translateY(-4px) scale(1.02);
-  box-shadow: var(--shadow-lg), inset 0 1px 0 var(--glass-highlight);
-  border-color: var(--border-strong);
-  background: rgba(var(--glass-tint), calc(var(--glass-fill) + 0.04));
+  background: var(--card-hover);
 }
 
 .media-card-cover {
   aspect-ratio: 2/3;
-  background: var(--bg-tertiary);
+  background: var(--art-placeholder);
+  border-radius: var(--radius-art);
   position: relative;
   overflow: hidden;
+  /* the "print" edge: a hairline inner ring + soft drop instead of a border */
+  box-shadow: 0 1px 2px var(--shadow-color), 0 0 0 1px rgb(0 0 0 / 0.06);
+  transition:
+    transform var(--dur-2) var(--ease-enter),
+    box-shadow var(--dur-2) var(--ease-enter);
+}
+
+/* Shape follows the medium (data-art set by mediaCard.js) */
+.media-card[data-art="poster"] .media-card-cover { aspect-ratio: 2/3; }
+.media-card[data-art="square"] .media-card-cover,
+.media-card-cover.music { aspect-ratio: 1/1; }
+.media-card[data-art="wide"] .media-card-cover,
+.media-card-cover.video { aspect-ratio: 16/9; }
+.media-card[data-art="poster"] .media-card-cover.video { aspect-ratio: 2/3; }
+
+@media (hover: hover) and (prefers-reduced-motion: no-preference) {
+  .media-card:hover .media-card-cover {
+    transform: translateY(-3px);
+    box-shadow: 0 14px 30px -10px var(--shadow-color), 0 0 0 1px rgb(0 0 0 / 0.06);
+  }
 }
 
 .media-card-cover img {
@@ -185,34 +200,21 @@
   height: 100%;
   object-fit: cover;
   opacity: 1;
-  transition: opacity 0.25s ease, transform var(--duration-slow) var(--ease-out);
+  transition: opacity var(--dur-3) var(--ease-standard);
   /* F-3: no will-change here — promoting every card image to its own
-     compositor layer meant 1 000+ GPU textures on large libraries. The
-     hover scale transition runs fine without it. */
-}
-
-.media-card:hover .media-card-cover img {
-  transform: scale(1.05);
-}
-
-.media-card-cover.music {
-  aspect-ratio: 1/1;
-}
-
-.media-card-cover.video {
-  aspect-ratio: 16/9;
+     compositor layer meant 1 000+ GPU textures on large libraries. */
 }
 
 .media-card-overlay {
   position: absolute;
   inset: 0;
-  background: linear-gradient(180deg in oklch, rgba(0, 0, 0, 0.1) 0%, rgba(0, 0, 0, 0.72) 100%);
+  background: linear-gradient(180deg in oklch, rgba(10, 6, 4, 0) 35%, rgba(10, 6, 4, 0.62) 100%);
   opacity: 0;
-  transition: opacity var(--duration-normal) var(--ease-out);
+  transition: opacity var(--dur-2) var(--ease-standard);
   display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: var(--space-md);
+  align-items: flex-end;
+  justify-content: flex-start;
+  padding: 10px;
   z-index: 2;
 }
 
@@ -222,30 +224,32 @@
 }
 
 .media-card-play {
-  width: 52px;
-  height: 52px;
+  width: 44px;
+  height: 44px;
   background: var(--accent-solid);
   border-radius: var(--radius-full);
   display: flex;
   align-items: center;
   justify-content: center;
   color: var(--on-accent);
-  transform: translateY(8px) scale(0.92);
-  transition: transform var(--duration-normal) var(--ease-out), box-shadow var(--duration-fast);
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.3);
-  font-size: 16px;
+  transform: translateY(6px);
+  transition: transform var(--dur-2) var(--ease-enter), background var(--dur-1) var(--ease-standard);
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.4);
   border: none;
   cursor: pointer;
 }
 
 .media-card:hover .media-card-play,
 .media-card:focus-within .media-card-play {
-  transform: translateY(0) scale(1);
+  transform: translateY(0);
 }
 
 .media-card-play:hover {
-  background: var(--accent-hover);
-  box-shadow: 0 12px 32px var(--accent-muted), inset 0 1px 0 rgba(255, 255, 255, 0.3);
+  background: var(--btn-accent-end);
+}
+
+.media-card-play:active {
+  transform: scale(0.94);
 }
 
 .media-card-placeholder {
@@ -254,30 +258,29 @@
   display: none;
   align-items: center;
   justify-content: center;
-  font-size: 32px;
   color: var(--text-tertiary);
-  background: linear-gradient(160deg in oklch, var(--bg-tertiary), var(--bg-secondary));
+  background: var(--art-placeholder);
 }
 
 .media-card-placeholder.visible {
   display: flex;
 }
 
+/* Small solid chips on art: fixed dark ground + fixed light text so the
+   ratio never depends on the picture underneath (C-14). */
 .media-card-duration {
   position: absolute;
-  right: 8px;
-  bottom: 8px;
-  background: rgba(0, 0, 0, 0.66);
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  color: white;
+  right: 6px;
+  bottom: 6px;
+  background: rgba(16, 11, 8, 0.86);
+  color: #F6EEE4;
   font-size: 11px;
-  font-weight: 600;
-  font-family: var(--font-mono);
+  font-weight: var(--fw-medium);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.01em;
   padding: 2px 6px;
-  border-radius: calc(var(--radius-lg) - 8px);
-  z-index: 2;
+  border-radius: 6px;
+  z-index: 3;
 }
 
 .media-card-cover img[data-src]:not(.loaded) {
@@ -289,13 +292,14 @@
 }
 
 .media-card-info {
-  padding: var(--space-sm) var(--space-md) var(--space-md);
+  padding: 10px 2px 12px;
 }
 
 .media-card-title {
-  font-weight: 600;
-  font-size: 14px;
+  font-weight: var(--fw-medium);
+  font-size: var(--text-base);
   line-height: 1.3;
+  color: var(--text-primary);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -303,11 +307,12 @@
 }
 
 .media-card-meta {
-  font-size: 12px;
+  font-size: var(--text-sm);
   color: var(--text-secondary);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  font-variant-numeric: tabular-nums;
 }
 
 .media-card-progress {
@@ -315,22 +320,22 @@
   bottom: 0;
   left: 0;
   right: 0;
-  height: 3px;
-  background: rgba(255, 255, 255, 0.18);
+  height: 4px;
+  background: rgba(16, 11, 8, 0.6);
+  z-index: 3;
 }
 
 .media-card-progress-bar {
   height: 100%;
   background: var(--accent);
-  box-shadow: 0 0 10px var(--accent-muted);
-  transition: width var(--duration-fast) var(--ease-out);
+  transition: width var(--dur-1) var(--ease-standard);
 }
 
 /* ---------- Grid ---------- */
 .media-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
-  gap: var(--space-md);
+  grid-template-columns: repeat(auto-fill, minmax(168px, 1fr));
+  gap: var(--space-lg) var(--space-md);
   contain: layout;
 }
 
@@ -599,9 +604,12 @@
 }
 
 .modal-title {
-  font-size: 18px;
-  font-weight: 700;
-  letter-spacing: -0.02em;
+  font-family: var(--font-display);
+  font-variation-settings: var(--display-soft);
+  font-optical-sizing: auto;
+  letter-spacing: var(--tracking-display);
+  font-size: var(--text-lg);
+  font-weight: var(--fw-display);
 }
 
 .modal-close {
@@ -656,12 +664,15 @@
 .form-textarea {
   padding: 10px 14px;
   border-radius: var(--radius-md);
-  border: 1px solid rgba(var(--glass-tint), 0.12);
-  background: rgba(var(--glass-tint), 0.05);
-  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.12);
+  /* C-9 / WCAG 1.4.11: the boundary is the only thing that identifies an
+     input, so it uses --border-control (≥ 3:1 on base and raised). */
+  border: 1px solid var(--border-control);
+  background: var(--surface-sunken);
   color: var(--text-primary);
   font-size: 14px;
-  transition: all var(--duration-fast) var(--ease-out);
+  transition:
+    border-color var(--dur-1) var(--ease-standard),
+    box-shadow var(--dur-1) var(--ease-standard);
   width: 100%;
 }
 
@@ -670,7 +681,7 @@
   -webkit-appearance: none;
   padding-right: 36px;
   cursor: pointer;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%238a8f98' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%23998a7a' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
   background-repeat: no-repeat;
   background-position: right 14px center;
 }
@@ -679,8 +690,8 @@
 .form-select:focus,
 .form-textarea:focus {
   outline: none;
-  border-color: var(--accent);
-  box-shadow: 0 0 0 3px var(--accent-muted), inset 0 1px 2px rgba(0, 0, 0, 0.1);
+  border-color: var(--focus-ring);
+  box-shadow: 0 0 0 1px var(--focus-ring);
 }
 
 .form-input::placeholder {
@@ -754,22 +765,22 @@
 
 .toast.success .toast-icon {
   background: var(--success);
-  color: white;
+  color: var(--text-inverse);
 }
 
 .toast.error .toast-icon {
   background: var(--error);
-  color: white;
+  color: var(--text-inverse);
 }
 
 .toast.info .toast-icon {
   background: var(--info);
-  color: white;
+  color: var(--text-inverse);
 }
 
 .toast.warning .toast-icon {
   background: var(--warning);
-  color: white;
+  color: var(--text-inverse);
 }
 
 .toast-content {
@@ -808,14 +819,15 @@
 
 /* ---------- Skeleton ---------- */
 .skeleton {
+  /* Tonal shimmer (C-19): raised surface with a soft warm sweep. */
   background: linear-gradient(90deg in oklch,
-    rgba(var(--glass-tint), 0.04) 25%,
-    rgba(var(--glass-tint), 0.1) 50%,
-    rgba(var(--glass-tint), 0.04) 75%);
+    var(--surface-raised) 25%,
+    color-mix(in oklch, var(--surface-raised) 82%, var(--text-primary)) 50%,
+    var(--surface-raised) 75%);
   background-size: 200% 100%;
-  animation: skeletonShimmer 1.5s infinite;
+  animation: skeletonShimmer 1.6s var(--ease-standard, ease-in-out) infinite;
   border-radius: var(--radius-md);
-  border: 1px solid rgba(var(--glass-tint), 0.05);
+  border: 1px solid var(--border-subtle);
 }
 
 @keyframes skeletonShimmer {
@@ -853,9 +865,10 @@
   width: 72px;
   height: 72px;
   border-radius: var(--radius-full);
-  background: rgba(var(--glass-tint), 0.06);
-  border: 1px solid rgba(var(--glass-tint), 0.09);
-  box-shadow: inset 0 1px 0 var(--glass-highlight-soft);
+  /* Tonal, not glass (C-19): a warm lamp-lit disc with the accent icon. */
+  background: var(--surface-raised);
+  border: 1px solid var(--border-subtle);
+  color: var(--accent-text);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -864,8 +877,10 @@
 }
 
 .empty-state-title {
-  font-size: 18px;
-  font-weight: 600;
+  font-family: var(--font-display);
+  font-size: 22px;
+  font-weight: var(--fw-display, 600);
+  letter-spacing: -0.01em;
   color: var(--text-primary);
   margin-bottom: var(--space-xs);
 }
@@ -974,7 +989,7 @@ svg.icon {
   appearance: none;
   width: 100%;
   height: 4px;
-  background: rgba(var(--glass-tint), 0.14);
+  background: var(--border-control);        /* 1.4.11: visible track */
   border-radius: var(--radius-full);
   outline: none;
   cursor: pointer;

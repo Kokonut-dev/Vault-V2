@@ -27,6 +27,7 @@ export function renderMusic(container) {
         <button class="active" data-view="grid">Grid</button>
         <button data-view="list">List</button>
       </div>
+      <label class="sr-only" for="sort-select">Sort by</label>
       <select class="form-select" id="sort-select" style="width:auto;">
         <option value="addedAt-desc">Recently Added</option>
         <option value="title-asc">Title A-Z</option>
@@ -241,7 +242,7 @@ export function renderMusic(container) {
         : api.getCoverUrl(cover.id);
       card.innerHTML = `
         <div class="media-card-cover music">
-          <img src="${coverUrl}" alt="${escapeAttr(album)}" loading="lazy" class="loaded" onload="this.classList.add('loaded')" onerror="this.style.display='none';this.parentElement.querySelector('.media-card-placeholder')?.classList.add('visible')">
+          <img src="${coverUrl}" alt="" loading="lazy" class="loaded" onload="this.classList.add('loaded')" onerror="this.style.display='none';this.parentElement.querySelector('.media-card-placeholder')?.classList.add('visible')">
           <div class="media-card-placeholder" aria-hidden="true">${icon('music', { size: 34 })}</div>
           <div class="media-card-overlay"><button class="media-card-play" type="button" aria-label="Play ${escapeAttr(album)}">${icon('play', { size: 20 })}</button></div>
         </div>
@@ -250,9 +251,13 @@ export function renderMusic(container) {
           <div class="media-card-meta">${escapeHtml(cover.artist || tracks[0].artist || '')} • ${tracks.length} tracks</div>
         </div>
       `;
-      card.setAttribute('role', 'button');
+      // role=group, not button: the card contains a real Play <button>, and
+      // a button inside a button is invalid (axe nested-interactive, C-11).
+      card.setAttribute('role', 'group');
       card.setAttribute('tabindex', '0');
       card.setAttribute('aria-label', `${album} — ${tracks.length} tracks`);
+      card.setAttribute('aria-description', 'Press Enter to open the album');
+      card.dataset.art = 'square';
 
       const img = card.querySelector('.media-card-cover img');
       if (img) {

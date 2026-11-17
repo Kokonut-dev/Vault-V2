@@ -135,7 +135,7 @@ export async function renderArtist(container, name) {
           <h2 class="section-title">${escapeHtml(album)} <span class="row-meta">· ${albumTracks.length} track(s) · ${formatDuration(albumTracks.reduce((s, t) => s + durationSeconds(t.duration), 0))}</span></h2>
           <div class="media-list">
             ${albumTracks.sort((a, b) => (a.track || 0) - (b.track || 0)).map(track => `
-              <div class="media-list-item" data-track="${track.id}" role="button" tabindex="0">
+              <div class="media-list-item" data-track="${track.id}" role="group" tabindex="0" aria-label="${escapeHtml(track.title)}">
                 <div class="media-list-item-main">
                   <button class="media-list-play" type="button" aria-label="Play ${escapeHtml(track.title)}">${icon('play', { size: 13 })}</button>
                   <div style="min-width:0">

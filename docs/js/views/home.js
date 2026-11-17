@@ -7,13 +7,14 @@ import { renderMediaGrid, renderSkeletonGrid } from '../components/mediaGrid.js'
 import { router } from '../router.js';
 import { escapeHtml } from '../utils/format.js';
 import { icon } from '../utils/icons.js';
+import { toast } from '../components/toast.js';
 
 export function renderHome(container) {
   container.className = 'page';
   container.innerHTML = `
     <div class="page-header">
-      <h1 class="page-title">Home</h1>
-      <p class="page-subtitle">Welcome back, ${escapeHtml(store.get('user')?.username || 'user')} — here's what's new</p>
+      <h1 class="page-title">${greeting()}, ${escapeHtml(store.get('user')?.username || 'friend')}</h1>
+      <p class="page-subtitle">Here's what's waiting in your vault</p>
     </div>
     <div id="home-content"></div>
   `;
@@ -22,6 +23,22 @@ export function renderHome(container) {
   renderSkeletonGrid(content, 8);
   
   setTimeout(() => loadHomeContent(content), 300);
+}
+
+/** Best artwork URL for an item: real cover/poster first, video frame last
+ *  (thumbnails only exist for video files — music used to 404 here). */
+function pickArtUrl(item) {
+  if (item.type === 'music' || item.coverArtPath || item.posterPath) return api.getCoverUrl(item.id);
+  return item.thumbnailPath ? api.getThumbnailUrl(item.id) : api.getCoverUrl(item.id);
+}
+
+/** Time-of-day greeting — a small human touch for the home page H1. */
+function greeting(date = new Date()) {
+  const h = date.getHours();
+  if (h < 5) return 'Up late';
+  if (h < 12) return 'Good morning';
+  if (h < 18) return 'Good afternoon';
+  return 'Good evening';
 }
 
 async function loadHomeContent(container) {
@@ -54,8 +71,13 @@ async function loadHomeContent(container) {
   
   container.innerHTML = '';
 
-  // Hero: the most relevant in-progress (or newest) item.
-  const heroSeed = continueItems[0] || recentlyAdded[0];
+  // Hero: the most relevant in-progress item, else the newest item that has
+  // real artwork (a frame-grab of a home video makes a poor first impression).
+  const hasArt = i => i.backdropPath || i.posterPath || i.coverArtPath || i.backdrop || i.poster;
+  const heroSeed = continueItems[0]
+    || recentlyAdded.find(i => i.type === 'movie' && (i.backdropPath || i.backdrop))
+    || recentlyAdded.find(hasArt)
+    || recentlyAdded[0];
   if (heroSeed) {
     const heroProgress = history.find(h => h.itemId === heroSeed.id)?.progress || 0;
     container.appendChild(createHero(heroSeed, heroProgress));
@@ -117,7 +139,7 @@ async function loadHomeContent(container) {
       </div>
       <div class="home-hero">
         <div class="home-hero-art">
-          <img src="${api.getThumbnailUrl(randomPick.id)}" alt="" onerror="this.style.display='none'">
+          <img src="${pickArtUrl(randomPick)}" alt="" onerror="this.style.display='none'">
         </div>
         <div style="flex:1; min-width:0;">
           <div style="font-weight:700; font-size:18px; margin-bottom:4px;">${escapeHtml(randomPick.title)}</div>
@@ -134,7 +156,7 @@ async function loadHomeContent(container) {
     randomSection.querySelector('#shuffle-pick').addEventListener('click', () => {
       const newPick = library[Math.floor(Math.random() * library.length)];
       if (newPick) {
-        randomSection.querySelector('img').src = api.getThumbnailUrl(newPick.id);
+        randomSection.querySelector('img').src = pickArtUrl(newPick);
         randomSection.querySelector('div div div').textContent = newPick.title;
         randomSection.querySelector('#play-random').onclick = () => handleItemClick(newPick);
       }
@@ -164,30 +186,41 @@ async function loadHomeContent(container) {
 function createHero(item, progress) {
   const hero = document.createElement('section');
   hero.className = 'hero';
-  const art = item.backdrop || item.poster || item.coverArtPath ? api.getBackdropUrl?.(item.id) || api.getCoverUrl(item.id) : null;
-  const backdropUrl = item.backdrop
-    ? (item.backdrop.startsWith('http') ? item.backdrop : `${api.baseUrl}${item.backdrop}`)
-    : (item.type === 'music' ? api.getCoverUrl(item.id) : api.getThumbnailUrl(item.id));
+  hero.setAttribute('aria-labelledby', 'hero-title');
+  const isMusic = item.type === 'music';
+  const isFilm = item.type === 'movie';
+  // Backdrop endpoint falls back server-side: backdrop → cover → poster → frame.
+  const backdropUrl = item.backdrop && item.backdrop.startsWith('http')
+    ? item.backdrop
+    : (isMusic ? api.getCoverUrl(item.id) : api.getBackdropUrl(item.id));
+  const posterUrl = (isFilm && (item.posterPath || item.poster)) || isMusic ? api.getCoverUrl(item.id) : null;
+  const isEpisode = (item.season != null && item.season !== '') || (item.episode != null && item.episode !== '');
+  const kind = isMusic ? 'Music' : item.type === 'video' ? 'Video' : (isEpisode ? 'Series' : 'Film');
+  const overline = progress ? `Continue ${isMusic ? 'listening' : 'watching'}` : 'Newly added';
+  const genre = Array.isArray(item.genre) ? item.genre[0] : item.genre;
 
   hero.innerHTML = `
-    <img class="hero-backdrop" src="${backdropUrl}" alt="" onerror="this.style.display='none'">
-    <div class="hero-meta">
-      <span class="quality-badge">${item.type === 'music' ? 'Music' : item.type === 'video' ? 'Video' : 'Movie'}</span>
-      ${item.year ? `<span>${item.year}</span>` : ''}
-      ${item.artist ? `<span>${escapeHtml(item.artist)}</span>` : ''}
-      ${item.rating ? `<span>${icon('star-filled', { size: 13 })} ${item.rating}</span>` : ''}
-      ${progress ? `<span>${Math.round(progress)}% watched</span>` : ''}
+    <img class="hero-backdrop${isMusic ? ' is-cover' : ''}" src="${backdropUrl}" alt="" onerror="this.style.display='none'">
+    <div class="hero-body">
+      <p class="hero-overline">${overline}</p>
+      <h2 class="hero-title" id="hero-title">${escapeHtml(item.title)}</h2>
+      <div class="hero-meta">
+        <span>${kind}</span>
+        ${item.year ? `<span>${item.year}</span>` : ''}
+        ${genre ? `<span>${escapeHtml(genre)}</span>` : ''}
+        ${item.artist ? `<span>${escapeHtml(item.artist)}</span>` : ''}
+        ${item.rating ? `<span>${icon('star-filled', { size: 13 })} ${item.rating}</span>` : ''}
+      </div>
+      ${item.overview ? `<p class="hero-overview">${escapeHtml(item.overview)}</p>` : ''}
+      ${progress ? `<div class="hero-progress" role="progressbar" aria-label="Progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${Math.round(progress)}"><span style="width:${Math.round(progress)}%"></span></div><p class="hero-progress-label">${Math.round(progress)}% ${isMusic ? 'played' : 'watched'}</p>` : ''}
+      <div class="hero-actions">
+        <button class="btn btn-primary btn-lg" type="button" data-hero-play>${icon('play', { size: 18 })}<span>${progress ? 'Resume' : 'Play'}</span></button>
+        <button class="btn hero-btn" type="button" data-hero-info>${icon('info', { size: 16 })}<span>Details</span></button>
+        <button class="btn hero-btn hero-btn-quiet" type="button" data-hero-list>${icon('bookmark', { size: 16 })}<span>My list</span></button>
+      </div>
     </div>
-    <h1 class="hero-title">${escapeHtml(item.title)}</h1>
-    ${progress ? `<div class="hero-progress"><span style="width:${Math.round(progress)}%"></span></div>` : ''}
-    <div class="hero-actions">
-      <button class="btn btn-primary" data-hero-play>${icon('play', { size: 16 })}<span>${progress ? 'Resume' : 'Play'}</span></button>
-      <button class="btn btn-secondary" data-hero-info>${icon('info', { size: 16 })}<span>Details</span></button>
-      <button class="btn btn-ghost" data-hero-list>${icon('bookmark', { size: 16 })}<span>My list</span></button>
-    </div>
-    <div class="row-meta">${escapeHtml(item.overview || item.genre || item.album || '')}</div>
+    ${posterUrl ? `<img class="hero-poster${isMusic ? ' is-square' : ''}" src="${posterUrl}" alt="" onerror="this.remove()">` : ''}
   `;
-  void art;
 
   hero.querySelector('[data-hero-play]').addEventListener('click', () => {
     if (item.type === 'music') window.dispatchEvent(new CustomEvent('vault:play', { detail: { item } }));
@@ -196,12 +229,22 @@ function createHero(item, progress) {
   hero.querySelector('[data-hero-info]').addEventListener('click', () => {
     window.dispatchEvent(new CustomEvent('vault:open-detail', { detail: { item } }));
   });
-  hero.querySelector('[data-hero-list]').addEventListener('click', async () => {
-    const { api: apiClient } = await import('../api.js');
+  const listBtn = hero.querySelector('[data-hero-list]');
+  listBtn.setAttribute('aria-pressed', 'false');
+  listBtn.addEventListener('click', async () => {
+    if (listBtn.getAttribute('aria-pressed') === 'true') return;
+    listBtn.disabled = true;
     try {
-      await apiClient.addToWatchlist(item.id);
+      await api.addToWatchlist(item.id);
+      listBtn.setAttribute('aria-pressed', 'true');
+      listBtn.innerHTML = `${icon('bookmark-filled', { size: 16 })}<span>On my list</span>`;
+      toast.success(`${item.title || 'Title'} added to My List`, 'Saved');
       window.dispatchEvent(new CustomEvent('vault:watchlist-changed', { detail: { item, added: true } }));
-    } catch { /* offline */ }
+    } catch {
+      toast.error('Could not add to My List. Check your connection.');
+    } finally {
+      listBtn.disabled = false;
+    }
   });
   return hero;
 }
@@ -229,7 +272,9 @@ function createRecentlyAddedSection(sortedLibrary, onClick) {
   const section = document.createElement('div');
   section.className = 'home-section';
 
-  const isSeries = item => item.type === 'movie' && (item.seriesKey || (item.season != null && item.season !== '') || (item.episode != null && item.episode !== ''));
+  // The scanner sets seriesKey on every film (it is a grouping key), so only
+  // a season/episode number marks an episode — films were all filed as Series.
+  const isSeries = item => item.type === 'movie' && ((item.season != null && item.season !== '') || (item.episode != null && item.episode !== ''));
   const isMovie = item => item.type === 'movie' && !isSeries(item);
 
   const hasSeries = sortedLibrary.some(isSeries);
@@ -281,12 +326,39 @@ function createRecentlyAddedSection(sortedLibrary, onClick) {
 
   const content = section.querySelector('.section-content');
 
+  // I-5: one grid mixing 2:3 posters, 1:1 sleeves and 16:9 frames left
+  // ragged gaps. "All" is now shelved by artwork shape (films & series,
+  // music, videos), each shelf a clean grid; a single-kind filter is one grid.
+  const SHELVES = [
+    { label: 'Films & Series', test: i => i.type === 'movie' },
+    { label: 'Music', test: i => i.type === 'music' },
+    { label: 'Books & Podcasts', test: i => i.type === 'audiobook' || i.type === 'podcast' || i.type === 'comic' },
+    { label: 'Videos', test: i => !['movie', 'music', 'audiobook', 'podcast', 'comic'].includes(i.type) },
+  ];
+  const gridOptions = {
+    onClick: (item) => window.dispatchEvent(new CustomEvent('vault:open-detail', { detail: { item } })),
+    onPlay: onClick,
+  };
+
   function renderGrid() {
     content.innerHTML = '';
-    const items = getItems();
-    renderMediaGrid(content, items, {
-      onClick: (item) => window.dispatchEvent(new CustomEvent('vault:open-detail', { detail: { item } })),
-      onPlay: onClick,
+    if (currentCategory !== 'all') {
+      renderMediaGrid(content, getItems(), gridOptions);
+      return;
+    }
+    const shelves = SHELVES
+      .map(shelf => ({ ...shelf, items: sortedLibrary.filter(shelf.test).slice(0, 6) }))
+      .filter(shelf => shelf.items.length);
+    if (shelves.length <= 1) {
+      renderMediaGrid(content, getItems(), gridOptions);
+      return;
+    }
+    shelves.forEach(shelf => {
+      const block = document.createElement('div');
+      block.className = 'shelf';
+      block.innerHTML = `<h3 class="shelf-title">${escapeHtml(shelf.label)}</h3><div class="shelf-grid"></div>`;
+      renderMediaGrid(block.querySelector('.shelf-grid'), shelf.items, gridOptions);
+      content.appendChild(block);
     });
   }
 

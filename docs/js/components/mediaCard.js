@@ -42,30 +42,48 @@ export function createMediaCard(item, options = {}) {
   card.dataset.contextMenuFor = item.id;
   if (item.watched) card.classList.add('watched');
   card.dataset.type = item.type || 'movie'; // F-12: per-type intrinsic sizes in CSS
-  card.setAttribute('role', 'button');
+  // C-11 (UI_REVAMP_PLAN.md): the card used to be role="button" while also
+  // containing the real Play <button> — a nested-interactive violation (axe,
+  // WCAG 4.1.2). It is now a focusable, named group: Enter/Space on the card
+  // still open details and arrow-key grid navigation is unchanged, while the
+  // Play button remains a proper, separately reachable control inside it.
+  card.setAttribute('role', 'group');
   card.setAttribute('tabindex', '0');
-  card.setAttribute('aria-label', `${item.title} ${item.artist ? `by ${item.artist}` : ''}`);
+  card.setAttribute('aria-label', [item.title, item.artist].filter(Boolean).join(', '));
+  card.setAttribute('aria-description', 'Press Enter for details');
 
   const isMusic = item.type === 'music';
   const isVideo = item.type === 'video' || item.type === 'movie';
   const coverType = isMusic ? 'music' : isVideo ? 'video' : '';
 
+  // C-5: artwork shape follows the medium — 2:3 posters for films/series,
+  // 1:1 sleeves for music and books, 16:9 frames for home videos.
+  const hasPoster = item.type === 'movie' && (item.posterPath || item.poster);
+  const art = isMusic || item.type === 'audiobook' || item.type === 'podcast' ? 'square'
+    : (item.type === 'movie' ? 'poster' : 'wide');
+  card.dataset.art = art;
+
   const progress = item.progress || 0;
   const hasProgress = showProgress && progress > 0 && progress < 95;
   const itemVersion = item.updatedAt ? new Date(item.updatedAt).getTime() : '';
-  const coverUrl = (item.coverArtPath || isMusic)
-    ? (itemVersion && typeof api.getCoverUrlVersioned === 'function' ? api.getCoverUrlVersioned(item.id, itemVersion) : api.getCoverUrl(item.id))
-    : (item.thumbnailPath ? api.getThumbnailUrl(item.id) : (itemVersion && typeof api.getCoverUrlVersioned === 'function' ? api.getCoverUrlVersioned(item.id, itemVersion) : api.getCoverUrl(item.id)));
+  const versionedCover = () => (itemVersion && typeof api.getCoverUrlVersioned === 'function'
+    ? api.getCoverUrlVersioned(item.id, itemVersion)
+    : api.getCoverUrl(item.id));
+  // Real artwork first (poster / album cover); the ffmpeg frame grab is only a
+  // fallback — it was previously preferred, so films showed random frames.
+  const coverUrl = (item.coverArtPath || isMusic || hasPoster)
+    ? versionedCover()
+    : (item.thumbnailPath ? api.getThumbnailUrl(item.id) : versionedCover());
 
   card.innerHTML = `
     <div class="media-card-cover ${coverType}">
-      <img data-src="${coverUrl}" alt="${escapeHtml(item.title)}" loading="lazy">
+      <img data-src="${coverUrl}" alt="" loading="lazy" decoding="async">
       <div class="media-card-placeholder" aria-hidden="true">${icon(isMusic ? 'music' : isVideo ? 'video' : 'film', { size: 34 })}</div>
       <div class="media-card-overlay">
         <button class="media-card-play" type="button" aria-label="Play ${escapeAttr(item.title)}">${icon('play', { size: 20 })}</button>
       </div>
       ${hasProgress ? `<div class="media-card-progress"><div class="media-card-progress-bar" style="width:${progress}%"></div></div>` : ''}
-      ${item.duration ? `<div class="media-card-duration">${formatTime(item.duration)}</div>` : ''}
+      ${item.duration && !isMusic ? `<div class="media-card-duration">${formatTime(item.duration)}</div>` : ''}
       ${qualityBadges(item).length ? `<div class="quality-badges">${qualityBadges(item).map(([label, kind]) => `<span class="quality-badge ${kind}">${label}</span>`).join('')}</div>` : ''}
       ${item.watched ? `<div class="media-card-watched" title="Watched">${icon('check', { size: 14 })}</div>` : ''}
     </div>
