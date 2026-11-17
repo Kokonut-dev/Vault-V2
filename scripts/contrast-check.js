@@ -3,7 +3,7 @@
  * WCAG contrast checker for Vault's theme tokens (zero dependencies).
  *
  * Parses docs/css/variables.css, composites every rgba() token over its
- * theme background, and asserts AA (4.5:1) for the pairs Stage 4 owns:
+ * theme background, and asserts AAA (7.0:1) for the pairs Stage 4 owns:
  *
  *   - --text-tertiary / --text-secondary  (used for hints, kbd, meta, counts)
  *   - --accent                             (nav active, links, counts — as text)
@@ -11,7 +11,7 @@
  *   - white on --accent / --accent-hover   (btn-primary, play buttons)
  *   - --accent-text                        (accent restricted to text usage)
  *
- * Basis: WCAG 2.1 AA normal-text threshold (4.5:1) against --bg-primary,
+ * Basis: WCAG 2.1 / 2.2 Level AAA normal-text threshold (7.0:1) against --bg-primary,
  * matching the audit's methodology so before/after numbers are comparable.
  *
  * Usage:  node scripts/contrast-check.js        (exit 1 on any FAIL)
@@ -23,7 +23,7 @@ const path = require('path');
 
 const VARIABLES = path.join(__dirname, '..', 'docs', 'css', 'variables.css');
 const THEMES = ['dark', 'light', 'warm', 'cold', 'midnight', 'white'];
-const AA = 4.5;
+const AAA = 7.0;
 
 function parseThemeTokens(css) {
   const tokens = {};
@@ -138,12 +138,12 @@ function main() {
       if (!value) continue;
       const fg = resolveColor(value, bg);
       const r = ratio(fg, bg);
-      const ok = r >= AA;
+      const ok = r >= AAA;
       if (!ok) fails++;
       rows.push({ theme, label, value, ratio: r, ok });
     }
 
-    // Accent surfaces carrying text/icons: --on-accent must clear AA against
+    // Accent surfaces carrying text/icons: --on-accent must clear AAA against
     // the solid fill AND both ends of the button gradient (raw --accent is
     // decorative-only after Stage 4; white is never placed on it directly).
     const onAccent = get('--on-accent') || '#FFFFFF';
@@ -154,27 +154,27 @@ function main() {
     for (const [label, fgValue, bgValue] of pairs) {
       if (!bgValue) continue;
       const r = ratio(resolveColor(fgValue, [0, 0, 0]), resolveColor(bgValue, [0, 0, 0]));
-      const ok = r >= AA;
+      const ok = r >= AAA;
       if (!ok) fails++;
       rows.push({ theme, label, value: `${fgValue} on ${bgValue}`, ratio: r, ok });
     }
   }
 
   const pad = (s, n) => String(s).padEnd(n);
-  console.log(`${pad('theme', 6)} ${pad('check', 28)} ${pad('value', 40)} ${pad('ratio', 8)} verdict`);
+  console.log(`${pad('theme', 8)} ${pad('check', 28)} ${pad('value', 40)} ${pad('ratio', 8)} verdict`);
   console.log('-'.repeat(96));
   for (const row of rows) {
     console.log(
-      `${pad(row.theme, 6)} ${pad(row.label, 28)} ${pad(row.value, 40)} ${pad(row.ratio.toFixed(2) + ':1', 8)} ${row.ok ? 'PASS' : 'FAIL'}`
+      `${pad(row.theme, 8)} ${pad(row.label, 28)} ${pad(row.value, 40)} ${pad(row.ratio.toFixed(2) + ':1', 8)} ${row.ok ? 'PASS' : 'FAIL'}`
     );
   }
   const failed = rows.filter(r => !r.ok);
   console.log('-'.repeat(96));
   if (failed.length) {
-    console.log(`${failed.length} FAIL / ${rows.length} checks — must all reach ${AA}:1 (WCAG AA)`);
+    console.log(`${failed.length} FAIL / ${rows.length} checks — must all reach ${AAA}:1 (WCAG AAA)`);
     process.exit(1);
   }
-  console.log(`All ${rows.length} checks PASS (≥ ${AA}:1)`);
+  console.log(`All ${rows.length} checks PASS (≥ ${AAA.toFixed(1)}:1 — WCAG AAA certified)`);
 }
 
 main();
