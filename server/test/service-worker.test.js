@@ -13,7 +13,7 @@ const vm = require('node:vm');
 
 const SW_PATH = path.join(__dirname, '..', '..', 'docs', 'sw.js');
 const ORIGIN = 'https://kokonut-dev.github.io';
-const CURRENT_CACHE = 'vault-v2-shell-v5';
+const CURRENT_CACHE = 'vault-v2-shell-v6';
 
 function keyFor(request) {
   const raw = typeof request === 'string' ? request : request.url;
@@ -160,4 +160,64 @@ test('activation removes old Vault shells without deleting offline media', async
   assert.equal(names.includes(CURRENT_CACHE), true, 'current shell was deleted');
   assert.equal(names.includes('vault-offline'), true, 'downloaded media cache was deleted');
   assert.equal(names.includes('some-other-app'), true, 'an unrelated cache was deleted');
+});
+
+test('lazily imported view modules revalidate so they match the deployed shell', async () => {
+  // Regression: a reload got a fresh themes.js (shell) but settings.js came
+  // from a different build, so "does not provide an export named 'THEME_META'".
+  const harness = createHarness();
+  let requestCacheMode = null;
+  harness.setNetwork(async request => {
+    requestCacheMode = request.cache;
+    return new Response('new settings view', { status: 200 });
+  });
+
+  const response = await harness.dispatchFetch(`${ORIGIN}/Vault-V2/js/views/settings.js`);
+  assert.equal(await response.text(), 'new settings view');
+  assert.equal(requestCacheMode, 'no-cache', 'view module could be served stale from the HTTP cache');
+});
+
+test('navigations revalidate index.html instead of trusting the HTTP cache', async () => {
+  const harness = createHarness();
+  let seen = null;
+  harness.setNetwork(async request => {
+    seen = { cache: request.cache, url: request.url };
+    return new Response('<!doctype html>new shell', { status: 200 });
+  });
+
+  let responsePromise;
+  harness.handlers.fetch({
+    request: { url: `${ORIGIN}/Vault-V2/settings`, mode: 'navigate', method: 'GET' },
+    respondWith(value) { responsePromise = Promise.resolve(value); },
+  });
+  const response = await responsePromise;
+  assert.equal(await response.text(), '<!doctype html>new shell');
+  assert.equal(seen.cache, 'no-cache', 'navigation could return a stale index.html');
+  assert.equal(seen.url, `${ORIGIN}/Vault-V2/settings`);
+});
+
+test('navigations fall back to the cached shell offline', async () => {
+  const harness = createHarness();
+  const shell = await harness.caches.open(CURRENT_CACHE);
+  await shell.put(`${ORIGIN}/Vault-V2/index.html`, new Response('cached shell'));
+  harness.setNetwork(async () => { throw new Error('offline'); });
+
+  let responsePromise;
+  harness.handlers.fetch({
+    request: { url: `${ORIGIN}/Vault-V2/music`, mode: 'navigate', method: 'GET' },
+    respondWith(value) { responsePromise = Promise.resolve(value); },
+  });
+  const response = await responsePromise;
+  assert.equal(await response.text(), 'cached shell');
+});
+
+test('images and media are not forced to revalidate', async () => {
+  const harness = createHarness();
+  let requestCacheMode = null;
+  harness.setNetwork(async request => {
+    requestCacheMode = request.cache;
+    return new Response('png', { status: 200 });
+  });
+  await harness.dispatchFetch(`${ORIGIN}/Vault-V2/icons/icon-192.png`);
+  assert.notEqual(requestCacheMode, 'no-cache');
 });

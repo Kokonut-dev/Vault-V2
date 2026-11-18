@@ -7,7 +7,11 @@
 // function". Shell reads below are now network-first to prevent that mismatch
 // from recurring; the version bump repairs clients that already have v3.
 // v5: "Hearth" UI revamp — new tokens, fonts, logo and brand module.
-const CACHE_NAME = 'vault-v2-shell-v5';
+// v6: navigations and ALL same-origin code (not just the shell list) revalidate
+// with `cache: 'no-cache'`. GitHub Pages sends max-age=600, so the HTTP cache
+// could hand an old index.html or view module to a reload for 10 minutes,
+// mixing builds ("does not provide an export named 'THEME_META'").
+const CACHE_NAME = 'vault-v2-shell-v6';
 const BASE_PATH = '/Vault-V2';
 
 const SHELL_ASSETS = [
@@ -34,6 +38,7 @@ const SHELL_ASSETS = [
   `${BASE_PATH}/js/pwa.js`,
   `${BASE_PATH}/js/utils/icons.js`,
   `${BASE_PATH}/js/utils/brand.js`,
+  `${BASE_PATH}/js/utils/staleModule.js`,
 ];
 
 self.addEventListener('install', (event) => {
@@ -80,8 +85,11 @@ self.addEventListener('fetch', (event) => {
 
   // For navigation requests, serve index.html from cache (SPA)
   if (event.request.mode === 'navigate') {
+    // A navigate-mode Request can't be cloned with init options, so build a
+    // plain same-origin GET that revalidates against the server.
+    const fresh = new Request(event.request.url, { cache: 'no-cache', credentials: 'same-origin' });
     event.respondWith(
-      fetch(event.request).catch(() => {
+      fetch(fresh).catch(() => {
         return caches.match(`${BASE_PATH}/index.html`) || caches.match(`${BASE_PATH}/`);
       })
     );
@@ -106,9 +114,17 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
+  // Any other same-origin code (lazily imported views, components, CSS) must
+  // come from the same deployment as the shell, so revalidate it too.
+  const isCode = /\.(?:m?js|css|json|html)$/i.test(url.pathname);
+  const isSameOriginGet = url.origin === self.location.origin && event.request.method === 'GET';
+  const request = isCode && isSameOriginGet
+    ? new Request(event.request, { cache: 'no-cache' })
+    : event.request;
+
   // Default: network-first, fallback to cache
   event.respondWith(
-    fetch(event.request).then(res => {
+    fetch(request).then(res => {
       // Cache successful GETs for same origin
       if (res.ok && event.request.method === 'GET' && url.origin === self.location.origin) {
         const clone = res.clone();
