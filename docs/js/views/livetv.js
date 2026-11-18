@@ -42,26 +42,37 @@ export async function renderLiveTV(container) {
       body.innerHTML = `<div class="empty-state">${icon('tv', { size: 30 })}
         <div class="empty-state-title">Live TV is not configured</div>
         <div class="empty-state-message">${escapeHtml(err.message)}</div>
-        <div class="empty-state-message">Add an M3U URL or an HDHomeRun address in Settings → Live TV.</div></div>`;
+        <div class="empty-state-message">Add an M3U channel list (and optionally an XMLTV guide) in Settings, then test it there.</div>
+        <a class="btn btn-primary" href="settings#live-tv" data-route="/settings#live-tv">${icon('settings', { size: 16 })}<span>Set up Live TV</span></a></div>`;
       return;
     }
 
     if (!channels.length) {
       body.innerHTML = `<div class="empty-state"><div class="empty-state-title">No channels found</div>
-        <div class="empty-state-message">Add an M3U playlist URL in Settings, or let Vault discover an HDHomeRun on your network.</div></div>`;
+        <div class="empty-state-message">Add an M3U channel list in Settings, or let Vault look for an HDHomeRun tuner on your network.</div>
+        <a class="btn btn-primary" href="settings#live-tv" data-route="/settings#live-tv">${icon('settings', { size: 16 })}<span>Open Live TV settings</span></a></div>`;
       return;
     }
 
     body.innerHTML = `<div class="channel-grid">${channels.map(channel => `
       <button type="button" class="media-card channel-card" data-channel="${channel.id}">
         <div class="media-card-cover">
-          ${channel.logo ? `<img loading="lazy" src="${escapeHtml(channel.logo)}" alt="">` : `<div class="media-card-placeholder">${icon('tv', { size: 30 })}</div>`}
+          ${channel.logo ? `<img loading="lazy" src="${escapeHtml(channel.logo)}" alt="">` : ''}
+          <div class="media-card-placeholder${channel.logo ? '' : ' visible'}">${icon('tv', { size: 30 })}</div>
         </div>
         <div class="media-card-info">
           <div class="media-card-title">${escapeHtml(channel.name)}</div>
-          <div class="media-card-meta">${channel.group ? escapeHtml(channel.group) : 'Live'}</div>
+          <div class="media-card-meta">${channel.number ? `<span class="channel-number">${escapeHtml(channel.number)}</span> · ` : ''}${channel.group ? escapeHtml(channel.group) : 'Live'}</div>
         </div>
       </button>`).join('')}</div>`;
+
+    // Provider logo links rot often; fall back to the TV placeholder.
+    body.querySelectorAll('.channel-card img').forEach(img => {
+      img.addEventListener('error', () => {
+        img.remove();
+        img.parentElement?.querySelector('.media-card-placeholder')?.classList.add('visible');
+      }, { once: true });
+    });
 
     body.querySelectorAll('[data-channel]').forEach(card => {
       card.addEventListener('click', () => {

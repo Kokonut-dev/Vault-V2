@@ -1,0 +1,678 @@
+/**
+ * Settings → Server: Live TV, Links & imports, Notifications, Connection.
+ *
+ * These change the whole server, so they use explicit Save buttons with
+ * inline, field-level errors (WCAG 3.3.1/3.3.3) and one polite status line.
+ * Saved links/tokens are write-only: the browser only ever sees whether a
+ * value is set plus a redacted hint (SR-5, SR-8, SR-9).
+ */
+import { api } from '../../api.js';
+import { store } from '../../store.js';
+import { toast } from '../../components/toast.js';
+import { getApiBaseUrl, setApiBaseUrl } from '../../config.js';
+import { copyText } from '../../utils/clipboard.js';
+import { escapeHtml } from '../../utils/format.js';
+import { icon } from '../../utils/icons.js';
+import {
+  section, group, row, el, flashStatus, secretField, fieldError, clearFieldError,
+  applyFieldErrors, liveValidate, validateLink, setReadOnly, busy,
+} from './ui.js';
+
+const plural = (n, one, many = `${one}s`) => `${Number(n).toLocaleString()} ${n === 1 ? one : many}`;
+const ADMIN_ONLY = 'Only the server owner (an admin profile) can change this. You can see what’s set up.';
+
+// ---------------------------------------------------------------------------
+// Live TV (SR-5)
+// ---------------------------------------------------------------------------
+export function liveTvSection(ctx) {
+  const s = section({
+    id: 'live-tv',
+    title: 'Live TV',
+    iconName: 'tv',
+    scope: 'server',
+    intro: 'Add an IPTV channel list (M3U) and a TV guide (XMLTV). Vault fetches them on the server.',
+  });
+  s.body.innerHTML = '<div class="skeleton skeleton-line"></div><div class="skeleton skeleton-line"></div>';
+
+  ctx.onLiveTvRerender((state) => renderLiveTv(s, ctx, state));
+  ctx.liveTv().then(state => renderLiveTv(s, ctx, state)).catch(err => {
+    s.body.innerHTML = `<p class="settings-callout is-error">${icon('alert-circle', { size: 15 })}<span>Couldn’t load Live TV settings: ${escapeHtml(err.message)}</span></p>`;
+  });
+  return s;
+}
+
+function renderLiveTv(s, ctx, state) {
+  s.body.replaceChildren();
+  const form = el('<form class="settings-form" novalidate></form>');
+
+  const sources = group('Sources', { description: 'Paste the links your provider gave you. A full path to a local file on the server works too.' });
+  sources.append(
+    el(`<div class="setting-row" data-keywords="live tv enable iptv on off">
+      <div class="setting-text"><label class="setting-label" for="ltv-enabled">Turn on Live TV</label>
+      <p class="setting-help" id="ltv-enabled-help">Shows the Live TV page with these channels.</p></div>
+      <div class="setting-control"><input type="checkbox" class="checkbox" id="ltv-enabled" aria-describedby="ltv-enabled-help"${state.enabled ? ' checked' : ''}></div>
+    </div>`),
+  );
+  const m3u = secretField({
+    id: 'ltv-m3u',
+    label: 'Channel list (M3U link)',
+    help: 'Usually ends in .m3u or .m3u8, or contains get.php?…type=m3u_plus.',
+    state: state.m3u,
+    type: 'text',
+    placeholder: 'https://provider.example/get.php?username=…&type=m3u_plus',
+    keywords: 'm3u m3u8 iptv playlist channel list url link provider xtream',
+  });
+  const epg = secretField({
+    id: 'ltv-epg',
+    label: 'TV guide (XMLTV link)',
+    help: 'Optional. Ends in .xml or .xml.gz. Many channel lists name their own guide — Test will spot it.',
+    state: state.epg,
+    type: 'text',
+    placeholder: 'https://provider.example/xmltv.php or guide.xml.gz',
+    keywords: 'epg xmltv guide tv guide programme schedule',
+  });
+  sources.append(m3u, epg);
+
+  const tuners = group('Tuners');
+  tuners.append(el(`<div class="setting-row" data-keywords="hdhomerun tuner antenna discovery network">
+      <div class="setting-text"><label class="setting-label" for="ltv-hdhr">Find HDHomeRun tuners</label>
+      <p class="setting-help" id="ltv-hdhr-help">Looks for SiliconDust tuners on the server’s network.</p></div>
+      <div class="setting-control"><input type="checkbox" class="checkbox" id="ltv-hdhr" aria-describedby="ltv-hdhr-help"${state.hdhrDiscover ? ' checked' : ''}></div>
+    </div>`));
+
+  const actions = el(`<div class="settings-actions">
+      <button type="button" class="btn btn-secondary" id="ltv-test">${icon('activity', { size: 16 })}<span>Test links</span></button>
+      <button type="submit" class="btn btn-primary" id="ltv-save">Save</button>
+      <a class="btn btn-ghost" href="livetv" data-route="/livetv">${icon('tv', { size: 16 })}<span>Open Live TV</span></a>
+    </div>`);
+  const report = el('<div class="test-report" id="ltv-report" role="region" aria-label="Test results" aria-live="polite" hidden></div>');
+
+  form.append(sources, tuners, actions, report);
+  s.body.append(form);
+
+  if (!state.canEdit) {
+    setReadOnly(form, ADMIN_ONLY);
+    form.querySelector('[data-route]')?.removeAttribute('disabled');
+    return;
+  }
+
+  const fieldMap = { m3uUrl: m3u.input, epgUrl: epg.input };
+  const checkM3u = liveValidate(m3u.input, v => validateLink(v, { allowLocalPath: true }));
+  const checkEpg = liveValidate(epg.input, v => validateLink(v, { allowLocalPath: true }));
+
+  const payload = () => {
+    const body = {
+      enabled: form.querySelector('#ltv-enabled').checked,
+      hdhrDiscover: form.querySelector('#ltv-hdhr').checked,
+    };
+    const m = m3u.value();
+    const g = epg.value();
+    if (m !== undefined) body.m3uUrl = m;
+    if (g !== undefined) body.epgUrl = g;
+    return body;
+  };
+
+  const testBtn = form.querySelector('#ltv-test');
+  async function runTest(extra = {}) {
+    const okM = checkM3u();
+    const okE = checkEpg();
+    if (!okM || !okE) return;
+    const body = {};
+    const m = m3u.value();
+    const g = epg.value();
+    if (m !== undefined) body.m3uUrl = m;
+    if (g !== undefined) body.epgUrl = g;
+    Object.assign(body, extra);
+    if (!body.m3uUrl && !m3u.isConfigured() && !body.epgUrl && !epg.isConfigured()) {
+      fieldError(m3u.input, 'Add a channel list link to test');
+      m3u.input.focus();
+      return;
+    }
+    busy(testBtn, true, 'Testing…');
+    report.hidden = false;
+    report.innerHTML = `<p class="test-report-pending">${icon('loader', { size: 15, className: 'icon spin' })}<span>Fetching on the server — big lists can take a few seconds…</span></p>`;
+    try {
+      const result = await api.testLiveTv(body);
+      paintReport(report, result, {
+        onAdoptGuide: async (btn) => {
+          busy(btn, true, 'Saving…');
+          try {
+            const next = await api.adoptLiveTvGuide(m3u.value() ? { m3uUrl: m3u.value() } : {});
+            epg.reset(next.epg);
+            ctx.setLiveTv({ ...next, canEdit: true });
+            flashStatus(s, 'Guide from the channel list saved');
+            runTest();
+          } catch (err) {
+            busy(btn, false);
+            flashStatus(s, err.message, 'error');
+          }
+        },
+      });
+    } catch (err) {
+      report.innerHTML = `<p class="settings-callout is-error">${icon('alert-circle', { size: 15 })}<span>${escapeHtml(err.message)}</span></p>`;
+    } finally {
+      busy(testBtn, false);
+    }
+  }
+  testBtn.addEventListener('click', () => runTest());
+  s.runTest = runTest;
+
+  form.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    clearFieldError(m3u.input);
+    clearFieldError(epg.input);
+    if (!checkM3u() || !checkEpg()) {
+      (m3u.input.getAttribute('aria-invalid') ? m3u.input : epg.input).focus();
+      return;
+    }
+    const body = payload();
+    if (body.enabled && body.m3uUrl === '' ) {
+      fieldError(m3u.input, 'Live TV needs a channel list. Add one, or turn Live TV off.');
+      m3u.input.focus();
+      return;
+    }
+    if (body.enabled && body.m3uUrl === undefined && !m3u.isConfigured() && !body.hdhrDiscover) {
+      fieldError(m3u.input, 'Add a channel list link (or turn on HDHomeRun discovery) before turning Live TV on.');
+      m3u.input.focus();
+      return;
+    }
+    const saveBtn = form.querySelector('#ltv-save');
+    busy(saveBtn, true, 'Saving…');
+    try {
+      const next = await api.updateLiveTvSettings(body);
+      m3u.reset(next.m3u);
+      epg.reset(next.epg);
+      ctx.setLiveTv({ ...next, canEdit: true });
+      flashStatus(s, 'Live TV settings saved');
+      window.dispatchEvent(new CustomEvent('vault:livetv-settings-changed'));
+    } catch (err) {
+      if (!applyFieldErrors(fieldMap, err.fields)) flashStatus(s, err.message, 'error');
+      else flashStatus(s, 'Check the highlighted field', 'error');
+    } finally {
+      busy(saveBtn, false);
+    }
+  });
+}
+
+function paintReport(report, result, { onAdoptGuide }) {
+  const parts = [];
+  const m = result.m3u;
+  const g = result.epg;
+  const match = result.match;
+
+  if (m) {
+    if (m.ok) {
+      const groups = (m.groups || []).slice(0, 6).map(gr => `<span class="chip">${escapeHtml(gr.name || gr)}${gr.count ? ` · ${gr.count}` : ''}</span>`).join('');
+      parts.push(`<div class="test-item is-ok">
+        ${icon('check-circle', { size: 18 })}
+        <div class="test-body">
+          <p class="test-title">Channel list: ${plural(m.channels, 'channel')}</p>
+          <p class="test-meta">${plural(m.withGuideIds, 'channel')} carry a guide ID${m.sample?.length ? ` · e.g. ${m.sample.slice(0, 3).map(escapeHtml).join(', ')}` : ''}</p>
+          ${groups ? `<div class="chip-row" aria-label="Groups">${groups}</div>` : ''}
+          ${m.hasPlaylistGuide ? `<div class="test-suggest">
+              <p>This list names its own guide: <code>${escapeHtml(m.playlistGuide)}</code></p>
+              <button type="button" class="btn btn-secondary btn-sm" data-adopt-guide>${icon('calendar', { size: 14 })}<span>Use this guide</span></button>
+            </div>` : ''}
+        </div>
+      </div>`);
+    } else {
+      parts.push(testError('Channel list', m.error));
+    }
+  }
+
+  if (g) {
+    parts.push(g.ok
+      ? `<div class="test-item is-ok">${icon('check-circle', { size: 18 })}<div class="test-body">
+          <p class="test-title">TV guide: ${plural(g.channels, 'channel')}, ${plural(g.programmes, 'programme')}</p></div></div>`
+      : testError('TV guide', g.error));
+  } else if (m?.ok && !m.hasPlaylistGuide) {
+    parts.push(`<div class="test-item is-info">${icon('info', { size: 18 })}<div class="test-body">
+      <p class="test-title">No TV guide yet</p><p class="test-meta">Channels will play, but without “now / next”. Add an XMLTV link to fill the guide.</p></div></div>`);
+  }
+
+  if (match) {
+    const total = match.channels || 0;
+    const ratio = total ? Math.round((match.matched / total) * 100) : 0;
+    const tone = ratio >= 80 ? 'is-ok' : ratio >= 30 ? 'is-warn' : 'is-error';
+    parts.push(`<div class="test-item ${tone}">
+      ${icon(ratio >= 80 ? 'check-circle' : 'alert-triangle', { size: 18 })}
+      <div class="test-body">
+        <p class="test-title">Guide matches ${match.matched} of ${plural(total, 'channel')} (${ratio}%)</p>
+        <div class="meter" role="img" aria-label="${ratio}% of channels have guide data"><span style="width:${ratio}%"></span></div>
+        ${match.unmatchedSample?.length ? `<p class="test-meta">No guide data for: ${match.unmatchedSample.slice(0, 5).map(escapeHtml).join(', ')}. Their <code>tvg-id</code> doesn’t appear in the guide (IDs are case-sensitive).</p>` : ''}
+      </div>
+    </div>`);
+  }
+
+  report.innerHTML = parts.join('') || '<p class="test-meta">Nothing to test yet.</p>';
+  report.querySelector('[data-adopt-guide]')?.addEventListener('click', (e) => onAdoptGuide(e.currentTarget));
+}
+
+const testError = (what, message) => `<div class="test-item is-error">${icon('alert-circle', { size: 18 })}<div class="test-body">
+  <p class="test-title">${what}: couldn’t use it</p><p class="test-meta">${escapeHtml(message || 'Unknown error')}</p></div></div>`;
+
+// ---------------------------------------------------------------------------
+// Links & imports (SR-6)
+// ---------------------------------------------------------------------------
+const ACTION_LABELS = {
+  'livetv-source': { label: 'Use for Live TV', icon: 'tv' },
+  'livetv-guide-from-playlist': { label: 'Use its TV guide too', icon: 'calendar' },
+  'livetv-guide': { label: 'Use as TV guide', icon: 'calendar' },
+  'import-playlist': { label: 'Import as playlist', icon: 'list' },
+  'podcast-subscribe': { label: 'Subscribe', icon: 'rss' },
+};
+
+export function linksSection(ctx) {
+  const s = section({
+    id: 'links',
+    title: 'Links & imports',
+    iconName: 'link',
+    scope: 'server',
+    intro: 'Paste any link — Vault works out what it is and offers the right next step.',
+  });
+
+  const paste = group('Paste a link', { description: 'Channel lists (M3U), TV guides (XMLTV), music playlists and podcast feeds.' });
+  const form = el(`<form class="link-inspector" novalidate>
+      <div class="link-inspector-field setting-control">
+        <label class="sr-only" for="link-url">Link to check</label>
+        <input class="form-input" id="link-url" type="url" inputmode="url" spellcheck="false" autocapitalize="off" autocomplete="off" placeholder="https://…">
+        <button type="submit" class="btn btn-primary" id="link-check">${icon('search', { size: 16 })}<span>Check link</span></button>
+      </div>
+    </form>`);
+  const result = el('<div class="link-result" role="region" aria-label="Link details" aria-live="polite" hidden></div>');
+  paste.append(form, result);
+  paste.dataset.keywords = 'paste link url m3u xmltv podcast rss playlist import inspect check';
+
+  const where = group('Where links are used');
+  where.append(
+    row({ label: 'Live TV channel list & guide', help: 'Set up, test and match channels.', keywords: 'live tv m3u epg', control: '<button type="button" class="btn btn-ghost btn-sm" data-go="live-tv">Open Live TV settings</button>' }),
+    row({ label: 'Music playlists', help: 'Import a playlist file or link from the Playlists page too.', keywords: 'playlist import m3u', control: '<a class="btn btn-ghost btn-sm" href="playlists" data-route="/playlists">Open Playlists</a>' }),
+    row({ label: 'Podcasts', help: 'Feeds you subscribe to refresh on the server.', keywords: 'podcast rss feed', control: '<a class="btn btn-ghost btn-sm" href="podcasts" data-route="/podcasts">Open Podcasts</a>' }),
+    row({ label: 'Notifications', help: 'Webhook, ntfy, Discord and Telegram.', keywords: 'notifications webhook', control: '<button type="button" class="btn btn-ghost btn-sm" data-go="notifications">Open notification settings</button>' }),
+  );
+  s.body.append(paste, where);
+  s.querySelectorAll('[data-go]').forEach(b => b.addEventListener('click', () => ctx.select(b.dataset.go, { focus: true })));
+
+  const input = form.querySelector('#link-url');
+  const check = liveValidate(input, v => validateLink(v));
+
+  ctx.canEdit().then(canEdit => {
+    if (!canEdit) setReadOnly(paste, ADMIN_ONLY);
+  });
+
+  form.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const url = input.value.trim();
+    const problem = validateLink(url, { required: true });
+    if (problem) { fieldError(input, problem); input.focus(); return; }
+    check();
+    const btn = form.querySelector('#link-check');
+    busy(btn, true, 'Checking…');
+    result.hidden = false;
+    result.innerHTML = `<p class="test-report-pending">${icon('loader', { size: 15, className: 'icon spin' })}<span>Looking at the link on the server…</span></p>`;
+    try {
+      const info = await api.inspectLink(url);
+      paintLinkResult(result, info, url, ctx, s);
+    } catch (err) {
+      result.hidden = true;
+      if (err.fields?.url) fieldError(input, err.fields.url);
+      else fieldError(input, err.message);
+      input.focus();
+    } finally {
+      busy(btn, false);
+    }
+  });
+  return s;
+}
+
+function summaryLines(info) {
+  const sm = info.summary || {};
+  const approx = sm.approximate ? 'at least ' : '';
+  switch (info.kind) {
+    case 'm3u-live': return [
+      `${approx}${plural(sm.channels, 'channel')}${sm.groups?.length ? ` in ${plural(sm.groups.length, 'group')}` : ''}`,
+      sm.withGuideIds !== undefined ? `${plural(sm.withGuideIds, 'channel')} with a guide ID` : '',
+      sm.hasEpgUrl ? `Names a TV guide: ${sm.epgUrl}` : '',
+      sm.sample?.length ? `e.g. ${sm.sample.slice(0, 3).join(', ')}` : '',
+    ];
+    case 'm3u-audio': return [
+      `${approx}${plural(sm.entries, 'entry', 'entries')}${sm.remote ? ` (${sm.remote} web ${sm.remote === 1 ? 'link' : 'links'})` : ''}`,
+      sm.sample?.length ? `e.g. ${sm.sample.slice(0, 3).join(', ')}` : '',
+    ];
+    case 'xmltv': return [`${approx}${plural(sm.channels, 'channel')}, ${plural(sm.programmes, 'programme')}`];
+    case 'podcast': return [sm.title ? `“${sm.title}”` : '', `${plural(sm.episodes || 0, 'episode')}`];
+    default: return [];
+  }
+}
+
+function paintLinkResult(host, info, url, ctx, sectionNode) {
+  const lines = summaryLines(info).filter(Boolean);
+  const kindIcon = { 'm3u-live': 'tv', 'm3u-audio': 'music', xmltv: 'calendar', podcast: 'rss', html: 'globe', 'hls-stream': 'video' }[info.kind] || 'file-question';
+  const ok = info.actions?.length > 0;
+  const fileName = (() => {
+    try { return decodeURIComponent(new URL(url).pathname.split('/').pop() || '').replace(/\.(m3u8?|pls)$/i, ''); } catch { return ''; }
+  })();
+  host.innerHTML = `
+    <div class="link-card ${ok ? 'is-ok' : 'is-warn'}">
+      <span class="link-card-icon" aria-hidden="true">${icon(kindIcon, { size: 22 })}</span>
+      <div class="link-card-body">
+        <p class="link-card-kind">${escapeHtml(info.label)}</p>
+        <p class="link-card-url"><code>${escapeHtml(info.displayUrl || '')}</code>${info.redirected ? ' <span class="chip">redirected</span>' : ''}</p>
+        ${lines.length ? `<ul class="link-card-facts">${lines.map(l => `<li>${escapeHtml(l)}</li>`).join('')}</ul>` : ''}
+        ${info.hint ? `<p class="settings-callout ${ok ? 'is-info' : 'is-warn'}">${icon(ok ? 'info' : 'alert-triangle', { size: 15 })}<span>${escapeHtml(info.hint)}</span></p>` : ''}
+        ${info.actions?.includes('import-playlist') ? `
+          <div class="link-card-name">
+            <label class="form-label" for="link-pl-name">Playlist name</label>
+            <input class="form-input" id="link-pl-name" maxlength="100" value="${escapeHtml(fileName)}">
+          </div>` : ''}
+        ${ok ? `<div class="link-card-actions">${info.actions.map((a, i) => {
+          const spec = ACTION_LABELS[a] || { label: a, icon: 'check' };
+          return `<button type="button" class="btn ${i === 0 ? 'btn-primary' : 'btn-secondary'} btn-sm" data-action="${a}">${icon(spec.icon, { size: 14 })}<span>${spec.label}</span></button>`;
+        }).join('')}</div>` : ''}
+        <p class="link-card-outcome" role="status"></p>
+      </div>
+    </div>`;
+
+  const outcome = host.querySelector('.link-card-outcome');
+  const say = (html, tone = 'ok') => {
+    outcome.dataset.tone = tone;
+    outcome.innerHTML = `${icon(tone === 'ok' ? 'check-circle' : 'alert-circle', { size: 15 })}<span>${html}</span>`;
+  };
+
+  host.querySelectorAll('[data-action]').forEach(btn => btn.addEventListener('click', async () => {
+    const action = btn.dataset.action;
+    busy(btn, true, 'Working…');
+    try {
+      if (action === 'livetv-source') {
+        const next = await api.updateLiveTvSettings({ m3uUrl: url, enabled: true });
+        ctx.setLiveTv({ ...next, canEdit: true }, { rerender: true });
+        say('Saved as the Live TV channel list. <button type="button" class="link-button" data-go-ltv>Test it in Live TV settings</button>');
+        host.querySelector('[data-go-ltv]')?.addEventListener('click', () => ctx.select('live-tv', { focus: true, test: true }));
+      } else if (action === 'livetv-guide-from-playlist') {
+        const next = await api.adoptLiveTvGuide({ m3uUrl: url });
+        ctx.setLiveTv({ ...next, canEdit: true }, { rerender: true });
+        say('The guide named in this list is now the Live TV guide.');
+      } else if (action === 'livetv-guide') {
+        const next = await api.updateLiveTvSettings({ epgUrl: url });
+        ctx.setLiveTv({ ...next, canEdit: true }, { rerender: true });
+        say('Saved as the Live TV guide.');
+      } else if (action === 'import-playlist') {
+        const name = host.querySelector('#link-pl-name')?.value.trim() || '';
+        const res = await api.importPlaylistFromUrl(url, name);
+        const remote = res.remote ? ` ${res.remote} ${res.remote === 1 ? 'was a web link' : 'were web links'} and can’t be matched.` : '';
+        say(`Created “${escapeHtml(res.playlist?.name || name)}” with ${res.matched} of ${plural(res.considered, 'song')} found in your library.${remote} <a href="playlists" data-route="/playlists">Open Playlists</a>`, res.matched ? 'ok' : 'warn');
+        window.dispatchEvent(new CustomEvent('vault:playlists-changed'));
+      } else if (action === 'podcast-subscribe') {
+        await api.subscribeFeed(url);
+        say('Subscribed. New episodes appear on the Podcasts page.');
+      }
+      btn.disabled = true;
+      btn.removeAttribute('aria-busy');
+      btn.innerHTML = `${icon('check', { size: 14 })}<span>Done</span>`;
+      flashStatus(sectionNode);
+    } catch (err) {
+      busy(btn, false);
+      say(escapeHtml(err.message), 'error');
+    }
+  }));
+}
+
+// ---------------------------------------------------------------------------
+// Notifications (SR-8)
+// ---------------------------------------------------------------------------
+export function notificationsSection(ctx) {
+  const s = section({
+    id: 'notifications',
+    title: 'Notifications',
+    iconName: 'message',
+    scope: 'server',
+    intro: 'Get a message when a scan finishes or uploads complete.',
+  });
+  s.body.innerHTML = '<div class="skeleton skeleton-line"></div>';
+  api.getNotificationSettings()
+    .then(data => renderNotifications(s, data))
+    .catch(err => {
+      s.body.innerHTML = `<p class="settings-callout is-error">${icon('alert-circle', { size: 15 })}<span>Couldn’t load notification settings: ${escapeHtml(err.message)}</span></p>`;
+    });
+  return s;
+}
+
+const TARGET_NAMES = { webhook: 'Webhook', ntfy: 'ntfy', discord: 'Discord', telegram: 'Telegram' };
+
+function renderNotifications(s, { targets, canEdit }) {
+  s.body.replaceChildren();
+  const form = el('<form class="settings-form" novalidate></form>');
+
+  const push = group('Push services');
+  const ntfy = secretField({ id: 'n-ntfy', label: 'ntfy topic', help: 'For example https://ntfy.sh/your-secret-topic — anyone who knows the topic can read it, so make it hard to guess.', state: targets.ntfyUrl, placeholder: 'https://ntfy.sh/…', keywords: 'ntfy push phone', inputMode: 'url' });
+  const discord = secretField({ id: 'n-discord', label: 'Discord webhook', help: 'Server Settings → Integrations → Webhooks → Copy Webhook URL.', state: targets.discordWebhook, placeholder: 'https://discord.com/api/webhooks/…', keywords: 'discord webhook', inputMode: 'url' });
+  push.append(ntfy, discord);
+
+  const tg = group('Telegram', { description: 'Create a bot with @BotFather, add it to your chat, then paste both values.' });
+  const tgToken = secretField({ id: 'n-tg-token', label: 'Bot token', state: targets.telegram?.botToken || { configured: false }, type: 'password', placeholder: '123456789:ABC…', keywords: 'telegram bot token', autocomplete: 'off' });
+  const tgChat = secretField({ id: 'n-tg-chat', label: 'Chat ID', help: 'A number like -1001234567890, or @channelname.', state: targets.telegram?.chatId || { configured: false }, type: 'text', placeholder: '-1001234567890', keywords: 'telegram chat id' });
+  tg.append(tgToken, tgChat);
+
+  const hooks = group('Automation');
+  const webhook = secretField({ id: 'n-webhook', label: 'Webhook (JSON POST)', help: 'Vault POSTs {source, level, title, message, timestamp} — handy for Home Assistant or n8n.', state: targets.webhookUrl, placeholder: 'https://…', keywords: 'webhook home assistant n8n json', inputMode: 'url' });
+  hooks.append(webhook);
+
+  const actions = el(`<div class="settings-actions">
+      <button type="submit" class="btn btn-primary" id="n-save">Save</button>
+      <button type="button" class="btn btn-secondary" id="n-test">${icon('send', { size: 16 })}<span>Send test notification</span></button>
+    </div>`);
+  const report = el('<div class="test-report" role="region" aria-label="Test notification results" aria-live="polite" hidden></div>');
+  form.append(push, tg, hooks, actions, report);
+  s.body.append(form);
+
+  if (!canEdit) { setReadOnly(form, ADMIN_ONLY); return; }
+
+  const urlFields = [[ntfy, 'ntfyUrl'], [discord, 'discordWebhook'], [webhook, 'webhookUrl']];
+  urlFields.filter(([f]) => f !== discord).forEach(([f]) => liveValidate(f.input, v => validateLink(v)));
+  liveValidate(discord.input, v => {
+    const basic = validateLink(v);
+    if (basic || !v) return basic;
+    return /^https:\/\/(canary\.|ptb\.)?(discord|discordapp)\.com\/api\/webhooks\/\d+\/.+/i.test(v) ? '' : 'Paste the full Discord webhook link (https://discord.com/api/webhooks/…)';
+  });
+  liveValidate(tgToken.input, v => (!v || /^\d{5,}:[A-Za-z0-9_-]{20,}$/.test(v) ? '' : 'A bot token looks like 123456789:ABC… — copy it from @BotFather'));
+  liveValidate(tgChat.input, v => (!v || /^(-?\d{1,20}|@[A-Za-z0-9_]{5,32})$/.test(v) ? '' : 'A chat ID is a number (e.g. -1001234567890) or @channelname'));
+
+  const fieldMap = {
+    ntfyUrl: ntfy.input, discordWebhook: discord.input, webhookUrl: webhook.input,
+    'telegram.botToken': tgToken.input, 'telegram.chatId': tgChat.input,
+  };
+  const all = [ntfy, discord, webhook, tgToken, tgChat];
+
+  form.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    if (form.querySelector('[aria-invalid="true"]')) {
+      form.querySelector('[aria-invalid="true"]').focus();
+      flashStatus(s, 'Check the highlighted field', 'error');
+      return;
+    }
+    const body = {};
+    for (const [f, key] of urlFields) {
+      const v = f.value();
+      if (v !== undefined) body[key] = v;
+    }
+    const token = tgToken.value();
+    const chat = tgChat.value();
+    if (token !== undefined || chat !== undefined) {
+      body.telegram = {};
+      if (token !== undefined) body.telegram.botToken = token;
+      if (chat !== undefined) body.telegram.chatId = chat;
+    }
+    if (!Object.keys(body).length) { flashStatus(s, 'Nothing changed'); return; }
+    const btn = form.querySelector('#n-save');
+    busy(btn, true, 'Saving…');
+    try {
+      const next = await api.updateNotificationSettings(body);
+      const t = next.targets;
+      ntfy.reset(t.ntfyUrl); discord.reset(t.discordWebhook); webhook.reset(t.webhookUrl);
+      tgToken.reset(t.telegram.botToken); tgChat.reset(t.telegram.chatId);
+      flashStatus(s, 'Notification settings saved');
+    } catch (err) {
+      all.forEach(f => clearFieldError(f.input));
+      if (applyFieldErrors(fieldMap, err.fields)) flashStatus(s, 'Check the highlighted field', 'error');
+      else flashStatus(s, err.message, 'error');
+    } finally {
+      busy(btn, false);
+    }
+  });
+
+  form.querySelector('#n-test').addEventListener('click', async (e) => {
+    const btn = e.currentTarget;
+    if (all.some(f => f.value())) {
+      report.hidden = false;
+      report.innerHTML = `<p class="settings-callout is-info">${icon('info', { size: 15 })}<span>Save your changes first — the test uses the saved settings.</span></p>`;
+      return;
+    }
+    busy(btn, true, 'Sending…');
+    report.hidden = false;
+    report.innerHTML = `<p class="test-report-pending">${icon('loader', { size: 15, className: 'icon spin' })}<span>Sending…</span></p>`;
+    try {
+      const res = await api.testNotifications();
+      const keys = Object.keys(res.results || {});
+      report.innerHTML = keys.length
+        ? keys.map(k => {
+          const r = res.results[k];
+          return r.ok
+            ? `<div class="test-item is-ok">${icon('check-circle', { size: 18 })}<div class="test-body"><p class="test-title">${TARGET_NAMES[k] || k}: sent</p></div></div>`
+            : testError(TARGET_NAMES[k] || k, r.error);
+        }).join('')
+        : `<p class="settings-callout is-info">${icon('info', { size: 15 })}<span>${escapeHtml(res.message || 'No notification targets are set up yet.')}</span></p>`;
+    } catch (err) {
+      report.innerHTML = `<p class="settings-callout is-error">${icon('alert-circle', { size: 15 })}<span>${escapeHtml(err.message)}</span></p>`;
+    } finally {
+      busy(btn, false);
+    }
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Connection (SR-14)
+// ---------------------------------------------------------------------------
+function formatUptime(seconds) {
+  const s = Math.max(0, Math.floor(seconds || 0));
+  const d = Math.floor(s / 86400);
+  const h = Math.floor((s % 86400) / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  if (d) return `${d} d ${h} h`;
+  if (h) return `${h} h ${m} min`;
+  return `${m} min`;
+}
+
+export function connectionSection() {
+  const s = section({
+    id: 'connection',
+    title: 'Connection',
+    iconName: 'database',
+    scope: 'device',
+    intro: 'Which server this browser talks to, and how to reach it from elsewhere.',
+  });
+
+  const server = group('Server address');
+  server.append(el(`<form class="setting-row is-stacked" id="api-form" novalidate data-keywords="server url api address tunnel cloudflare base">
+      <div class="setting-text"><label class="setting-label" for="api-url">Server URL</label>
+        <p class="setting-help" id="api-url-help">Change this if Vault runs somewhere else, such as a Cloudflare Tunnel address.</p></div>
+      <div class="setting-control">
+        <div class="input-with-actions">
+          <input type="url" inputmode="url" class="form-input" id="api-url" value="${escapeHtml(getApiBaseUrl())}" aria-describedby="api-url-help" spellcheck="false" autocapitalize="off">
+          <button class="btn btn-secondary" id="copy-api-url" type="button">${icon('copy', { size: 16 })}<span>Copy</span></button>
+          <button class="btn btn-primary" id="save-api-url" type="submit">Save</button>
+        </div>
+      </div>
+    </form>`));
+
+  const status = group('Status');
+  status.append(el(`<div class="server-status" data-keywords="status health version uptime items connection test">
+      <div class="server-status-line" id="server-status" role="status" aria-live="polite"><span class="status-dot"></span><span>Checking…</span></div>
+      <dl class="server-facts" id="server-facts"></dl>
+      <div class="settings-actions">
+        <button type="button" class="btn btn-secondary btn-sm" id="test-connection">${icon('refresh', { size: 14 })}<span>Check again</span></button>
+        <button type="button" class="btn btn-secondary btn-sm" id="trigger-scan">${icon('folder', { size: 14 })}<span>Scan library now</span></button>
+      </div>
+    </div>`));
+
+  const base = window.location.origin;
+  const remote = group('Reach Vault from elsewhere');
+  remote.append(el(`<div class="remote-guide" data-keywords="remote access lan https certificate tunnel cloudflared away from home">
+      <ol class="remote-options">
+        <li>${icon('wifi', { size: 18 })}<div><p class="remote-title">Same network</p><p class="setting-help">Use your machine’s LAN address, e.g. <code>http://192.168.x.x:4000</code>, and sign in once on each device.</p></div></li>
+        <li>${icon('zap', { size: 18 })}<div><p class="remote-title">Tunnel (easiest)</p><p class="setting-help"><code>cloudflared tunnel --url http://localhost:4000</code>, then put the tunnel address in Server URL above.</p></div></li>
+        <li>${icon('shield-check', { size: 18 })}<div><p class="remote-title">HTTPS on your own domain</p><p class="setting-help">Run <code>npm run generate-cert</code> in <code>server/</code> and enable <code>server.https</code>, or put Vault behind Caddy or nginx.</p></div></li>
+      </ol>
+      <p class="setting-help">Browsers block plain HTTP from an HTTPS page (only <code>localhost</code> is exempt), which is why a tunnel or certificate matters away from home.</p>
+      <div class="setting-row is-stacked">
+        <div class="setting-text"><label class="setting-label" for="remote-url">This page’s address</label></div>
+        <div class="setting-control"><div class="input-with-actions">
+          <input class="form-input" id="remote-url" value="${escapeHtml(base)}" readonly>
+          <button class="btn btn-secondary" id="remote-copy" type="button">${icon('copy', { size: 16 })}<span>Copy</span></button>
+        </div></div>
+      </div>
+    </div>`));
+  s.body.append(server, status, remote);
+
+  // --- wiring
+  const apiInput = s.querySelector('#api-url');
+  liveValidate(apiInput, v => validateLink(v));
+  s.querySelector('#copy-api-url').addEventListener('click', async () => {
+    if (await copyText(apiInput.value.trim())) flashStatus(s, 'Server URL copied');
+    else toast.error('Couldn’t copy — select the URL and copy it manually');
+  });
+  s.querySelector('#api-form').addEventListener('submit', (e) => {
+    e.preventDefault();
+    const url = apiInput.value.trim().replace(/\/+$/, '');
+    const problem = validateLink(url, { required: true });
+    if (problem) { fieldError(apiInput, problem); apiInput.focus(); return; }
+    clearFieldError(apiInput);
+    setApiBaseUrl(url);
+    apiInput.value = url;
+    flashStatus(s, 'Server URL saved');
+    refresh();
+  });
+  s.querySelector('#remote-copy').addEventListener('click', async () => {
+    if (await copyText(s.querySelector('#remote-url').value)) flashStatus(s, 'Address copied');
+  });
+
+  const line = s.querySelector('#server-status');
+  const facts = s.querySelector('#server-facts');
+  async function refresh() {
+    line.dataset.state = 'pending';
+    line.innerHTML = '<span class="status-dot"></span><span>Checking…</span>';
+    try {
+      const h = await api.health();
+      const lib = h.library || {};
+      line.dataset.state = 'ok';
+      line.innerHTML = `<span class="status-dot"></span><span>Connected to Vault ${escapeHtml(h.version || '')}</span>`;
+      facts.innerHTML = `
+        <div><dt>Up for</dt><dd>${formatUptime(h.uptime)}</dd></div>
+        <div><dt>Items</dt><dd>${Number(lib.total || 0).toLocaleString()}</dd></div>
+        <div><dt>Films</dt><dd>${Number(lib.movies || 0).toLocaleString()}</dd></div>
+        <div><dt>Music</dt><dd>${Number(lib.music || 0).toLocaleString()}</dd></div>
+        <div><dt>Videos</dt><dd>${Number(lib.videos || 0).toLocaleString()}</dd></div>`;
+    } catch (err) {
+      line.dataset.state = 'error';
+      line.innerHTML = `<span class="status-dot"></span><span>Can’t reach the server: ${escapeHtml(err.message)}</span>`;
+      facts.innerHTML = '';
+    }
+  }
+  s.querySelector('#test-connection').addEventListener('click', refresh);
+  s.querySelector('#trigger-scan').addEventListener('click', async (e) => {
+    const btn = e.currentTarget;
+    busy(btn, true, 'Scanning…');
+    try {
+      const res = await api.triggerScan();
+      flashStatus(s, `Scan finished: ${plural(res.scanned || 0, 'item')}`);
+      const data = await api.getLibrary({ limit: 1000 });
+      store.setLibrary(data.items || []);
+      refresh();
+    } catch (err) {
+      flashStatus(s, err.message, 'error');
+    } finally {
+      busy(btn, false);
+    }
+  });
+  refresh();
+  return s;
+}

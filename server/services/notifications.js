@@ -22,66 +22,98 @@ function throttle(key) {
   return true;
 }
 
-async function post(url, body, headers = {}) {
+/** Log-safe form of a target URL: never print tokens or webhook secrets. */
+function safeLabel(url) {
+  try {
+    const u = new URL(url);
+    if (/api\.telegram\.org$/i.test(u.hostname)) return 'telegram';
+    return `${u.protocol}//${u.host}`;
+  } catch {
+    return 'target';
+  }
+}
+
+/**
+ * POST and report success. `info`, when given, receives `{ error }` with a
+ * short human-readable reason (status code, timeout…) for the test endpoint.
+ */
+async function post(url, body, headers = {}, info = null) {
   try {
     const res = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'User-Agent': 'Vault/3.0', ...headers },
       body: typeof body === 'string' ? body : JSON.stringify(body),
+      signal: AbortSignal.timeout(10000),
     });
-    if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+    if (!res.ok) throw new Error(`The service answered ${res.status}${res.statusText ? ` ${res.statusText}` : ''}`);
     return true;
   } catch (err) {
-    logger.warn(`[Notify] ${url.slice(0, 40)}… failed: ${err.message}`);
+    const code = err.cause?.code || err.code || '';
+    const reason = err.name === 'TimeoutError' || err.name === 'AbortError' ? 'No answer within 10 seconds'
+      : code === 'ENOTFOUND' || code === 'EAI_AGAIN' ? 'The server couldn’t look up that address (check the link and the server’s internet connection)'
+      : code === 'ECONNREFUSED' ? 'The connection was refused'
+      : code === 'ECONNRESET' ? 'The connection was dropped'
+      : /certificate|CERT|SSL/i.test(code + err.cause?.message) ? 'The site’s HTTPS certificate isn’t trusted'
+      : err.message === 'fetch failed' ? `Couldn’t connect${code ? ` (${code})` : ''}`
+      : err.message;
+    if (info) info.error = reason;
+    logger.warn(`[Notify] ${safeLabel(url)} failed: ${reason}`);
     return false;
   }
 }
 
-async function send(title, message, level = 'info') {
+/**
+ * Send to every configured target.
+ * @param {object} [opts]
+ * @param {boolean} [opts.detailed]  return `{ target: { ok, error? } }`
+ *                                   (and skip throttling — used by the test button)
+ */
+async function send(title, message, level = 'info', { detailed = false } = {}) {
   const config = getConfig();
   const n = config.notifications || {};
   const results = {};
+  const attempt = async (key, url, body, headers) => {
+    if (!detailed && !throttle(key)) return;
+    const info = {};
+    const ok = await post(url, body, headers, info);
+    results[key] = detailed ? (ok ? { ok: true } : { ok: false, error: info.error }) : ok;
+  };
+  const tasks = [];
 
   if (n.webhookUrl) {
-    if (throttle('webhook')) {
-      results.webhook = await post(n.webhookUrl, {
-        source: 'vault',
-        level,
-        title,
-        message,
-        timestamp: new Date().toISOString(),
-      });
-    }
+    tasks.push(attempt('webhook', n.webhookUrl, {
+      source: 'vault',
+      level,
+      title,
+      message,
+      timestamp: new Date().toISOString(),
+    }));
   }
 
   if (n.ntfyUrl) {
-    if (throttle('ntfy')) {
-      const topic = n.ntfyUrl.replace(/\/$/, '');
-      results.ntfy = await post(topic, message, {
-        Title: encodeURIComponent(title),
-        Priority: level === 'error' ? 'high' : 'default',
-        Tags: level === 'error' ? 'warning' : 'vault',
-      });
-    }
+    const topic = n.ntfyUrl.replace(/\/$/, '');
+    tasks.push(attempt('ntfy', topic, message, {
+      Title: encodeURIComponent(title),
+      Priority: level === 'error' ? 'high' : 'default',
+      Tags: level === 'error' ? 'warning' : 'vault',
+    }));
   }
 
   if (n.discordWebhook) {
-    if (throttle('discord')) {
-      results.discord = await post(n.discordWebhook, {
-        content: `**${title}**\n${message}`,
-      });
-    }
+    tasks.push(attempt('discord', n.discordWebhook, {
+      content: `**${title}**\n${message}`,
+    }));
   }
 
   if (n.telegram?.botToken && n.telegram?.chatId) {
-    if (throttle('telegram')) {
-      results.telegram = await post(
-        `https://api.telegram.org/bot${n.telegram.botToken}/sendMessage`,
-        { chat_id: n.telegram.chatId, text: `${title}\n${message}` }
-      );
-    }
+    tasks.push(attempt(
+      'telegram',
+      `https://api.telegram.org/bot${n.telegram.botToken}/sendMessage`,
+      { chat_id: n.telegram.chatId, text: `${title}\n${message}` },
+    ));
   }
 
+  await Promise.all(tasks);
   return results;
 }
 

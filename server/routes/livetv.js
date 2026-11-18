@@ -1,5 +1,7 @@
 const express = require('express');
 const router = express.Router();
+const { requireAdmin, isAdminProfile } = require('../middleware/requireAdmin');
+const { friendlyError } = require('../utils/safeFetch');
 const livetv = require('../services/livetv');
 
 router.get('/channels', async (req, res) => {
@@ -49,9 +51,36 @@ router.delete('/recordings/:id', async (req, res) => {
   res.json({ message: 'Recording deleted', id: req.params.id });
 });
 
-router.put('/settings', async (req, res) => {
-  const settings = await livetv.updateSettings(req.body || {});
-  res.json(settings);
+// Settings → Live TV (SR-5). Raw source URLs never leave the server; the
+// browser gets `configured` + a redacted hint.
+router.get('/settings', (req, res) => {
+  res.json({ ...livetv.publicSettings(), canEdit: isAdminProfile(req.profileId) });
+});
+
+router.put('/settings', requireAdmin, async (req, res) => {
+  try {
+    const body = req.body || {};
+    const patch = {};
+    for (const key of ['enabled', 'hdhrDiscover', 'm3uUrl', 'epgUrl']) {
+      if (body[key] !== undefined) patch[key] = body[key];
+    }
+    res.json(await livetv.updateSettings(patch));
+  } catch (err) {
+    res.status(400).json({ error: err.message, fields: err.fields || {} });
+  }
+});
+
+router.post('/test', requireAdmin, async (req, res) => {
+  const { m3uUrl, epgUrl } = req.body || {};
+  res.json(await livetv.testSources({ m3uUrl, epgUrl }));
+});
+
+router.post('/settings/adopt-guide', requireAdmin, async (req, res) => {
+  try {
+    res.json(await livetv.adoptPlaylistGuide({ m3uUrl: (req.body || {}).m3uUrl }));
+  } catch (err) {
+    res.status(400).json({ error: friendlyError(err), fields: err.fields || {} });
+  }
 });
 
 module.exports = router;

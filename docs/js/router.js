@@ -17,12 +17,29 @@ export class Router {
     this._inited = false;
     this._scrollMem = new Map(); // path → scrollY, capped (QoL4)
     this._onClick = this._onClick.bind(this);
-    this._onPopState = () => this.handleRoute();
+    // How the next handleRoute was triggered: 'push' | 'replace' | 'pop'.
+    // Page transitions use it (with path depth) to pick a direction.
+    this._navType = 'push';
+    this._onPopState = () => {
+      // A fragment-only change (Settings sections, #hash deep links) on the
+      // same route is not a navigation.
+      if (!this.useHash && this.currentRoute === this.getCurrentPath()) {
+        this._fragmentChanged();
+        return;
+      }
+      this._navType = 'pop';
+      this.handleRoute();
+    };
     this._onHashChange = () => {
       // Adopt hash routing on the fly: a "#/…" link clicked on a page that
       // was opened without a hash must still navigate, not just change the URL.
       if (!this.useHash && window.location.hash.startsWith('#/')) this.useHash = true;
-      if (this.useHash) this.handleRoute();
+      if (!this.useHash) return;
+      if (this.currentRoute === this.getCurrentPath()) {
+        this._fragmentChanged();
+        return;
+      }
+      this.handleRoute();
     };
     this._onNavigate = (e) => {
       const page = e.detail?.page || '';
@@ -48,10 +65,19 @@ export class Router {
     return p || '/';
   }
 
+  _fragmentChanged() {
+    window.dispatchEvent(new CustomEvent('vault:fragment-changed', { detail: { path: this.currentRoute, fragment: this.getFragment() } }));
+  }
+
+  /** Strip "?query" and "#fragment" — routes only match on the path. */
+  stripFragment(path) {
+    return String(path || '/').split(/[?#]/)[0] || '/';
+  }
+
   getCurrentPath() {
     if (this.useHash) {
       const hash = window.location.hash.substring(1) || '/';
-      return this.normalizePath(hash);
+      return this.normalizePath(this.stripFragment(hash));
     }
     let path = window.location.pathname || '/';
     if (this.basePath && path.startsWith(this.basePath)) {
@@ -67,9 +93,37 @@ export class Router {
     return `${this.basePath}${normalized}` || '/';
   }
 
+  /**
+   * The in-page fragment of the current route ("live-tv" for
+   * /settings#live-tv, or #/settings#live-tv in hash-routing mode).
+   */
+  getFragment() {
+    const raw = this.useHash
+      ? window.location.hash.substring(1).split('#').slice(1).join('#')
+      : window.location.hash.substring(1);
+    try { return decodeURIComponent(raw || ''); } catch { return raw || ''; }
+  }
+
+  /** Update the fragment without adding history entries or re-rendering. */
+  setFragment(fragment) {
+    const frag = fragment ? `#${encodeURIComponent(fragment)}` : '';
+    if (this.useHash) {
+      const route = this.getCurrentPath();
+      window.history.replaceState(window.history.state, '', `#${route}${frag}`);
+    } else {
+      const { pathname, search } = window.location;
+      window.history.replaceState(window.history.state, '', `${pathname}${search}${frag}`);
+    }
+  }
+
   navigate(path, replace = false) {
-    const normalized = this.normalizePath(path);
+    // Keep any #fragment / ?query in the URL but route on the path alone.
+    const raw = String(path || '/');
+    const cut = raw.search(/[?#]/);
+    const suffix = cut >= 0 ? raw.slice(cut) : '';
+    const normalized = this.normalizePath(cut >= 0 ? raw.slice(0, cut) : raw) + suffix;
     const fullPath = this.basePath + normalized;
+    this._navType = replace ? 'replace' : 'push';
 
     if (this.useHash) {
       if (replace) window.location.replace(`#${normalized}`);
@@ -78,6 +132,13 @@ export class Router {
     }
 
     const url = fullPath || '/';
+    const routeOnly = this.normalizePath(cut >= 0 ? raw.slice(0, cut) : raw);
+    if (suffix.startsWith('#') && routeOnly === this.currentRoute) {
+      // Same page, different section: no re-render.
+      window.history.replaceState(window.history.state, '', url);
+      this._fragmentChanged();
+      return;
+    }
     if (replace) window.history.replaceState({ path: normalized }, '', url);
     else window.history.pushState({ path: normalized }, '', url);
     this.handleRoute();
@@ -102,11 +163,16 @@ export class Router {
   async handleRoute() {
     const gen = ++this.navId;
     const path = this.getCurrentPath();
+    const from = this.currentRoute ?? null;
+    const type = this._navType || 'push';
+    this._navType = 'push';
     // Capture the outgoing page's position before views swap (QoL4)
     if (this.currentRoute && this.currentRoute !== path) this._saveScroll(this.currentRoute);
     const nav = {
       gen,
       path,
+      from,
+      type,
       isCurrent: () => this.navId === gen,
     };
 

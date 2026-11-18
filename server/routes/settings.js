@@ -4,6 +4,9 @@ const bcrypt = require('bcryptjs');
 const { getConfig, saveConfig } = require('../config');
 const { sanitizeString, isValidGridPattern } = require('../utils/validators');
 const logger = require('../utils/logger');
+const links = require('../services/links');
+const { validateUrl } = require('../utils/safeFetch');
+const { requireAdmin, isAdminProfile } = require('../middleware/requireAdmin');
 
 router.get('/', (req, res) => {
   try {
@@ -41,7 +44,10 @@ router.get('/', (req, res) => {
 router.put('/', (req, res) => {
   try {
     const config = getConfig();
-    const { media, auth, cors } = req.body;
+    const { auth, cors } = req.body;
+    // Every `media.*` branch below is guarded individually; several sit
+    // outside `if (media)`, so a body without `media` used to throw (500).
+    const media = req.body.media && typeof req.body.media === 'object' ? req.body.media : {};
 
     if (media) {
       if (media.paths) {
@@ -165,18 +171,112 @@ router.put('/', (req, res) => {
   }
 });
 
+// ---------------------------------------------------------------------------
+// Notifications (SR-8). Targets are write-only: the browser sees whether each
+// one is configured plus a redacted hint, never the URL/token itself.
+// PUT semantics: absent key → keep, '' → remove, value → validate + replace.
+// ---------------------------------------------------------------------------
+function notificationTargets(config) {
+  const n = config.notifications || {};
+  return {
+    webhookUrl: links.describeSecret(n.webhookUrl),
+    ntfyUrl: links.describeSecret(n.ntfyUrl),
+    discordWebhook: links.describeSecret(n.discordWebhook),
+    telegram: {
+      configured: Boolean(n.telegram?.botToken && n.telegram?.chatId),
+      hint: n.telegram?.chatId ? `chat ${String(n.telegram.chatId).replace(/.(?=.{3})/g, '•')}` : '',
+      botToken: { configured: Boolean(n.telegram?.botToken), hint: n.telegram?.botToken ? `bot ${String(n.telegram.botToken).split(':')[0].replace(/.(?=.{3})/g, '•')}:•••` : '' },
+      chatId: { configured: Boolean(n.telegram?.chatId), hint: n.telegram?.chatId ? String(n.telegram.chatId).replace(/.(?=.{3})/g, '•') : '' },
+    },
+  };
+}
+
+const NOTIFY_FIELDS = {
+  webhookUrl: { label: 'Webhook link' },
+  ntfyUrl: { label: 'ntfy topic link' },
+  discordWebhook: {
+    label: 'Discord webhook link',
+    check: (url) => /^(discord\.com|discordapp\.com|canary\.discord\.com|ptb\.discord\.com)$/i.test(url.hostname) && /^\/api\/webhooks\/\d+\/[^/]+/.test(url.pathname)
+      ? null : 'Paste the full Discord webhook link (https://discord.com/api/webhooks/…) from Server Settings → Integrations',
+  },
+};
+
+router.get('/notifications', (req, res) => {
+  res.json({ targets: notificationTargets(getConfig()), canEdit: isAdminProfile(req.profileId) });
+});
+
+router.put('/notifications', requireAdmin, (req, res) => {
+  const body = req.body || {};
+  const config = getConfig();
+  const next = { ...(config.notifications || {}) };
+  const fields = {};
+
+  for (const [key, spec] of Object.entries(NOTIFY_FIELDS)) {
+    if (body[key] === undefined) continue;
+    const value = String(body[key] || '').trim();
+    if (!value) { next[key] = ''; continue; }
+    try {
+      const url = validateUrl(value);
+      if (url.protocol !== 'https:' && key === 'discordWebhook') throw new Error('Discord webhooks must use https://');
+      const problem = spec.check ? spec.check(url) : null;
+      if (problem) throw new Error(problem);
+      next[key] = value.slice(0, 2048);
+    } catch (err) {
+      fields[key] = err.message.startsWith('Enter a full link') ? `${spec.label}: ${err.message.toLowerCase()}` : err.message;
+    }
+  }
+
+  if (body.telegram !== undefined) {
+    const t = body.telegram || {};
+    const current = { botToken: '', chatId: '', ...(next.telegram || {}) };
+    if (t.botToken !== undefined) {
+      const token = String(t.botToken || '').trim();
+      if (token && !/^\d{5,}:[A-Za-z0-9_-]{20,}$/.test(token)) fields['telegram.botToken'] = 'A bot token looks like 123456789:ABC… — copy it from @BotFather';
+      else current.botToken = token;
+    }
+    if (t.chatId !== undefined) {
+      const chat = String(t.chatId || '').trim();
+      if (chat && !/^(-?\d{1,20}|@[A-Za-z0-9_]{5,32})$/.test(chat)) fields['telegram.chatId'] = 'A chat ID is a number (e.g. -1001234567890) or @channelname';
+      else current.chatId = chat;
+    }
+    next.telegram = current;
+  }
+
+  if (Object.keys(fields).length) {
+    return res.status(400).json({ error: 'Some notification settings need fixing', fields });
+  }
+  config.notifications = next;
+  saveConfig(config);
+  logger.info('Notification targets updated');
+  res.json({ targets: notificationTargets(getConfig()) });
+});
+
+router.post('/notifications/test', requireAdmin, async (req, res) => {
+  const notifications = require('../services/notifications');
+  const results = await notifications.send('Vault test notification', 'If you can read this, notifications from Vault are working.', 'info', { detailed: true });
+  const targets = Object.keys(results);
+  res.json({
+    results,
+    sent: targets.length,
+    ok: targets.filter(key => results[key].ok).length,
+    message: targets.length ? undefined : 'No notification targets are set up yet',
+  });
+});
+
 router.put('/credentials', (req, res) => {
   try {
     const config = getConfig();
     const { currentPassword, newUsername, newPassword, newGridPattern } = req.body;
 
     if (!currentPassword) {
-      return res.status(400).json({ error: 'Current password required' });
+      return res.status(400).json({ error: 'Enter your current password to make changes', code: 'PASSWORD_REQUIRED', fields: { currentPassword: 'Enter your current password to make changes' } });
     }
 
     // Verify current password
     if (!bcrypt.compareSync(currentPassword, config.auth.passwordHash)) {
-      return res.status(401).json({ error: 'Current password incorrect' });
+      // 400, not 401: the client treats any 401 as an expired session and
+      // signs the user out — a typo must not do that.
+      return res.status(400).json({ error: 'Current password is incorrect', code: 'WRONG_PASSWORD', fields: { currentPassword: 'Current password is incorrect' } });
     }
 
     let changed = false;
