@@ -2,6 +2,16 @@
 
 ## [3.0.0] — in progress (branch `arena/0deefe55-vault-v2`)
 
+### Fixed — "Import from another Vault" in the setup wizard did nothing
+- The import opened in a dialog, but the setup screen covers the whole page
+  (z-index 500, above dialogs at 200), so the dialog appeared out of sight
+  behind it. It now opens inside the wizard, with a **Back to setup** button.
+  Ctrl+Enter and Escape no longer step the wizard underneath the import.
+- Toasts were hidden behind the setup screen for the same reason, including
+  "Cannot proceed without server connection" and "Connect to this new Vault
+  server first". They now show in front of it, and so does any dialog opened
+  from it.
+
 ### Fixed — the server stopping when a Mac locks
 - A locked, idle Mac (or any laptop) goes to sleep after a few minutes, and
   that paused Vault until someone woke it. Vault now keeps the computer awake

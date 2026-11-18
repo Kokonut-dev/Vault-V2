@@ -600,3 +600,19 @@
     padding: 12px;
   }
 }
+
+/* The setup screen covers the page (z-index 500): keep toasts and any dialog
+   opened from it in front, or they'd open out of sight behind it. */
+body:has(.onboarding-gate) .toast-container { z-index: 620; }
+body:has(.onboarding-gate) .modal-backdrop { z-index: 610; }
+
+/* Import from another Vault (inline in the wizard) */
+.onboarding-progress[hidden],
+.onboarding-step-label[hidden] { display: none; }
+.onboarding-import-intro {
+  margin: 0 0 18px;
+  font-size: var(--text-sm);
+  line-height: 1.55;
+  color: var(--text-secondary);
+}
+.onboarding-import .settings-actions { justify-content: flex-start; }

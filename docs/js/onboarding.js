@@ -116,6 +116,11 @@ export class OnboardingManager {
     // Keyboard
     document.addEventListener('keydown', (e) => {
       if (!document.getElementById('onboarding-gate')) return;
+      if (this.importing) {
+        // Escape leaves the import view; nothing else steps the wizard from here.
+        if (e.key === 'Escape' && !e.defaultPrevented && !document.querySelector('.modal-backdrop')) this.closeImport();
+        return;
+      }
       if (e.key === 'Enter' && e.ctrlKey) {
         e.preventDefault();
         this.next();
@@ -156,6 +161,10 @@ export class OnboardingManager {
 
     if (!body) return;
 
+    this.importing = false;
+    document.getElementById('onboarding-step-label')?.removeAttribute('hidden');
+    document.getElementById('onboarding-progress')?.removeAttribute('hidden');
+    nextBtn.style.display = '';
     this.updateProgress();
 
     // Reset secondary button
@@ -298,11 +307,38 @@ export class OnboardingManager {
       toast.info('This server is already set up. Sign in, then use Settings → Move to another server.');
       return;
     }
-    const { createModal } = await import('./components/modal.js');
-    const { mountImport } = await import('./components/transferPanel.js');
-    const { backdrop } = createModal({ title: 'Import from another Vault', content: '<div class="transfer-modal"></div>' });
-    backdrop.querySelector('.modal').classList.add('transfer-modal-dialog');
-    mountImport(backdrop.querySelector('.transfer-modal'), { setupMode: true });
+    let mountImport;
+    try {
+      ({ mountImport } = await import('./components/transferPanel.js'));
+    } catch (err) {
+      toast.error(`Couldn’t open the import: ${err.message}. Reload the page and try again.`);
+      return;
+    }
+    // Shown inside the wizard rather than in a dialog: the setup screen covers
+    // the whole page, so a dialog would open out of sight behind it.
+    this.importing = true;
+    const body = document.getElementById('onboarding-body');
+    document.getElementById('onboarding-title').textContent = 'Import from another Vault';
+    document.getElementById('onboarding-subtitle').textContent = 'Bring over your media, library, account and settings from your old server';
+    document.getElementById('onboarding-step-label')?.setAttribute('hidden', '');
+    document.getElementById('onboarding-progress')?.setAttribute('hidden', '');
+    document.getElementById('onboarding-next').style.display = 'none';
+    document.getElementById('onboarding-back').style.display = 'none';
+    document.getElementById('onboarding-skip').style.display = 'none';
+    const secondaryBtn = document.getElementById('onboarding-secondary');
+    secondaryBtn.style.display = 'inline-flex';
+    setIconLabel(secondaryBtn, 'arrow-left', 'Back to setup', { size: 16 });
+    secondaryBtn.onclick = () => this.closeImport();
+    body.innerHTML = `
+      <p class="onboarding-import-intro">Made a transfer package on your old Vault (<em>Settings → Move to another server</em>)? Bring it in here instead of setting up from scratch. You’ll sign in with your old username, password and grid afterwards.</p>
+      <div class="onboarding-import" id="onboarding-import-panel"></div>`;
+    mountImport(body.querySelector('#onboarding-import-panel'), { setupMode: true });
+    body.querySelector('#tr-media-dir')?.focus({ preventScroll: true });
+  }
+
+  closeImport() {
+    this.importing = false;
+    this.renderStep();
   }
 
   renderServerConnection() {
@@ -824,6 +860,7 @@ export class OnboardingManager {
   }
 
   async next() {
+    if (this.importing) return;
     // Validate current step before proceeding
     if (this.currentStep === 2) {
       // Server connection must be valid
@@ -869,6 +906,7 @@ export class OnboardingManager {
   }
 
   back() {
+    if (this.importing) return;
     if (this.currentStep > 1) {
       this.currentStep--;
       this.renderStep();
