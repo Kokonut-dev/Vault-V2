@@ -1,0 +1,59 @@
+name: Tests
+
+# Same checks the Pages deploy runs, but on pull requests and branch pushes, so
+# a failure shows up on the PR instead of breaking the deploy after the merge.
+on:
+  pull_request:
+  push:
+    branches-ignore: [main, master]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Lint (syntax + import graph)
+        run: |
+          node scripts/syntax-check.js
+          node scripts/import-check.js
+
+      - name: Server tests
+        working-directory: server
+        run: |
+          npm ci --ignore-scripts --no-audit --no-fund
+          set +e
+          npm test 2>&1 | tee test-output.txt
+          status=${PIPESTATUS[0]}
+          if [ "$status" -ne 0 ]; then
+            # Surface each failing test (name + error) as an annotation, so it
+            # is readable on the PR/run summary without opening the raw log.
+            node -e '
+              const lines = require("fs").readFileSync("test-output.txt", "utf8").split("\n");
+              for (let i = 0; i < lines.length; i++) {
+                if (!/^\s*not ok /.test(lines[i])) continue;
+                const block = [lines[i].trim()];
+                for (let j = i + 1; j < lines.length && j < i + 40 && !/^\s*(not )?ok /.test(lines[j]); j++) block.push(lines[j]);
+                const msg = block.join("\n").replace(/%/g, "%25").replace(/\r/g, "").replace(/\n/g, "%0A");
+                console.log(`::error title=${lines[i].trim().slice(0, 120)}::${msg}`);
+              }
+            '
+          fi
+          exit $status
+
+      - name: Validate bundled CSS is up to date
+        run: |
+          node scripts/build-css.js
+          git diff --exit-code docs/css/vault.css || (echo "vault.css is stale — run npm run build:css" && exit 1)

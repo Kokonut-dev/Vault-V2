@@ -23,6 +23,14 @@ function home() {
   return process.env.VAULT_AUTOSTART_HOME || os.homedir();
 }
 
+/** A per-user base dir from the environment (XDG_CONFIG_HOME, APPDATA) — unless
+ *  VAULT_AUTOSTART_HOME overrides HOME, in which case everything stays under it
+ *  (CI runners set XDG_CONFIG_HOME, which would otherwise escape the sandbox). */
+function userDir(envVar, ...fallback) {
+  if (!process.env.VAULT_AUTOSTART_HOME && process.env[envVar]) return process.env[envVar];
+  return path.join(home(), ...fallback);
+}
+
 function inContainer() {
   if (process.env.VAULT_AUTOSTART_HOME) return false; // tests
   try {
@@ -50,7 +58,7 @@ function desktopQuote(arg) {
 function plan(platform = process.platform, opts = { startServer: false }) {
   const argv = launchArgs(opts);
   if (platform === 'win32') {
-    const startup = path.join(process.env.APPDATA || path.join(home(), 'AppData', 'Roaming'), 'Microsoft', 'Windows', 'Start Menu', 'Programs', 'Startup');
+    const startup = path.join(userDir('APPDATA', 'AppData', 'Roaming'), 'Microsoft', 'Windows', 'Start Menu', 'Programs', 'Startup');
     const command = argv.map(quoteWin).join(' ');
     return {
       method: 'Windows Startup folder',
@@ -91,7 +99,7 @@ ${argv.map(a => `    <string>${xmlEscape(a)}</string>`).join('\n')}
   // Linux / BSD
   const exec = argv.map(desktopQuote).join(' ');
   const files = [{
-    path: path.join(process.env.XDG_CONFIG_HOME || path.join(home(), '.config'), 'autostart', 'vault-launcher.desktop'),
+    path: path.join(userDir('XDG_CONFIG_HOME', '.config'), 'autostart', 'vault-launcher.desktop'),
     content: `[Desktop Entry]
 Type=Application
 Name=Vault Launcher
