@@ -244,10 +244,36 @@ function addItem(item) {
   return saved;
 }
 
-function updateItem(id, updates) {
+// Metadata a person typed in (upload form, edit dialog, album editor). The
+// scanner re-reads a file's tags on every rescan — including the watcher pass
+// right after an upload when the duration couldn't be read — and used to
+// overwrite these with whatever the file says (often nothing: "Unknown
+// Artist", the filename as title, no cover). Fields listed in an item's
+// `manualFields` are kept over the file's tags; see scanner.applyManualFields.
+const MANUAL_FIELDS = new Set([
+  'title', 'artist', 'albumArtist', 'album', 'year', 'genre', 'track', 'disc',
+  'season', 'episode', 'description', 'tags',
+  'coverArtPath', 'posterPath', 'thumbnailPath',
+]);
+
+/**
+ * Update an item. `{ manual: true }` marks the updated metadata fields as
+ * set by hand so a later rescan keeps them.
+ */
+function updateItem(id, updates, { manual = false } = {}) {
   const existing = idMap.get(id);
   if (!existing) return null;
   const previousType = existing.type;
+  if (manual) {
+    // Only fields whose value actually changes: an edit dialog that sends
+    // every field back shouldn't lock the untouched ones to today's tags.
+    const same = (a, b) => JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
+    const marked = Object.keys(updates).filter(key => MANUAL_FIELDS.has(key)
+      && updates[key] !== undefined && !same(updates[key], existing[key]));
+    if (marked.length) {
+      updates = { ...updates, manualFields: [...new Set([...(existing.manualFields || []), ...marked])] };
+    }
+  }
   // Mutate in place so indexMap/typeIndex/array stay consistent without an
   // O(n) findIndex + rebuild on every progress/metadata write.
   Object.assign(existing, updates, { updatedAt: new Date().toISOString() });
@@ -742,6 +768,7 @@ module.exports = {
   getByType,
   addItem,
   updateItem,
+  MANUAL_FIELDS,
   removeItem,
   search,
   getSearchText,

@@ -167,22 +167,30 @@ router.post('/:type', (req, res) => {
         // Scan the file to index it
         const item = await scannerService.scanFile(file.path);
         if (item) {
-          // Apply metadata overrides if provided
-          if (metadata.title) item.title = metadata.title;
-          if (metadata.artist) item.artist = metadata.artist;
-          if (metadata.album) item.album = metadata.album;
-          if (metadata.year) item.year = parseInt(metadata.year, 10) || item.year;
-          if (metadata.genre) item.genre = metadata.genre;
-          if (metadata.description) item.description = metadata.description;
-          if (metadata.season) item.season = parseInt(metadata.season, 10);
-          if (metadata.episode) item.episode = parseInt(metadata.episode, 10);
-          if (metadata.tags) item.tags = Array.isArray(metadata.tags) ? metadata.tags : [metadata.tags];
+          // Apply metadata overrides if provided. They're recorded as set by
+          // hand so the watcher's rescan (and every later one) keeps them
+          // instead of falling back to the file's own tags.
+          const overrides = {};
+          if (metadata.title) overrides.title = String(metadata.title);
+          if (metadata.artist) overrides.artist = String(metadata.artist);
+          if (metadata.album) overrides.album = String(metadata.album);
+          if (metadata.year) {
+            const year = parseInt(metadata.year, 10);
+            if (year) overrides.year = year;
+          }
+          if (metadata.genre) overrides.genre = String(metadata.genre);
+          if (metadata.description) overrides.description = String(metadata.description);
+          if (metadata.season) overrides.season = parseInt(metadata.season, 10);
+          if (metadata.episode) overrides.episode = parseInt(metadata.episode, 10);
+          if (metadata.tags) overrides.tags = Array.isArray(metadata.tags) ? metadata.tags : [metadata.tags];
+          if (Array.isArray(overrides.tags) && !overrides.tags.length) delete overrides.tags;
 
           if (uploadedCoverPath) {
-            item.coverArtPath = uploadedCoverPath;
-            item.thumbnailPath = uploadedCoverPath;
-            item.posterPath = uploadedCoverPath;
+            overrides.coverArtPath = uploadedCoverPath;
+            overrides.thumbnailPath = uploadedCoverPath;
+            overrides.posterPath = uploadedCoverPath;
           }
+          Object.assign(item, overrides);
 
           // If subtitle uploaded
           if (req.files['subtitle']) {
@@ -206,8 +214,11 @@ router.post('/:type', (req, res) => {
 
           // Update library with overrides
           const libraryService = require('../services/library');
-          libraryService.updateItem(item.id, item);
-          results.push(item);
+          if (item.subtitles) libraryService.updateItem(item.id, { subtitles: item.subtitles });
+          const stored = Object.keys(overrides).length
+            ? libraryService.updateItem(item.id, overrides, { manual: true })
+            : null;
+          results.push(stored ? { ...stored } : item);
         }
       }
 
