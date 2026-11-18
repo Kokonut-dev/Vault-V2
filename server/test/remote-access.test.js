@@ -125,7 +125,42 @@ test('install: verifies the checksum, refuses a mismatch, leaves nothing behind'
   assert.equal(fs.statSync(binary.path).mode & 0o111, 0o111, 'executable');
 });
 
-test('no checksum in the notes → not installed', { skip: !posix }, async () => {
+test('install on a Mac: GitHub digest is authoritative; the notes\' stale .tgz hash no longer blocks it', { skip: !posix }, async () => {
+  // Every cloudflared release lists a SHA256 for the macOS .tgz in its notes
+  // that doesn't match the archive GitHub serves (Linux/Windows entries do).
+  // That made "Turn on remote access" fail on every Mac.
+  const inner = Buffer.from(FAKE_CLOUDFLARED);
+  assetBody = zlib.gzipSync(tarWith('cloudflared', inner));
+  const sha = (b) => crypto.createHash('sha256').update(b).digest('hex');
+  const asset = 'cloudflared-darwin-arm64.tgz';
+  const mac = { platform: 'darwin', arch: 'arm64' };
+  const notes = (hash) => `### SHA256 Checksums:\n\`\`\`\n${asset}: ${hash}\n\`\`\``;
+  const entry = (digest) => ({ name: asset, size: assetBody.length, digest, browser_download_url: `${githubBase}/asset/${asset}` });
+
+  // The real-world case: notes hash is wrong, GitHub's digest is right → installs.
+  release = { tag_name: '2026.11.1', body: notes('1'.repeat(64)), assets: [entry(`sha256:${sha(assetBody)}`)] };
+  const binary = await remote.installCloudflared(mac);
+  assert.equal(binary.version, '2026.11.1');
+  assert.equal(fs.readFileSync(binary.path, 'utf8'), FAKE_CLOUDFLARED, 'the binary from inside the archive');
+
+  // A download that doesn't match GitHub's digest is still refused.
+  release = { tag_name: '2026.11.1', body: notes(sha(assetBody)), assets: [entry(`sha256:${'2'.repeat(64)}`)] };
+  await assert.rejects(remote.installCloudflared(mac), { code: 'CHECKSUM_MISMATCH' });
+
+  // No digest (older API): the notes hash may describe the binary inside the archive.
+  release = { tag_name: '2026.11.1', body: notes(sha(inner)), assets: [entry(undefined)] };
+  assert.equal((await remote.installCloudflared(mac)).version, '2026.11.1');
+
+  // No digest and a notes hash that matches nothing → refused.
+  release = { tag_name: '2026.11.1', body: notes('3'.repeat(64)), assets: [entry(undefined)] };
+  await assert.rejects(remote.installCloudflared(mac), { code: 'CHECKSUM_MISMATCH' });
+
+  assert.equal(remote.githubDigest({ digest: `sha256:${'A'.repeat(64)}` }), 'a'.repeat(64));
+  assert.equal(remote.githubDigest({ digest: 'md5:abc' }), null);
+  assert.equal(remote.githubDigest({}), null);
+});
+
+test('no checksum from GitHub or the notes → not installed', { skip: !posix }, async () => {
   const asset = remote.assetName();
   if (!asset) return;
   release = { tag_name: 'x', body: 'no checksums here', assets: [{ name: asset, browser_download_url: `${githubBase}/asset/${asset}` }] };
