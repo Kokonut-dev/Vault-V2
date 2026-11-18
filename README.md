@@ -107,6 +107,57 @@ You're signed in automatically. Next time: username + password, then your 8 squa
 
 Running a headless server instead? `deploy/vault.service` (systemd) and `deploy/com.vault.server.plist` (launchd) are ready-made service files — see [deploy/README.md](deploy/README.md).
 
+### When your computer locks or goes idle
+
+Locking the screen doesn't stop Vault, but **sleep** does: a MacBook that's locked and idle (especially on battery) goes to sleep after a few minutes, and everything on it pauses, Vault included. Phones and TVs then can't reach it until you wake the Mac.
+
+So **Vault now keeps the computer awake while it runs.** Your screen still turns off and locks as usual; only *idle sleep* is blocked, and only while Vault is running. It's on by default; switch it off under **Settings → Connection → Server program → Keep running when the computer is locked**.
+
+- **macOS** uses Apple's built-in `caffeinate`. While Vault runs, `pmset -g assertions` lists it as *PreventUserIdleSystemSleep*.
+- **Windows** uses the standard "system required" power request (`powercfg /requests` lists it).
+- **Linux** uses `systemd-inhibit`.
+- If Vault crashes or you stop it, the hold goes away with it, so your computer never stays awake for nothing.
+- Turn it off for one run with `VAULT_KEEP_AWAKE=0 npm start`.
+
+**What it can't override:**
+- **Closing a MacBook's lid** still puts it to sleep, unless it's plugged in with an external display, keyboard and mouse attached (clamshell mode). Leave the lid open, or use a stand.
+- **Battery:** to be safe on a laptop that's always on, plug it in. On macOS you can also turn on **System Settings → Battery → Options → "Prevent automatic sleeping on power adapter when the display is off"** (on older Macs: **Energy Saver** → *Prevent computer from sleeping automatically when the display is off*). From a terminal: `sudo pmset -c sleep 0`.
+- **Start Vault when this computer starts** brings Vault back after a restart or crash. On macOS that entry now runs at full priority, so App Nap doesn't slow it down while the screen is locked. If you had already turned it on, Vault updates the entry by itself; the change applies from your next sign-in.
+
+---
+
+## Moving to a new computer
+
+Changing servers? Vault can pack up **everything** into one package and unpack it on the new computer:
+
+- every media file, **in exactly the same folders and with the same names** (open the package and browse it like any folder),
+- your library with all hand-edited titles, covers and artwork,
+- playlists, favourites, watch history and resume positions, profiles, collections, Live TV, and
+- your sign-in (username, password, grid) and settings.
+
+**On the old computer:** **Settings → Move to another server → Take everything with you**:
+- **Download** saves a `.zip`. Your browser shows the progress; files over 4 GB are fine.
+- **Copy link** gives you a link that works for 2 hours. Open it on the new computer to download straight there, with no USB stick needed.
+- **Save to a drive or folder** writes a normal folder, e.g. on a USB drive (`/Volumes/MyDrive` on a Mac, `E:\` on Windows). This is the fastest option for big libraries.
+- Choose **Library & settings only** if you'll move the media yourself, for example on an external drive you just plug into the new computer.
+
+**On the new computer:** [install Vault](#install), run `npm start` and open the app. In the setup wizard, choose **Import from another Vault**. On a server that's already set up, use **Settings → Move to another server → Import** instead. Pick where your media should go, then choose the `.zip` or give the path to the package. Vault copies the files and **relinks everything to the new folders**, which works even between a Mac and Windows. Then it restarts. Sign in with your old username, password and grid.
+
+The current library and settings on the new computer are saved in `server/backups/before-transfer-…` first. The new computer keeps its own network settings (port, HTTPS). Deleted items in the trash don't come along.
+
+**From a terminal** (handy over SSH, or for a very large library):
+
+```bash
+# old computer: writes a folder (add --zip for one .zip file, --no-media for library & settings only)
+npm run export -- /Volumes/MyDrive
+
+# new computer: copy into ~/Vault Media, or use --in-place to keep using the files where they are
+npm run import -- "/Volumes/MyDrive/Vault transfer - old-mac - 2026-11-18" --media-dir ~/"Vault Media"
+npm start
+```
+
+An import that was interrupted can simply be run again; files already copied are skipped.
+
 ---
 
 ## Updating
@@ -234,6 +285,8 @@ ffmpeg is missing; see the ffmpeg item under [Install problems](#install-problem
 - Streams are played through the server, which repackages them with ffmpeg. **Settings → Live TV** warns when ffmpeg is missing.
 - **Settings → Live TV → Test links** checks a few entries and tells you whether they play, need converting, or fail (e.g. "access denied" means an expired subscription or a wrong password in the link).
 - Up to 4 streams run at once (`livetv.maxStreams`). Idle streams stop after 45 s (live) or 5 min (movies).
+
+**Vault stops answering when my Mac locks** — it's going to sleep. Check that **Settings → Connection → Keep running when the computer is locked** is on, keep the lid open and the charger in. See [When your computer locks or goes idle](#when-your-computer-locks-or-goes-idle).
 
 **Something looks broken right after an update** — hard-reload the page (`Ctrl + Shift + R`, Mac `Cmd + Shift + R`) and restart the server.
 

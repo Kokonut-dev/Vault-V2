@@ -1352,6 +1352,71 @@ class ApiClient {
     return this.request('/api/server/network', { method: 'PUT', body: { lan } });
   }
 
+  setKeepAwake(enabled) {
+    return this.request('/api/server/keep-awake', { method: 'PUT', body: { enabled } });
+  }
+
+  // --- Move to another server (/api/transfer) ---------------------------
+  transferStatus() {
+    return this.request('/api/transfer', { cache: false, dedupe: false, retry: false });
+  }
+
+  transferSummary(media = true) {
+    return this.request(`/api/transfer/summary?media=${media ? 1 : 0}`, { cache: false, retry: false });
+  }
+
+  /** A short-lived link to the .zip — absolute, so it can be opened on another device. */
+  async createTransferLink(media = true) {
+    const res = await this.request('/api/transfer/export-link', { method: 'POST', body: { media }, retry: false });
+    return { ...res, url: `${this.baseUrl}${res.url}` };
+  }
+
+  exportTransferToFolder(dir, media = true) {
+    return this.request('/api/transfer/export-folder', { method: 'POST', body: { dir, media }, retry: false });
+  }
+
+  inspectTransfer(source) {
+    return this.request('/api/transfer/inspect', { method: 'POST', body: { source }, retry: false });
+  }
+
+  importTransfer({ source, mediaDir, copyMedia = true }) {
+    return this.request('/api/transfer/import', { method: 'POST', body: { source, mediaDir, copyMedia }, retry: false });
+  }
+
+  cancelTransfer() {
+    return this.request('/api/transfer/cancel', { method: 'POST', body: {}, retry: false });
+  }
+
+  /**
+   * Upload a transfer .zip (streamed, with progress). Returns a promise with
+   * an extra `abort()`.
+   */
+  uploadTransfer(file, mediaDir, onProgress) {
+    const xhr = new XMLHttpRequest();
+    const promise = new Promise((resolve, reject) => {
+      xhr.open('POST', `${this.baseUrl}/api/transfer/import/upload?mediaDir=${encodeURIComponent(mediaDir || '')}`);
+      const token = this.getToken();
+      if (token) xhr.setRequestHeader('Authorization', `Bearer ${token}`);
+      xhr.setRequestHeader('Content-Type', 'application/zip');
+      xhr.upload.onprogress = (e) => onProgress?.(e.loaded, e.lengthComputable ? e.total : file.size);
+      xhr.onload = () => {
+        let body = {};
+        try { body = JSON.parse(xhr.responseText); } catch { /* not JSON */ }
+        if (xhr.status >= 200 && xhr.status < 300) return resolve(body);
+        const err = new Error(body.error || `Upload failed (${xhr.status})`);
+        err.status = xhr.status;
+        err.code = body.code || 'UPLOAD_FAILED';
+        if (body.field) err.fields = { [body.field]: body.error };
+        reject(err);
+      };
+      xhr.onerror = () => reject(new Error('The upload was interrupted — check the connection and try again'));
+      xhr.onabort = () => reject(Object.assign(new Error('Cancelled'), { code: 'CANCELLED' }));
+      xhr.send(file);
+    });
+    promise.abort = () => xhr.abort();
+    return promise;
+  }
+
   // --- Remote access (/api/remote) --------------------------------------
   remoteStatus() {
     return this.request('/api/remote', { cache: false, dedupe: false });

@@ -169,6 +169,11 @@ export class OnboardingManager {
         body.innerHTML = this.renderWelcome();
         setIconLabel(nextBtn, 'arrow-right', 'Get Started', { size: 16, position: 'end' });
         nextBtn.disabled = false;
+        // Moving from another computer: skip the wizard and bring everything over.
+        secondaryBtn.style.display = 'inline-flex';
+        setIconLabel(secondaryBtn, 'package', 'Import from another Vault', { size: 16 });
+        secondaryBtn.onclick = () => this.openImport();
+        body.querySelector('#onboarding-import')?.addEventListener('click', () => this.openImport());
         break;
 
       case 2:
@@ -186,6 +191,9 @@ export class OnboardingManager {
         body.innerHTML = this.renderAdminAccount();
         setIconLabel(nextBtn, 'arrow-right', 'Continue', { size: 16, position: 'end' });
         nextBtn.disabled = false;
+        secondaryBtn.style.display = 'inline-flex';
+        setIconLabel(secondaryBtn, 'package', 'Import from another Vault', { size: 16 });
+        secondaryBtn.onclick = () => this.openImport();
         this.bindAccountStep();
         break;
 
@@ -265,8 +273,36 @@ export class OnboardingManager {
           <strong style="color:var(--text-primary);">First time?</strong> This wizard will set up your server in under 2 minutes. 
           You'll create an admin account and a secret grid pattern.
         </div>
+        <div class="onboarding-hint" style="margin-top:10px; padding:12px; background:rgba(var(--glass-tint),0.05); border-radius:10px; border:1px solid rgba(var(--glass-tint),0.1);">
+          <strong style="color:var(--text-primary);">Moving from another computer?</strong> If you made a transfer package on your old Vault
+          (Settings → Move to another server), <button type="button" class="btn-link" id="onboarding-import">import it</button> instead —
+          your media, playlists, history, account and settings all come along.
+        </div>
       </div>
     `;
+  }
+
+  async openImport() {
+    // The package goes to the new server, so connect to it first.
+    if (!this.isConnected) {
+      try { await this.checkSetupStatus(); } catch { /* not reachable yet */ }
+    }
+    if (!this.isConnected) {
+      this.importAfterConnect = true;
+      this.currentStep = 2;
+      this.renderStep();
+      toast.info('Connect to this new Vault server first — the import opens right after');
+      return;
+    }
+    if (this.setupStatus && !this.setupStatus.needsSetup) {
+      toast.info('This server is already set up. Sign in, then use Settings → Move to another server.');
+      return;
+    }
+    const { createModal } = await import('./components/modal.js');
+    const { mountImport } = await import('./components/transferPanel.js');
+    const { backdrop } = createModal({ title: 'Import from another Vault', content: '<div class="transfer-modal"></div>' });
+    backdrop.querySelector('.modal').classList.add('transfer-modal-dialog');
+    mountImport(backdrop.querySelector('.transfer-modal'), { setupMode: true });
   }
 
   renderServerConnection() {
@@ -802,6 +838,13 @@ export class OnboardingManager {
           toast.error('Cannot proceed without server connection');
           return;
         }
+      }
+      if (this.importAfterConnect) {
+        this.importAfterConnect = false;
+        this.currentStep = 3;
+        this.renderStep();
+        this.openImport();
+        return;
       }
     }
 

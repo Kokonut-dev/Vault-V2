@@ -394,7 +394,9 @@ function handOff() {
         process.exit(0);
       }
       say(`port ${LAUNCHER_PORT} is used by another program; set VAULT_LAUNCHER_PORT to a free port`);
-      process.exit(1);
+      // At sign-in (launchd KeepAlive) a non-zero exit means "restart me";
+      // retrying can't free someone else's port, so don't loop.
+      process.exit(background ? 0 : 1);
     });
   });
   req.on('error', () => { say(`port ${LAUNCHER_PORT} is busy`); process.exit(1); });

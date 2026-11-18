@@ -233,6 +233,7 @@ Vault-V2/
 │   │   ├── upload.js               # /api/upload/*
 │   │   ├── playlists.js
 │   │   ├── transcode.js
+│   │   ├── transfer.js             # /api/transfer — move everything to another server
 │   │   └── settings.js
 │   ├── services/
 │   │   ├── scanner.js              # Directory scanning + file watcher
@@ -240,6 +241,8 @@ Vault-V2/
 │   │   ├── transcoder.js           # ffmpeg on-the-fly
 │   │   ├── thumbnail.js            # Video thumbs + cover art
 │   │   ├── library.js              # Index DB CRUD
+│   │   ├── transfer.js             # Export package + import with path/id relinking
+│   │   ├── transferApply.js        # Swaps a staged import in at start-up (with rollback)
 │   │   └── authService.js
 │   ├── data/                       # Created at runtime, gitignored
 │   │   └── .gitkeep
@@ -252,12 +255,15 @@ Vault-V2/
 │   └── utils/
 │       ├── fileUtils.js
 │       ├── logger.js
+│       ├── keepAwake.js            # Stop idle sleep while running (caffeinate & co.)
+│       ├── zipStream.js            # Streaming ZIP64 writer/reader
 │       └── validators.js
 ├── .github/
 │   └── workflows/
 │       └── deploy.yml              # GitHub Pages deploy
 └── scripts/
     ├── setup.js                    # Interactive setup for server config
+    ├── transfer.js                 # npm run export / npm run import
     ├── generate-cert.js            # mkcert helper
     ├── build-css.js                # 13 CSS sources → docs/css/vault.css
     ├── config-example.js           # Regenerates server/config.example.json

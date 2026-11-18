@@ -11,6 +11,10 @@ server/data/
 server/cache/
 server/media/
 server/uploads/
+# Move to another server: staged imports and the backups they leave
+server/.transfer-staging/
+server/.transfer-failed-*/
+server/backups/
 # cloudflared downloaded by "Use on another device → Anywhere"
 server/bin/
 !server/data/.gitkeep

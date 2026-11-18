@@ -12,7 +12,9 @@
     "setup": "npm --prefix server run setup",
     "test": "npm --prefix server test",
     "build:css": "node scripts/build-css.js",
-    "generate-cert": "npm --prefix server run generate-cert"
+    "generate-cert": "npm --prefix server run generate-cert",
+    "export": "node scripts/transfer.js export",
+    "import": "node scripts/transfer.js import"
   },
   "engines": {
     "node": ">=20"

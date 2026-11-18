@@ -16,6 +16,7 @@ import { section, el } from './settings/ui.js';
 import { appearanceSection, playbackSection, subtitlesSection } from './settings/device.js';
 import { liveTvSection, linksSection, notificationsSection, connectionSection } from './settings/server.js';
 import { securitySection, devicesSection } from './settings/account.js';
+import { transferSection } from './settings/transfer.js';
 
 const GROUPS = [
   {
@@ -35,6 +36,7 @@ const GROUPS = [
       { id: 'links', label: 'Links & imports', icon: 'link', build: linksSection },
       { id: 'notifications', label: 'Notifications', icon: 'message', build: notificationsSection },
       { id: 'connection', label: 'Connection', icon: 'database', build: connectionSection },
+      { id: 'transfer', label: 'Move to another server', icon: 'package', build: transferSection },
     ],
   },
   {
@@ -58,6 +60,7 @@ const ALIASES = {
   theme: 'appearance', motion: 'appearance', server: 'connection', remote: 'connection',
   'two-factor': 'security', totp: 'security', pairing: 'devices', sessions: 'devices',
   import: 'links', imports: 'links',
+  move: 'transfer', migrate: 'transfer', migration: 'transfer', export: 'transfer', 'new-server': 'transfer',
 };
 const resolveId = (frag) => {
   const key = String(frag || '').toLowerCase().replace(/^panel-/, '');

@@ -6,6 +6,7 @@
  *   POST /stop        stop; the app's Start button brings it back
  *   PUT  /autostart   { enabled, startServer } start the launcher at sign-in
  *   PUT  /network     { lan: true|false } listen for other devices or not
+ *   PUT  /keep-awake  { enabled } stop the computer sleeping while Vault runs
  */
 const express = require('express');
 const os = require('os');
@@ -14,6 +15,7 @@ const { getConfig, saveConfig } = require('../config');
 const lifecycle = require('../services/lifecycle');
 const autostart = require('../services/autostart');
 const remoteAccess = require('../services/remoteAccess');
+const keepAwake = require('../utils/keepAwake');
 const { requireAdmin } = require('../middleware/requireAdmin');
 const logger = require('../utils/logger');
 
@@ -34,7 +36,13 @@ function info() {
       lan: remoteAccess.listensOnAllInterfaces(config.server.host),
     },
     autostart: autostart.status(),
+    keepAwake: keepAwake.status(keepAwakeEnabled(config)),
   };
+}
+
+function keepAwakeEnabled(config = getConfig()) {
+  if (process.env.VAULT_KEEP_AWAKE === '0') return false;
+  return config.server?.keepAwake !== false;
 }
 
 const NOT_SUPERVISED = {
@@ -82,6 +90,20 @@ router.put('/network', requireAdmin, (req, res) => {
     logger.info(`[Server] Network access ${lan ? 'opened to the local network' : 'limited to this computer'}`);
   }
   res.json({ ...info(), restartRequired: changed });
+});
+
+router.put('/keep-awake', requireAdmin, (req, res) => {
+  const enabled = req.body?.enabled;
+  if (typeof enabled !== 'boolean') return res.status(400).json({ error: 'enabled must be true or false', code: 'INVALID' });
+  const config = getConfig();
+  if (config.server.keepAwake !== enabled) {
+    config.server.keepAwake = enabled;
+    saveConfig(config);
+  }
+  // Applies right away — no restart needed.
+  keepAwake.apply(keepAwakeEnabled());
+  logger.info(`[Power] Keep this computer awake: ${enabled ? 'on' : 'off'}`);
+  res.json(info());
 });
 
 module.exports = router;
