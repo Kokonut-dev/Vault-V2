@@ -862,7 +862,6 @@
 .modal-form .modal-text { margin-bottom: 6px; color: var(--text-secondary); font-size: var(--text-sm); }
 .modal-form .form-label { margin-top: 6px; }
 .modal-form .modal-actions { margin-top: 12px; }
-.eq-modal { max-width: 800px; width: 100%; }
 
 /* ---------- Responsive ---------- */
 @media (max-width: 900px) {

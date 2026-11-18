@@ -58,6 +58,10 @@ router.get('/cover/:id', async (req, res) => {
     : (item.type === 'music' ? (cover || poster) : (poster || cover)) || (item.thumbnailPath && fs.existsSync(item.thumbnailPath) ? item.thumbnailPath : null);
 
   if (!source || !fs.existsSync(source)) {
+    // Let the browser remember "no artwork" for a while: every card used to
+    // re-request its missing cover on each render. Artwork changes bump the
+    // item's updatedAt, which changes the (versioned) URL anyway.
+    res.setHeader('Cache-Control', 'private, max-age=300');
     return res.status(404).json({ error: 'Cover not found' });
   }
 
@@ -72,9 +76,14 @@ router.get('/cover/:id', async (req, res) => {
     }
   }
 
-  res.setHeader('Content-Type', mime.lookup(source) || 'image/jpeg');
-  res.setHeader('Cache-Control', 'no-cache');
-  fs.createReadStream(source).pipe(res);
+  // sendFile adds ETag/Last-Modified and answers If-None-Match with 304 —
+  // the old stream re-sent the full image on every `no-cache` revalidation.
+  res.sendFile(path.resolve(source), {
+    headers: { 'Content-Type': mime.lookup(source) || 'image/jpeg', 'Cache-Control': 'no-cache' },
+    dotfiles: 'allow',
+  }, (err) => {
+    if (err && !res.headersSent) res.status(err.statusCode || 500).json({ error: 'Cover unavailable' });
+  });
 });
 
 // Poster / backdrop / trailer / extras for the detail hero.

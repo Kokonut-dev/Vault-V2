@@ -35,6 +35,21 @@ export function initMiniPlayer() {
   const miniDownloadBtn = document.getElementById('mini-download');
   const npDownloadBtn = document.getElementById('now-playing-download');
   const nowPlayingBgImg = document.getElementById('now-playing-bg-img');
+
+  // Equaliser from the music player (it was only reachable from the video
+  // player and Settings). The dot shows when it's shaping the sound.
+  const eqButtons = ['mini-eq', 'now-playing-eq'].map(id => document.getElementById(id)).filter(Boolean);
+  const paintEq = () => eqButtons.forEach(btn => {
+    const on = Boolean(store.get('eqEnabled'));
+    btn.classList.toggle('is-on', on);
+    btn.setAttribute('aria-label', on ? 'Equaliser (on)' : 'Equaliser');
+  });
+  eqButtons.forEach(btn => btn.addEventListener('click', async () => {
+    const { showEQModal } = await import('./eqPanel.js');
+    showEQModal();
+  }));
+  store.subscribe('eqEnabled', paintEq);
+  paintEq();
   const npRepeatBtn = document.getElementById('np-repeat');
   
   function updateTrackInfo(item) {

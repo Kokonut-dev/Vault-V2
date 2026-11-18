@@ -30,7 +30,8 @@ export class ThemeManager {
 
   init() {
     const saved = store.get('theme') || 'dark';
-    this.setTheme(saved);
+    // No fade on load — it's not a switch the user made.
+    this.setTheme(saved, { animate: false });
     
     const glass = store.get('glassIntensity');
     this.setGlassIntensity(glass);
@@ -43,7 +44,7 @@ export class ThemeManager {
     store.subscribe('grainIntensity', (val) => this.setGrainIntensity(val));
   }
 
-  setTheme(theme) {
+  setTheme(theme, { animate = true } = {}) {
     if (!this.themes.includes(theme)) theme = 'dark';
     // Idempotence guard: store.set('theme') re-emits into the 'theme'
     // subscriber above, which called back into setTheme — previously that
@@ -55,12 +56,15 @@ export class ThemeManager {
 
     // F-2: scope universal transitions to the switch itself (themes.css) —
     // the class is removed shortly after the fade settles.
+    const changed = root.getAttribute('data-theme') !== theme;
     root.setAttribute('data-theme', theme);
-    root.classList.add('theme-transition');
-    clearTimeout(this._themeTransitionTimer);
-    this._themeTransitionTimer = setTimeout(() => {
-      root.classList.remove('theme-transition');
-    }, 500);
+    if (animate && changed) {
+      root.classList.add('theme-transition');
+      clearTimeout(this._themeTransitionTimer);
+      this._themeTransitionTimer = setTimeout(() => {
+        root.classList.remove('theme-transition');
+      }, 500);
+    }
 
     store.set('theme', theme, true);
     localStorage.setItem('vault_theme', theme);

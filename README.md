@@ -57,6 +57,8 @@ Vault server ready!
 
 **Important:** Leave this window open. If you close it, Vault stops. This window IS your server.
 
+> **No terminal next time.** `npm start` also runs a tiny helper (the *launcher*, on `127.0.0.1:4001`) so the app can start, restart and stop the server itself. If the server isn't running, the sign-in screen and the "server disconnected" banner show a **Start server** button. In **Settings → Connection → Server program** you can turn on **Start Vault when this computer starts** — it then runs quietly in the background after you sign in to your computer (Windows, macOS and Linux).
+
 ### 3. Open Vault and Complete the Wizard
 
 Open your browser (Chrome, Safari, Firefox, Edge) and go to:
@@ -137,6 +139,14 @@ Two ways, both easy:
 3. Copy your files there (e.g., `my-movie.mp4` into `movies`)
 4. In Vault → **Settings** → click **Trigger Library Scan**
 5. Vault scans and adds them
+
+### Way C — Import From Google Drive
+1. In Google Drive, right-click a file or folder → **Share** → *General access* → **Anyone with the link** → **Copy link**
+2. In Vault → **Upload** → **Import from Google Drive** → paste the link → **Preview**
+3. Untick anything you don't want, choose where it goes (or leave *Automatic*) → **Import**
+4. Progress shows live; you can cancel any time. Files are copied to your server and appear in the library.
+
+Private files: add an API key or an OAuth client ID in **Settings → Links & imports** (the help text there walks you through it), then use **Connect Google account** on the Upload page. Your Google sign-in stays in the browser tab — Vault never stores it.
 
 Supported formats: `.mp4, .mkv, .webm, .avi, .mov, .mp3, .flac, .wav, .ogg, .opus, .m4a, .aac` and 20+ more. If a file isn't natively supported, Vault transcodes it on-the-fly.
 
@@ -258,28 +268,30 @@ Frontend is static (GitHub Pages). Backend is local (your machine). They talk vi
 
 ---
 
-## Remote Access — Use Vault From Your Phone Outside Home
+## Remote Access — Use Vault on Your Phone, Tablet or TV
 
-By default Vault only works at home (`localhost`). To use from phone anywhere:
+Click the **phone icon** in the top bar (or **Settings → Connection → Use Vault on other devices**).
 
-**Easiest — Cloudflare Tunnel (free, secure, HTTPS):**
-1. Install `cloudflared`: https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/downloads/
-2. Run: `cloudflared tunnel --url http://localhost:4000`
-3. You'll get a URL like `https://random-words-1234.trycloudflare.com`
-4. In Vault → Settings → API Base URL → paste that URL → Save → Test Connection
-5. On your phone, open GitHub Pages URL — it will now connect via tunnel. Or add that tunnel URL as a bookmark.
+**Same Wi-Fi (at home):**
+1. Pick **Same Wi-Fi** — a QR code appears.
+2. Scan it with the phone's camera. Vault opens **already signed in** (the code works once and expires after 5 minutes; untick *Sign the other device in automatically* to share just the address).
+3. No camera (TV, games console)? Open the address shown, choose **Sign in with a code from another device**, and approve the 6-digit code from a signed-in device.
 
-**Alternative — Tailscale / ngrok / mkcert:**
-- Tailscale gives you a private VPN URL.
-- ngrok similar to Cloudflare Tunnel.
-- mkcert creates trusted local HTTPS cert so GitHub Pages HTTPS can talk to `https://localhost:4000` without mixed-content block. Run `scripts/generate-cert.js`.
+If the phone can't connect, the dialog explains why — usually Vault is set to *this computer only*; it offers a one-click switch (restarts the server).
+
+**From anywhere (mobile data, work, a friend's house):**
+1. Pick **Anywhere** → **Turn on remote access**.
+2. Vault downloads Cloudflare's small tunnel program the first time (checksum-verified, about 40 MB) and gives you a private `https://…trycloudflare.com` address with its own QR code.
+3. Your password and grid still protect Vault. Turn it off from the same place; you can also have it start with the server.
+
+Prefer the terminal? `cloudflared tunnel --url http://localhost:4000` still works, as do Tailscale, ngrok, or mkcert for a trusted local HTTPS certificate (`npm run generate-cert` in `server/`).
 
 ---
 
 ## Troubleshooting — If Something Breaks
 
 **"Cannot connect to Vault server"**
-- Is Terminal still open showing `Vault server ready!`? If not: `cd Vault-V2/server` → `npm start`
+- Is the server running? On the sign-in screen, press **Start server** if it's shown. Otherwise open Terminal: `cd Vault-V2/server` → `npm start`
 - Is Server URL correct? Login screen → bottom → `Server: http://localhost:4000` → Click Change → type `http://localhost:4000`
 - Try local frontend to avoid HTTPS block: `cd Vault-V2` → `npx serve docs` → open `http://localhost:3000`
 

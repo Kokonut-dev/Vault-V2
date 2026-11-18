@@ -16,6 +16,19 @@
   <!-- Favicon -->
   <link rel="icon" type="image/svg+xml" href="./favicon.svg">
   
+  <!-- Apply the saved theme before the stylesheet paints: <html> defaults to
+       "dark", so light-theme users saw a dark flash and every element ran the
+       300 ms theme fade on each load. -->
+  <script>
+    (function () {
+      try {
+        var t = localStorage.getItem('vault_theme')
+          || (window.matchMedia && matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark');
+        if (/^(dark|light|warm|cold|midnight|white)$/.test(t)) document.documentElement.setAttribute('data-theme', t);
+      } catch (e) { /* storage blocked: keep the default */ }
+    })();
+  </script>
+
   <!-- Config must load first -->
   <script src="./config.js"></script>
   
@@ -157,6 +170,7 @@
       <button class="btn btn-icon" id="mini-prev" aria-label="Previous track" data-icon="skip-back" data-icon-size="16"></button>
       <button class="btn btn-icon" id="mini-play" aria-label="Play/Pause" data-icon="play" data-icon-size="16"></button>
       <button class="btn btn-icon" id="mini-next" aria-label="Next track" data-icon="skip-forward" data-icon-size="16"></button>
+      <button class="btn btn-icon eq-toggle-btn" id="mini-eq" aria-label="Equaliser" title="Equaliser" data-icon="sliders" data-icon-size="16"></button>
       <button class="btn btn-icon" id="mini-download" aria-label="Download current track" title="Download current track (works over remote access)" data-icon="download" data-icon-size="16"></button>
       <button class="btn btn-icon" id="mini-expand" aria-label="Expand player" data-icon="maximize" data-icon-size="16"></button>
     </div>
@@ -174,6 +188,7 @@
       <div style="font-weight:600;">Now Playing</div>
       <span style="display:inline-flex; gap:8px;">
       <button class="btn btn-icon" id="now-playing-download" aria-label="Download current track" title="Download current track (works over remote access)" data-icon="download" data-icon-size="18"></button>
+      <button class="btn btn-icon eq-toggle-btn" id="now-playing-eq" aria-label="Equaliser" title="Equaliser" data-icon="sliders" data-icon-size="18"></button>
       <button class="btn btn-icon" id="now-playing-queue" aria-label="Queue" title="Queue" data-icon="list" data-icon-size="18"></button>
       </span>
     </div>

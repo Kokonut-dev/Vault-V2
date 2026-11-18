@@ -861,3 +861,23 @@
 .video-player.subtitle-small ::cue {
   font-size: 14px;
 }
+
+/* No artwork (or it failed to load): a music note instead of an empty tile.
+   The image sits above it, so real covers hide the placeholder. */
+.now-playing-art::before,
+.mini-player-cover::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  margin: auto;
+  width: 34%;
+  height: 34%;
+  background: var(--text-tertiary);
+  opacity: 0.55;
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='8' cy='18' r='4'/%3E%3Cpath d='M12 18V2l7 4'/%3E%3C/svg%3E") center / contain no-repeat;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='8' cy='18' r='4'/%3E%3Cpath d='M12 18V2l7 4'/%3E%3C/svg%3E") center / contain no-repeat;
+  pointer-events: none;
+}
+.mini-player-cover::before { width: 50%; height: 50%; }
+.now-playing-art img,
+.mini-player-cover img { position: relative; z-index: 1; }
