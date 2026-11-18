@@ -341,6 +341,16 @@ body.queue-open .mini-player { right: min(396px, calc(92vw + 16px)); }
 .profile-meta { font-size: var(--text-xs); color: var(--text-tertiary); }
 .profile-badge { font-size: 10px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-tertiary); }
 
+/* Profiles → Manage (admins) and the read-only note (everyone else). */
+.profile-manage { max-width: 760px; margin: 0 auto var(--space-2xl); padding: 0 var(--space-xl); }
+.profile-manage-title { font-size: var(--text-lg); font-weight: 600; margin-bottom: var(--space-xs); }
+.profile-manage-list { margin-top: var(--space-md); border-top: 1px solid var(--border-subtle); }
+.profile-manage-actions { display: flex; align-items: center; gap: var(--space-md); }
+.profile-admin-toggle { display: inline-flex; align-items: center; gap: var(--space-sm); font-size: var(--text-sm); font-weight: 500; cursor: pointer; min-height: 44px; }
+.profile-note { display: flex; gap: var(--space-sm); align-items: flex-start; max-width: 760px; margin: 0 auto var(--space-2xl); padding: var(--space-md) var(--space-lg); border-radius: var(--radius-md); border: 1px solid var(--border-strong); color: var(--text-secondary); font-size: var(--text-sm); }
+.profile-note .icon { flex: none; margin-top: 3px; }
+.profile-note strong { color: var(--text-primary); }
+
 /* ---------- Bottom nav / gesture layer ------------------------------------ */
 .bottom-nav {
   position: fixed;

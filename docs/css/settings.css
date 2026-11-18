@@ -512,6 +512,15 @@
 .settings-callout.is-warn .icon { color: var(--warning); }
 .settings-callout.is-error { border-left-color: var(--error); }
 .settings-callout.is-error .icon { color: var(--error); }
+.settings-callout a {
+  color: inherit;
+  font-weight: var(--fw-semibold, 600);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.settings-callout a:hover { text-decoration-thickness: 2px; }
+/* Read-only notice prepended to a group by setReadOnly(). */
+.settings-callout:first-child:not(:only-child) { margin-bottom: var(--space-md); }
 
 .chip {
   display: inline-flex;
