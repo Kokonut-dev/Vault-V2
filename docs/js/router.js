@@ -16,6 +16,12 @@ export class Router {
     this.navId = 0;
     this._inited = false;
     this._scrollMem = new Map(); // path → scrollY, capped (QoL4)
+    // Remember which navigation the user scrolled during (wheel/touch/keys).
+    this._userScrollNav = 0;
+    const markUserScroll = () => { this._userScrollNav = this.navId; };
+    for (const ev of ['wheel', 'touchmove', 'keydown']) {
+      window.addEventListener(ev, markUserScroll, { passive: true });
+    }
     this._onClick = this._onClick.bind(this);
     // How the next handleRoute was triggered: 'push' | 'replace' | 'pop'.
     // Page transitions use it (with path depth) to pick a direction.
@@ -152,11 +158,19 @@ export class Router {
     }
   }
 
-  _restoreScroll(path) {
-    const y = this._scrollMem.get(path) || 0;
+  // Back/forward returns to where you were; any other navigation starts at the
+  // top, like a normal website. If the user scrolled while the view was
+  // loading, leave them be. (Comparing positions doesn't work: swapping the
+  // view shrinks the page and the browser clamps scrollY on its own.)
+  _restoreScroll(path, type, navId) {
+    const y = type === 'pop' ? (this._scrollMem.get(path) || 0) : 0;
+    if (type === 'replace') return; // same page, new URL (filters, tabs)
     requestAnimationFrame(() => {
-      // Skip if the user already scrolled before the frame landed
-      if (window.scrollY === 0 || window.scrollY === y) window.scrollTo(0, y);
+      if (this._userScrollNav !== navId) {
+        // `instant`: html has scroll-behavior: smooth, which would animate
+        // the jump on every page change.
+        window.scrollTo({ top: y, behavior: 'instant' });
+      }
     });
   }
 
@@ -199,7 +213,7 @@ export class Router {
       this.currentRoute = path;
       this.render404(path);
       window.dispatchEvent(new CustomEvent('vault:route-changed', { detail: { path, params } }));
-      this._restoreScroll(path);
+      this._restoreScroll(path, type, gen);
       return;
     }
 
@@ -233,7 +247,7 @@ export class Router {
 
     if (!nav.isCurrent()) return;
     window.dispatchEvent(new CustomEvent('vault:route-changed', { detail: { path, params } }));
-    this._restoreScroll(path);
+    this._restoreScroll(path, type, gen);
   }
 
   render404(path) {

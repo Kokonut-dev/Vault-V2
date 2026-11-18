@@ -111,6 +111,18 @@ function handle(event, data) {
     case 'watchlist:changed':
       emit('vault:watchlist-changed', data);
       break;
+    // Same window events the app fires for local changes, so a change made on
+    // another device (or tab) reaches the same listeners. `remote: true` lets a
+    // listener tell them apart; there's no `item` object, only ids.
+    case 'playlist:changed':
+      emit('vault:playlists-changed', { ...data, remote: true });
+      break;
+    case 'watched:changed':
+      emit('vault:watched-changed', { ...data, remote: true });
+      break;
+    case 'bookmark:changed':
+      emit('vault:bookmarks-changed', { ...data, remote: true });
+      break;
     case 'collection:changed':
       emit('vault:collections-changed', data);
       break;
@@ -186,6 +198,7 @@ export function connect() {
     'playback:started', 'playback:stopped', 'syncplay:state', 'syncplay:members',
     'syncplay:item', 'syncplay:chat', 'recording:changed', 'recording:finished',
     'scan:progress', 'scan:complete', 'import:progress', 'remote:changed',
+    'playlist:changed', 'watched:changed', 'bookmark:changed',
   ];
   for (const name of NAMED) {
     source.addEventListener(name, (message) => {
