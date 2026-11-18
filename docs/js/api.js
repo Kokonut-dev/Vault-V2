@@ -769,6 +769,10 @@ class ApiClient {
     return this.request('/api/auth/pair/approve', { method: 'POST', body: data });
   }
 
+  pairingState(code) {
+    return this.request(`/api/auth/pair/${encodeURIComponent(code)}/state`, { cache: false, dedupe: false });
+  }
+
   pairingStatus(code) {
     return this.request(`/api/auth/pair/${encodeURIComponent(code)}`, { auth: false });
   }
@@ -1316,6 +1320,83 @@ class ApiClient {
 
   getEventsUrl() {
     return `${this.baseUrl}/api/events?token=${encodeURIComponent(this.getToken() || '')}`;
+  }
+
+  // --- Sign another device in (QR carries a single-use, pre-approved link)
+  createSignInLink(baseUrl, deviceLabel) {
+    return this.request('/api/auth/pair', { method: 'POST', body: { baseUrl, deviceLabel }, retry: false });
+  }
+
+  exchangePairingToken(token) {
+    return this.request('/api/auth/pair/exchange', { method: 'POST', body: { token }, auth: false, retry: false });
+  }
+
+  // --- Server control (/api/server) -------------------------------------
+  serverInfo() {
+    return this.request('/api/server', { cache: false });
+  }
+
+  restartServer() {
+    return this.request('/api/server/restart', { method: 'POST', retry: false });
+  }
+
+  stopServer() {
+    return this.request('/api/server/stop', { method: 'POST', retry: false });
+  }
+
+  setAutostart(enabled, startServer) {
+    return this.request('/api/server/autostart', { method: 'PUT', body: { enabled, startServer } });
+  }
+
+  setLanAccess(lan) {
+    return this.request('/api/server/network', { method: 'PUT', body: { lan } });
+  }
+
+  // --- Remote access (/api/remote) --------------------------------------
+  remoteStatus() {
+    return this.request('/api/remote', { cache: false, dedupe: false });
+  }
+
+  startTunnel() {
+    return this.request('/api/remote/tunnel', { method: 'POST', body: {}, retry: false });
+  }
+
+  stopTunnel() {
+    return this.request('/api/remote/tunnel', { method: 'DELETE', retry: false });
+  }
+
+  setRemoteSettings(settings) {
+    return this.request('/api/remote/settings', { method: 'PUT', body: settings });
+  }
+
+  // --- Google Drive import (/api/import) --------------------------------
+  driveConfig() {
+    return this.request('/api/import/gdrive/config', { cache: false });
+  }
+
+  saveDriveConfig(data) {
+    return this.request('/api/import/gdrive/config', { method: 'PUT', body: data });
+  }
+
+  inspectDrive(link, accessToken) {
+    return this.request('/api/import/gdrive/inspect', { method: 'POST', body: { link, accessToken }, retry: false });
+  }
+
+  importFromDrive({ link, files, selection, destination, accessToken }) {
+    return this.request('/api/import/gdrive', { method: 'POST', body: { link, files, selection, destination, accessToken }, retry: false });
+  }
+
+  browseDrive({ folder = 'root', q = '' } = {}, accessToken) {
+    const qs = new URLSearchParams({ folder, q });
+    return this.request(`/api/import/gdrive/browse?${qs}`, { headers: accessToken ? { 'X-Google-Token': accessToken } : {}, dedupe: false });
+  }
+
+  importJobs() {
+    return this.request('/api/import/jobs', { cache: false, dedupe: false });
+  }
+
+  cancelImport(id) {
+    return this.request(`/api/import/jobs/${encodeURIComponent(id)}`, { method: 'DELETE' });
   }
 }
 

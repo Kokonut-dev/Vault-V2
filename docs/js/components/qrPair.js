@@ -58,74 +58,109 @@ export async function renderQr(container, text, { size = 220 } = {}) {
 }
 
 /**
- * Settings → "Pair a device" panel body: creates a short-lived pair link
- * server-side (`POST /api/auth/pair`) and renders it as a QR code.
+ * Settings → "Pair a device" panel body. The signed-in device mints a
+ * single-use, pre-approved code (`POST /api/auth/pair` with its token): the
+ * QR opens `/?pair=<token>`, which signs the other device straight in; the
+ * 6 digits do the same when typed on /pair.
  */
 export async function renderPairingPanel(container) {
   const host = typeof container === 'string' ? document.querySelector(container) : container;
   if (!host) return;
   host.innerHTML = `
-    <p class="row-meta">Open Vault on another device and scan this code — it carries the server URL and a single-use pairing token.</p>
+    <p class="row-meta">Scan this with the other device’s camera to sign it in — no password needed. The code works once and expires after 5 minutes.</p>
     <div class="qr-pair">
-      <div id="pair-qr" class="qr-host"></div>
-      <div class="pair-code" id="pair-code">······</div>
+      <div id="pair-qr" class="qr-host" role="img" aria-label="Sign-in QR code"></div>
+      <div class="pair-code" id="pair-code" aria-label="Pairing code">······</div>
+      <p class="row-meta" id="pair-state" aria-live="polite"></p>
       <div class="page-actions">
         <button type="button" class="btn btn-primary btn-sm" id="pair-new">${icon('refresh', { size: 14 })}<span>New code</span></button>
       </div>
     </div>
     <details>
-      <summary class="row-meta">Can't scan? Enter the code manually</summary>
-      <p class="row-meta">On the other device open <code>Settings → Connect to a server → Enter code</code> and type the 6-digit code above.</p>
+      <summary class="row-meta">Can’t scan? Type the code instead</summary>
+      <p class="row-meta">On the other device open <code>${window.location.origin}/pair</code> and enter the 6 digits above.</p>
     </details>
   `;
+
+  let code = '';
+  let left = 0;
+  let pollTimer = null;
+  const stateEl = host.querySelector('#pair-state');
 
   async function refresh() {
     const codeHost = host.querySelector('#pair-code');
     const qrHost = host.querySelector('#pair-qr');
     try {
       const baseUrl = window.location.origin;
-      const data = await api.createPairingCode(baseUrl);
-      const code = data.code || data.pairingCode || '';
-      const url = data.url || `${baseUrl}/#/pair?code=${encodeURIComponent(code)}`;
+      const data = await api.createSignInLink(baseUrl, 'Device added with a QR code');
+      code = data.code || '';
+      left = data.expiresIn || 300;
+      const url = data.url || `${baseUrl}/?pair=${encodeURIComponent(data.token)}`;
       codeHost.textContent = code.split('').join(' ') || '······';
+      stateEl.textContent = '';
       const ok = await renderQr(qrHost, url);
       if (!ok) qrHost.innerHTML = `<code class="row-meta">${url}</code>`;
+      clearInterval(pollTimer);
+      pollTimer = setInterval(poll, 3000);
     } catch (err) {
+      code = '';
       codeHost.textContent = '······';
       qrHost.innerHTML = `<div class="empty-state"><div class="empty-state-message">${err.message}</div></div>`;
     }
   }
 
-  host.querySelector('#pair-new').addEventListener('click', refresh);
-  await refresh();
-
-  // Poll so the panel can celebrate when the other device approves.
-  const timer = setInterval(async () => {
-    if (!document.body.contains(host)) { clearInterval(timer); return; }
+  // Ask (without redeeming) whether the other device has used the code.
+  async function poll() {
+    if (!document.body.contains(host)) { clearInterval(pollTimer); return; }
+    if (!code) return;
+    left -= 3;
     try {
-      const code = host.querySelector('#pair-code').textContent.replace(/\s/g, '');
-      const status = await api.pairingStatus(code);
-      if (status?.approved || status?.used) {
-        clearInterval(timer);
-        toast.success('Device paired');
-        host.querySelector('#pair-qr').innerHTML = `<div class="health-item ok">${icon('shield-check', { size: 16 })}<div class="row-main"><div class="row-title">Device paired</div></div></div>`;
+      const { status } = await api.pairingState(code);
+      if (status === 'used') {
+        clearInterval(pollTimer);
+        toast.success('Device signed in');
+        host.querySelector('#pair-qr').innerHTML = `<div class="health-item ok">${icon('shield-check', { size: 16 })}<div class="row-main"><div class="row-title">Device signed in</div></div></div>`;
+        host.querySelector('#pair-code').textContent = '';
+        stateEl.textContent = 'You’ll find it under Signed-in devices below.';
+      } else if (status === 'expired' || left <= 0) {
+        clearInterval(pollTimer);
+        stateEl.textContent = 'This code expired — press New code.';
+        host.querySelector('#pair-qr').classList.add('is-expired');
       }
-    } catch { /* pending */ }
-  }, 4000);
+    } catch { /* offline: keep trying */ }
+  }
+
+  host.querySelector('#pair-new').addEventListener('click', () => {
+    host.querySelector('#pair-qr').classList.remove('is-expired');
+    refresh();
+  });
+  await refresh();
 }
 
-/** Guest side: deep-link handler for `/#/pair?code=123456`. */
+/**
+ * /pair?code=123456 or the /pair form. Signed out: redeem the code shown on
+ * a signed-in device and sign in. Signed in: approve a code shown by a
+ * device that is waiting (TV flow).
+ */
 export async function joinWithPairingCode(code, name = 'Paired device') {
+  const clean = String(code).replace(/\D/g, '');
   try {
-    const result = await api.approvePairing({ code, name });
-    if (result?.token) {
-      localStorage.setItem('vault_token', result.token);
-      toast.success('Paired — signing you in');
-      setTimeout(() => location.reload(), 600);
+    if (localStorage.getItem('vault_token')) {
+      await api.approvePairing({ code: clean, deviceLabel: name });
+      toast.success('Device approved — it will sign in in a moment');
       return true;
     }
+    const result = await api.pairingStatus(clean);
+    if (result?.token) {
+      localStorage.setItem('vault_token', result.token);
+      localStorage.setItem('vault_onboarded', '1');
+      toast.success('Signed in — loading your library');
+      setTimeout(() => location.replace('/'), 500);
+      return true;
+    }
+    toast.info('That code hasn’t been approved yet');
   } catch (err) {
-    toast.error(`Pairing failed: ${err.message}`);
+    toast.error(err.code === 'PAIR_EXPIRED' ? 'That code expired or was already used — make a new one' : `Pairing failed: ${err.message}`);
   }
   return false;
 }

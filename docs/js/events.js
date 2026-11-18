@@ -33,20 +33,65 @@ function scheduleReconnect() {
   }, delay);
 }
 
+// A folder import or a big copy into a watched folder fires one
+// `library:changed` per file. Each used to show its own toast AND refetch the
+// whole library (up to 1000 items) — 50 tracks meant 50 toasts and 50 full
+// downloads. Now additions are announced once per burst and the refetch is
+// debounced; the per-event DOM event still fires immediately.
+const BURST_MS = 1200;
+let refreshTimer = null;
+let addedTitles = new Map(); // id → title (the watcher and an import can both report a file)
+let addedTimer = null;
+
+function scheduleLibraryRefresh() {
+  clearTimeout(refreshTimer);
+  refreshTimer = setTimeout(() => {
+    refreshTimer = null;
+    api.getLibrary({ limit: 1000 }).then(result => {
+      store.setLibrary(result.items || []);
+    }).catch(() => {});
+  }, 400);
+}
+
+// Items an import already reported (it shows its own summary). The watcher
+// sees the same file a couple of seconds later; stay quiet for it too.
+const quietIds = new Map(); // id → expiry
+function isQuiet(id, quiet) {
+  const now = Date.now();
+  for (const [key, until] of quietIds) if (until < now) quietIds.delete(key);
+  if (quiet && id) quietIds.set(id, now + 60000);
+  return Boolean(quiet || (id && quietIds.has(id)));
+}
+
+function announceAdded(title, id) {
+  addedTitles.set(id || title, title);
+  clearTimeout(addedTimer);
+  addedTimer = setTimeout(() => {
+    const titles = [...addedTitles.values()];
+    addedTitles = new Map();
+    if (titles.length === 1) toast.info(`"${titles[0]}" was added to the library`, 'Library updated');
+    else toast.info(`${titles.length} items were added, including "${titles[0]}"`, 'Library updated');
+  }, BURST_MS);
+}
+
 function handle(event, data) {
   lastEventAt = Date.now();
   switch (event) {
     case 'library:changed': {
       emit('vault:library-changed', data);
-      const { reason, title } = data || {};
-      if (reason === 'add' && title) toast.info(`"${title}" was added to the library`, 'Library updated');
+      const { reason, title, id, quiet } = data || {};
+      if (reason === 'add' && title && !isQuiet(id, quiet)) announceAdded(title, id);
       else if (reason === 'artwork' && title) toast.info(`New artwork for "${title}"`);
       // Refresh in place; views listen for the event and re-render themselves.
-      api.getLibrary({ limit: 1000 }).then(result => {
-        store.setLibrary(result.items || []);
-      }).catch(() => {});
+      scheduleLibraryRefresh();
       break;
     }
+    case 'import:progress':
+      emit('vault:import-progress', data);
+      break;
+    case 'remote:changed':
+      emit('vault:remote-changed', data);
+      break;
     case 'job:start':
       emit('vault:job-start', data);
       break;
@@ -56,7 +101,12 @@ function handle(event, data) {
     case 'job:finished':
       emit('vault:job-finished', data);
       if (data?.status === 'error') toast.error(`${data.name || 'Job'} failed${data.error ? `: ${data.error}` : ''}`);
-      else if (data?.name) toast.success(`${data.name} finished`);
+      else if (data?.status === 'cancelled') toast.info(`${data.name || 'Job'} cancelled`);
+      else if (data?.name && data.imported != null) {
+        const files = `${data.imported} file${data.imported === 1 ? '' : 's'}`;
+        if (data.failed) toast.info(`${data.name}: ${files} added, ${data.failed} failed`);
+        else toast.success(`${data.name}: ${files} added`);
+      } else if (data?.name) toast.success(`${data.name} finished`);
       break;
     case 'watchlist:changed':
       emit('vault:watchlist-changed', data);
@@ -135,7 +185,7 @@ export function connect() {
     'collection:changed', 'markers:changed', 'profile:changed', 'podcast:changed',
     'playback:started', 'playback:stopped', 'syncplay:state', 'syncplay:members',
     'syncplay:item', 'syncplay:chat', 'recording:changed', 'recording:finished',
-    'scan:progress', 'scan:complete',
+    'scan:progress', 'scan:complete', 'import:progress', 'remote:changed',
   ];
   for (const name of NAMED) {
     source.addEventListener(name, (message) => {

@@ -29,6 +29,8 @@ const podcastsService = require('./services/podcasts');
 const agentService = require('./services/agent');
 const systemService = require('./services/system');
 const mdnsService = require('./services/mdns');
+const remoteAccess = require('./services/remoteAccess');
+const lifecycle = require('./services/lifecycle');
 const logger = require('./utils/logger');
 
 // Load config
@@ -55,7 +57,9 @@ app.use(helmet({
     useDefaults: false,
     directives: {
       defaultSrc: ["'self'"],
-      scriptSrc: ["'self'", "'unsafe-inline'"],
+      // accounts.google.com: Google Identity Services, only loaded when an
+      // admin connects a Google account for Drive import.
+      scriptSrc: ["'self'", "'unsafe-inline'", 'https://accounts.google.com'],
       styleSrc: ["'self'", "'unsafe-inline'"],
       // Podcast episodes and their artwork are served by the podcast's own
       // host; with media-src 'self' every feed episode failed to load.
@@ -64,7 +68,7 @@ app.use(helmet({
       fontSrc: ["'self'", 'data:'],
       connectSrc: ["'self'", 'https:', 'http:', 'blob:'],
       workerSrc: ["'self'", 'blob:'],
-      frameSrc: ["'self'", 'blob:'],
+      frameSrc: ["'self'", 'blob:', 'https://accounts.google.com'],
       objectSrc: ["'none'"],
       baseUri: ["'self'"],
       formAction: ["'self'"],
@@ -92,7 +96,7 @@ app.use(createCompression());
 // never be written to disk. (F-6)
 morgan.token('redacted-url', req => {
   const raw = req.originalUrl || req.url || '';
-  return raw.replace(/([?&]token=)[^&\s"']+/gi, '$1[redacted]');
+  return raw.replace(/([?&](?:token|pair)=)[^&\s"']+/gi, '$1[redacted]');
 });
 app.use(morgan(
   ':remote-addr - :remote-user [:date[clf]] ":method :redacted-url HTTP/:http-version" :status :res[content-length] ":referrer" ":user-agent"'
@@ -178,6 +182,13 @@ app.use('/api/comics', authMiddleware, require('./routes/comics'));
 app.use('/api/livetv', authMiddleware, require('./routes/livetv'));
 app.use('/api/links', authMiddleware, require('./routes/links'));
 app.use('/api/syncplay', authMiddleware, require('./routes/syncplay'));
+// Server control, remote access and imports change server state or make the
+// server fetch/run things, so they are admin-only (status reads included for
+// remote access, which lists network addresses).
+const { requireAdmin } = require('./middleware/requireAdmin');
+app.use('/api/server', authMiddleware, require('./routes/serverControl'));
+app.use('/api/remote', authMiddleware, requireAdmin, require('./routes/remote'));
+app.use('/api/import', authMiddleware, requireAdmin, require('./routes/imports'));
 
 // Metadata agents (search + apply a match to an item).
 const agentRouter = express.Router();
@@ -233,12 +244,18 @@ app.get('/api/events', authMiddleware, (req, res) => {
     version: require('./package.json').version || '3.0.0',
   });
 
+  // Without this the stream only ever carried `connected` + `ping`: nothing
+  // was registered with the bus, so broadcasts (library changes, job
+  // progress, imports, remote-access state) never reached the browser.
+  const client = events.addClient(res);
+
   const interval = setInterval(() => {
     sendEvent('ping', { timestamp: Date.now() });
   }, 30000);
 
   req.on('close', () => {
     clearInterval(interval);
+    events.removeClient(client);
     res.end();
   });
 });
@@ -254,9 +271,12 @@ app.get('/api/events/public', (req, res) => {
 
   const send = (event, data) => res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
   send('connected', { jobs: events.jobList() });
+  // Progress only — job labels/counts and scan status, no library items.
+  const client = events.addClient(res, { filter: (event) => /^(job|scan):/.test(event) });
   const interval = setInterval(() => send('ping', { timestamp: Date.now() }), 30000);
   req.on('close', () => {
     clearInterval(interval);
+    events.removeClient(client);
     res.end();
   });
 });
@@ -329,7 +349,7 @@ function startServer() {
         https.createServer(options, app).listen(port, host, () => {
           logger.info(`Vault server (HTTPS) running at https://${host}:${port}`);
           onServerStart();
-        });
+        }).on('error', onListenError);
         return;
       } else {
         logger.warn('HTTPS enabled but cert files not found, falling back to HTTP');
@@ -339,12 +359,26 @@ function startServer() {
     }
   }
 
-  app.listen(port, host, () => {
+  const httpServer = app.listen(port, host, () => {
     logger.info(`Vault server (HTTP) running at http://${host}:${port}`);
     logger.info(`Health check: http://${host}:${port}/api/health`);
     logger.info(`Media paths: Movies=${config.media.paths.movies}, Music=${config.media.paths.music}, Videos=${config.media.paths.videos}`);
     onServerStart();
   });
+  httpServer.on('error', onListenError);
+}
+
+/** EADDRINUSE etc.: say what's wrong instead of a stack trace, and tell the
+ *  launcher not to retry (a restart can't free the port). */
+function onListenError(err) {
+  if (err.code === 'EADDRINUSE') {
+    logger.error(`Error: port ${config.server.port} is already in use (EADDRINUSE) — is Vault already running? Close it or change server.port in server/config.json.`);
+  } else if (err.code === 'EACCES') {
+    logger.error(`Error: no permission to use port ${config.server.port} (EACCES) — pick a port above 1024 in server/config.json.`);
+  } else {
+    logger.error(`Error: the server could not start: ${err.message}`);
+  }
+  process.exit(lifecycle.CONFIG_ERROR_CODE);
 }
 
 async function onServerStart() {
@@ -407,6 +441,7 @@ async function onServerStart() {
     // Start watcher
     scannerService.startWatcher();
     logger.info('Vault server ready!');
+    remoteAccess.autoStart();
     logger.info(`Default credentials: username=${config.auth.username} (password is hashed, check setup)`);
     logger.info(`Grid pattern: [${config.auth.gridPattern.join(', ')}] — CHANGE THIS IN PRODUCTION!`);
   } catch (err) {
@@ -418,6 +453,7 @@ async function onServerStart() {
 async function shutdown() {
   try {
     scannerService.stopWatcher();
+    remoteAccess.stopTunnel();
     hlsService.stopAll();
     mdnsService.stop();
     livetvService.stopAll();
@@ -436,6 +472,8 @@ async function shutdown() {
     logger.warn(`Shutdown flush failed: ${err.message}`);
   }
 }
+
+lifecycle.setShutdownHook(shutdown);
 
 process.on('SIGINT', async () => {
   logger.info('Shutting down...');

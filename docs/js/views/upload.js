@@ -6,13 +6,14 @@ import { toast } from '../components/toast.js';
 import { store } from '../store.js';
 import { escapeHtml, escapeAttr } from '../utils/format.js';
 import { icon } from '../utils/icons.js';
+import { renderDriveImport } from '../components/driveImport.js';
 
 export function renderUpload(container) {
   container.className = 'page';
   container.innerHTML = `
     <div class="page-header">
       <h1 class="page-title">Upload Media</h1>
-      <p class="page-subtitle">Add movies, music, or videos to your vault</p>
+      <p class="page-subtitle">Add movies, music, or videos from this device or Google Drive</p>
     </div>
     
     <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap:16px; margin-bottom:32px;">
@@ -60,6 +61,8 @@ export function renderUpload(container) {
       </div>
     </div>
     
+    <div id="drive-import-host" class="drive-import-host"></div>
+
     <style>
       .upload-type-card {
         background:rgba(var(--glass-tint),0.05);
@@ -107,6 +110,8 @@ export function renderUpload(container) {
     </style>
   `;
   
+  renderDriveImport(container.querySelector('#drive-import-host'));
+
   const typeCards = container.querySelectorAll('.upload-type-card');
   const formContainer = container.querySelector('#upload-form-container');
   const typeTitle = container.querySelector('#upload-type-title');

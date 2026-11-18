@@ -5,7 +5,7 @@
   "main": "index.js",
   "type": "commonjs",
   "scripts": {
-    "start": "node index.js",
+    "start": "node launcher.js",
     "dev": "nodemon index.js",
     "setup": "node ../scripts/setup.js",
     "scan": "node -e \"require('./services/scanner').scanAll()\"",
@@ -16,7 +16,9 @@
     "test:keyboard": "node ../scripts/keyboard-check.js",
     "test:music": "node ../scripts/music-view-check.js",
     "lint": "node ../scripts/syntax-check.js",
-    "check:imports": "node ../scripts/import-check.js"
+    "check:imports": "node ../scripts/import-check.js",
+    "server": "node index.js",
+    "launcher": "node launcher.js --no-server"
   },
   "keywords": [
     "media-server",

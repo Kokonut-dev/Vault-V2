@@ -9,7 +9,7 @@ const { sanitizeString } = require('../utils/validators');
 const logger = require('../utils/logger');
 
 // One-time pairing codes for QR / "type this on your TV" login.
-const pairingCodes = new Map(); // code -> { expiresAt, used }
+const pairingCodes = new Map(); // code -> { token, expiresAt, approved, used, grant?, sessionId? }
 
 function lockoutResponse(res, ip, stage) {
   const remaining = authService.getLockoutTimeRemaining(ip, stage);
@@ -310,10 +310,24 @@ router.post('/totp/recovery-codes', authMiddleware, (req, res) => {
 // ---------------------------------------------------------------------------
 // QR / quick-connect pairing (TV & phone)
 // ---------------------------------------------------------------------------
-router.post('/pair', (req, res) => {
-  const code = String(Math.floor(100000 + Math.random() * 900000));
+// A signed-in device creating a code pre-approves it for its own account, so
+// the QR it shows signs the other device straight in (scan → done). Without
+// a token this stays the TV flow: the TV shows the code, a phone approves it.
+router.post('/pair', (req, res, next) => (req.headers.authorization ? authMiddleware(req, res, next) : next()), (req, res) => {
+  const code = String(crypto.randomInt(100000, 1000000));
   const token = crypto.randomBytes(18).toString('base64url');
-  pairingCodes.set(code, { token, expiresAt: Date.now() + 5 * 60 * 1000, used: false, approved: false });
+  const entry = { token, expiresAt: Date.now() + 5 * 60 * 1000, used: false, approved: false };
+  if (req.user) {
+    // The session is created when the code is redeemed (by the new device's
+    // request), so unused QR codes never leave stray sessions behind.
+    entry.approved = true;
+    entry.grant = {
+      username: req.user.username,
+      profileId: req.user.profileId || 'default',
+      label: String(req.body?.deviceLabel || 'Device added with a QR code').slice(0, 80),
+    };
+  }
+  pairingCodes.set(code, entry);
 
   // Clean up expired codes
   for (const [key, value] of pairingCodes) {
@@ -324,27 +338,82 @@ router.post('/pair', (req, res) => {
   res.json({
     code,
     token,
+    approved: entry.approved,
     expiresIn: 300,
     url: base ? `${base}/?pair=${token}` : null,
     loginUrl: base ? `${base}/login` : null,
   });
 });
 
+// Pairing codes are 6 digits and (when made on a signed-in device) redeem
+// straight into a session, so guessing must stay hopeless: 10 wrong codes per
+// IP per 10 minutes, and at most 60 wrong codes server-wide per 5 minutes
+// (≈0.007% odds against a live code) before redemption pauses for everyone.
+const pairMisses = new Map(); // ip -> { count, since }
+let globalMisses = { count: 0, since: Date.now() };
+const PAIR_IP_LIMIT = 10;
+const PAIR_IP_WINDOW = 10 * 60 * 1000;
+const PAIR_GLOBAL_LIMIT = 60;
+const PAIR_GLOBAL_WINDOW = 5 * 60 * 1000;
+
+function pairThrottled(req, res) {
+  const now = Date.now();
+  if (now - globalMisses.since > PAIR_GLOBAL_WINDOW) globalMisses = { count: 0, since: now };
+  const rec = pairMisses.get(req.ip);
+  if (rec && now - rec.since > PAIR_IP_WINDOW) pairMisses.delete(req.ip);
+  const ipCount = pairMisses.get(req.ip)?.count || 0;
+  if (ipCount >= PAIR_IP_LIMIT || globalMisses.count >= PAIR_GLOBAL_LIMIT) {
+    res.setHeader('Retry-After', '300');
+    res.status(429).json({ error: 'Too many wrong codes — wait a few minutes, then make a new code', code: 'RATE_LIMITED' });
+    return true;
+  }
+  return false;
+}
+
+function pairMiss(req) {
+  const now = Date.now();
+  const rec = pairMisses.get(req.ip) || { count: 0, since: now };
+  rec.count += 1;
+  pairMisses.set(req.ip, rec);
+  globalMisses.count += 1;
+  if (pairMisses.size > 5000) pairMisses.clear(); // bounded memory
+}
+
+// Approved entries carry either a session (approved from a phone) or a grant
+// (created pre-approved by a signed-in device) that becomes one on redeem.
+function sessionForEntry(entry, req) {
+  if (entry.grant && !entry.sessionId) {
+    entry.sessionId = sessions.create({ ...entry.grant, req }).id;
+  }
+  return entry.sessionId ? sessions.get(entry.sessionId) : null;
+}
+
 // Polled by the device waiting to be signed in (TV shows the code).
 router.get('/pair/:code', (req, res) => {
+  if (pairThrottled(req, res)) return;
   const entry = pairingCodes.get(req.params.code);
-  if (!entry || entry.expiresAt < Date.now()) {
+  if (!entry || entry.expiresAt < Date.now() || entry.used) {
+    if (!entry) pairMiss(req);
     return res.status(404).json({ error: 'Pairing code expired', code: 'PAIR_EXPIRED' });
   }
   if (!entry.approved) return res.json({ status: 'pending' });
-  const session = sessions.get(entry.sessionId);
+  const session = sessionForEntry(entry, req);
   if (!session) return res.status(404).json({ error: 'Pairing session gone', code: 'PAIR_EXPIRED' });
-  pairingCodes.delete(req.params.code);
+  entry.used = true;
   const token = authService.generateAccessToken(session.username, {
     sid: session.id,
     profileId: session.profileId,
   });
   res.json({ status: 'approved', token, profile: profiles.toPublic(profiles.get(session.profileId)) });
+});
+
+// The device showing a code asks (without redeeming it) whether it was used.
+router.get('/pair/:code/state', authMiddleware, (req, res) => {
+  const entry = pairingCodes.get(req.params.code);
+  if (!entry) return res.json({ status: 'expired' });
+  if (entry.used) return res.json({ status: 'used' });
+  if (entry.expiresAt < Date.now()) return res.json({ status: 'expired' });
+  res.json({ status: entry.approved ? 'waiting' : 'pending', expiresIn: Math.round((entry.expiresAt - Date.now()) / 1000) });
 });
 
 // Approved from a phone that is already signed in.
@@ -356,14 +425,16 @@ router.post('/pair/approve', authMiddleware, (req, res) => {
       if (value.token === token) entry = value;
     }
   }
-  if (!entry || entry.expiresAt < Date.now()) {
+  if (!entry || entry.expiresAt < Date.now() || entry.used) {
     return res.status(404).json({ error: 'Pairing code expired', code: 'PAIR_EXPIRED' });
   }
   const session = sessions.create({
     username: req.user.username,
-    profileId: req.body.profileId || req.user.profileId || 'default',
+    // The new device gets the approver's own profile. Taking it from the body
+    // let a restricted (e.g. kids) profile pair a device as someone else.
+    profileId: req.user.profileId || 'default',
     req,
-    label: req.body.deviceLabel || 'Paired device',
+    label: (typeof req.body.deviceLabel === 'string' && req.body.deviceLabel.trim().slice(0, 60)) || 'Paired device',
   });
   entry.approved = true;
   entry.sessionId = session.id;
@@ -372,19 +443,21 @@ router.post('/pair/approve', authMiddleware, (req, res) => {
 
 // Exchange a pairing link (?pair=<token>) for a session — used by the QR URL.
 router.post('/pair/exchange', (req, res) => {
-  const { token } = req.body;
+  if (pairThrottled(req, res)) return;
+  const token = typeof req.body?.token === 'string' ? req.body.token : '';
   let match = null;
   for (const [code, value] of pairingCodes) {
     if (value.token === token) match = { code, value };
   }
-  if (!match || match.value.expiresAt < Date.now()) {
+  if (!match || match.value.expiresAt < Date.now() || match.value.used) {
+    if (!match) pairMiss(req);
     return res.status(404).json({ error: 'Pairing link expired', code: 'PAIR_EXPIRED' });
   }
   if (!match.value.approved) {
     return res.status(202).json({ status: 'pending' });
   }
-  pairingCodes.delete(match.code);
-  const session = sessions.get(match.value.sessionId);
+  match.value.used = true;
+  const session = sessionForEntry(match.value, req);
   if (!session) return res.status(404).json({ error: 'Pairing session gone', code: 'PAIR_EXPIRED' });
   const accessToken = authService.generateAccessToken(session.username, {
     sid: session.id,
@@ -393,4 +466,5 @@ router.post('/pair/exchange', (req, res) => {
   res.json({ token: accessToken, profile: profiles.toPublic(profiles.get(session.profileId)) });
 });
 
+router._resetPairingForTests = () => { pairingCodes.clear(); pairMisses.clear(); globalMisses = { count: 0, since: Date.now() }; };
 module.exports = router;

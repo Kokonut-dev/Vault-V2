@@ -11,6 +11,8 @@ server/data/
 server/cache/
 server/media/
 server/uploads/
+# cloudflared downloaded by "Use on another device → Anywhere"
+server/bin/
 !server/data/.gitkeep
 !server/cache/.gitkeep
 !server/media/movies/.gitkeep

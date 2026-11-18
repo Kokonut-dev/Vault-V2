@@ -137,7 +137,7 @@ function wireLibraryEvents() {
         pending = 0;
       }, 2000);
     }
-    if (event === 'job:finish' && data.kind === 'upload') {
+    if (event === 'job:finished' && data.kind === 'upload') {
       send('Upload complete', `${data.label || 'Files'} added to your library`, 'info');
     }
   };
