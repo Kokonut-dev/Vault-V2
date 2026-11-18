@@ -16,6 +16,18 @@ const libraryService = require('../services/library');
 const subsonic = require('../services/subsonic');
 const { getConfig, saveConfig } = require('../config');
 const logger = require('../utils/logger');
+const { requireAdmin } = require('../middleware/requireAdmin');
+
+// Anything that changes the server — and the reads that expose its internals
+// (logs, backup archives, Subsonic settings) — is for admins. A kids' profile
+// could otherwise restore an old backup over everyone's library.
+const ADMIN_READS = /^\/(logs|backups|subsonic)(\/|$)/;
+router.use((req, res, next) => {
+  if (req.method === 'GET' || req.method === 'HEAD') {
+    return ADMIN_READS.test(req.path) ? requireAdmin(req, res, next) : next();
+  }
+  return requireAdmin(req, res, next);
+});
 
 // --- Jobs (scan / upload / download progress) -------------------------------
 router.get('/jobs', (req, res) => {

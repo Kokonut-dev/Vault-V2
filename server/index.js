@@ -8,6 +8,10 @@
   if (missing.length) { console.error(deps.explainMissing(missing)); process.exit(78); }
 }
 
+// Finish an import from another Vault server (Settings → Move to another
+// server) before anything loads the old data into memory.
+require('./services/transferApply').applyPendingTransfer(__dirname);
+
 require('dotenv').config();
 const express = require('express');
 const helmet = require('helmet');
@@ -41,6 +45,8 @@ const systemService = require('./services/system');
 const mdnsService = require('./services/mdns');
 const remoteAccess = require('./services/remoteAccess');
 const lifecycle = require('./services/lifecycle');
+const keepAwake = require('./utils/keepAwake');
+const autostart = require('./services/autostart');
 const logger = require('./utils/logger');
 
 // Load config
@@ -156,6 +162,11 @@ app.get('/api/health', (req, res) => {
     timestamp: new Date().toISOString(),
   });
 });
+
+// Move to another server: export/import. Does its own auth per route — the
+// .zip download uses a short-lived link (so it can be opened on another
+// device) and import is allowed in the setup wizard of a brand-new server.
+app.use('/api/transfer', require('./routes/transfer'));
 
 // Setup / Onboarding routes (public — handles first-time config)
 app.use('/api/setup', require('./routes/setup'));
@@ -341,6 +352,19 @@ if (fs.existsSync(docsPath)) {
 // Error handler
 app.use(errorHandler);
 
+function keepAwakeEnabled() {
+  if (process.env.VAULT_KEEP_AWAKE === '0') return false;
+  return getConfig().server?.keepAwake !== false;
+}
+
+/** Large uploads (an import of a whole library, 10 GB videos) take longer
+ *  than Node's default 5-minute limit for receiving one request. Headers
+ *  must still arrive promptly (headersTimeout), so slow-loris stays covered. */
+function allowLongUploads(server) {
+  server.requestTimeout = 0;
+  return server;
+}
+
 // Start server
 function startServer() {
   const port = config.server.port;
@@ -356,7 +380,7 @@ function startServer() {
           key: fs.readFileSync(keyPath),
           cert: fs.readFileSync(certPath),
         };
-        https.createServer(options, app).listen(port, host, () => {
+        allowLongUploads(https.createServer(options, app)).listen(port, host, () => {
           logger.info(`Vault server (HTTPS) running at https://${host}:${port}`);
           onServerStart();
         }).on('error', onListenError);
@@ -375,6 +399,7 @@ function startServer() {
     logger.info(`Media paths: Movies=${config.media.paths.movies}, Music=${config.media.paths.music}, Videos=${config.media.paths.videos}`);
     onServerStart();
   });
+  allowLongUploads(httpServer);
   httpServer.on('error', onListenError);
 }
 
@@ -392,6 +417,16 @@ function onListenError(err) {
 }
 
 async function onServerStart() {
+  // Keep the computer from idle-sleeping (screen lock → sleep a few minutes
+  // later → every device loses the server). Released when this process ends.
+  if (keepAwakeEnabled()) {
+    if (keepAwake.start()) logger.info(`[Power] Keeping this computer awake while Vault runs (${keepAwake.status(true).method}) — the screen can still lock`);
+    else logger.warn(`[Power] Couldn't keep this computer awake: ${keepAwake.status(true).error || keepAwake.status(true).reason}`);
+  }
+  // Older "start at sign-in" entries were written before they kept the
+  // launcher alive; bring them up to date (takes effect at next sign-in).
+  try { autostart.refresh(); } catch { /* best effort */ }
+
   // Periodic transcode-cache cleanup — cleanupCache() was previously defined
   // but never invoked, so stale transcodes grew without bound (F-8).
   startCacheCleanupScheduler();
@@ -462,6 +497,7 @@ async function onServerStart() {
 // Graceful shutdown — flush library debounced saves
 async function shutdown() {
   try {
+    keepAwake.stop();
     scannerService.stopWatcher();
     remoteAccess.stopTunnel();
     hlsService.stopAll();

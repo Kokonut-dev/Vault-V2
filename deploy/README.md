@@ -52,6 +52,12 @@ tail -f /opt/vault/server/logs/vault.out.log
 
 Fix the `node` path (`which node`) and `WorkingDirectory` first.
 
+The Mac must not sleep, or Vault pauses with it. Vault keeps the Mac awake while it runs (`server.keepAwake`, on by default; check it with `pmset -g assertions`). Closing a MacBook's lid still forces sleep unless it's on power with an external display. For a dedicated server, also run `sudo pmset -c sleep 0`.
+
+## Moving to another machine
+
+`npm run export -- <folder> [--zip] [--no-media]` on the old machine and `npm run import -- <package> --media-dir <dir>` on the new one move the media, library, history, accounts and settings, and relink every path. Run them from the repo root, or use **Settings → Move to another server** in the app. An import is staged and takes effect at the next start, so it's safe while Vault runs. For the freshest export, stop Vault first or use the in-app button, which saves everything before packing. For Docker, run the import inside the container (`docker compose exec vault npm run import -- …`) with `--media-dir` set to a mounted volume, then restart the container. Details are in the main README under *Moving to a new computer*.
+
 ## After it starts
 
 1. Open `http://<host>:4000` and complete the first-run wizard (password +

@@ -6,6 +6,11 @@
   1. Edit the two paths below to match your install.
   2. cp deploy/com.vault.server.plist ~/Library/LaunchAgents/
   3. launchctl load ~/Library/LaunchAgents/com.vault.server.plist
+
+  Sleep: Vault keeps the Mac awake by itself while it runs (caffeinate,
+  config "server.keepAwake", on by default), so a locked Mac keeps serving.
+  Closing a MacBook's lid still sleeps it unless it's on power with an
+  external display. For a dedicated server also run: sudo pmset -c sleep 0
 -->
 <plist version="1.0">
 <dict>
@@ -25,6 +30,13 @@
   <true/>
   <key>KeepAlive</key>
   <true/>
+  <key>ThrottleInterval</key>
+  <integer>30</integer>
+
+  <!-- Full priority: the default "Background" type is throttled (App Nap)
+       while the screen is locked, which makes streaming stutter. -->
+  <key>ProcessType</key>
+  <string>Interactive</string>
 
   <key>StandardOutPath</key>
   <string>/opt/vault/server/logs/vault.out.log</string>

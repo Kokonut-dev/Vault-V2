@@ -3,7 +3,10 @@
  * app's "Start server" button works after a reboot without a terminal.
  *
  *   Windows  a hidden .vbs in the Startup folder (no console window)
- *   macOS    ~/Library/LaunchAgents/com.vault.launcher.plist (RunAtLoad)
+ *   macOS    ~/Library/LaunchAgents/com.vault.launcher.plist (RunAtLoad;
+ *            KeepAlive brings it back after a crash, ProcessType
+ *            Interactive stops macOS throttling it while the screen is
+ *            locked — App Nap / background QoS made streams stall)
  *   Linux    ~/.config/autostart/vault-launcher.desktop (desktop sessions;
  *            headless boxes should use deploy/vault.service instead)
  *
@@ -86,6 +89,12 @@ ${argv.map(a => `    <string>${xmlEscape(a)}</string>`).join('\n')}
   </array>
   <key>WorkingDirectory</key><string>${xmlEscape(path.dirname(LAUNCHER))}</string>
   <key>RunAtLoad</key><true/>
+  <key>KeepAlive</key>
+  <dict>
+    <key>SuccessfulExit</key><false/>
+  </dict>
+  <key>ThrottleInterval</key><integer>30</integer>
+  <key>ProcessType</key><string>Interactive</string>
   <key>StandardOutPath</key><string>${xmlEscape(path.join(logs, 'launcher.out.log'))}</string>
   <key>StandardErrorPath</key><string>${xmlEscape(path.join(logs, 'launcher.err.log'))}</string>
 </dict>
@@ -164,4 +173,26 @@ async function disable() {
   return status();
 }
 
-module.exports = { status, enable, disable, plan, launchArgs };
+/**
+ * Rewrite an installed entry when this version of Vault would write a
+ * different one (e.g. the macOS entry gained KeepAlive/ProcessType). Only
+ * the file changes — it takes effect at the next sign-in, so a running
+ * launcher (and the server it owns) is never interrupted.
+ */
+function refresh() {
+  const current = status();
+  if (!current.supported || !current.installed) return false;
+  const p = plan(process.platform, { startServer: current.startServer });
+  let changed = false;
+  for (const file of p.files) {
+    let existing = null;
+    try { existing = fs.readFileSync(file.path, 'utf8'); } catch { /* missing */ }
+    if (existing !== file.content) {
+      fs.writeFileSync(file.path, file.content, { mode: 0o644 });
+      changed = true;
+    }
+  }
+  return changed;
+}
+
+module.exports = { status, enable, disable, refresh, plan, launchArgs };

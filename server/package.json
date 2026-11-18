@@ -18,7 +18,9 @@
     "lint": "node ../scripts/syntax-check.js",
     "check:imports": "node ../scripts/import-check.js",
     "server": "node index.js",
-    "launcher": "node launcher.js --no-server"
+    "launcher": "node launcher.js --no-server",
+    "export": "node ../scripts/transfer.js export",
+    "import": "node ../scripts/transfer.js import"
   },
   "keywords": [
     "media-server",

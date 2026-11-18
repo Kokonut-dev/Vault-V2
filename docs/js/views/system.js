@@ -217,20 +217,19 @@ async function loadBackups(body) {
   body.innerHTML = `
     <div class="page-actions" style="display:flex;gap:8px;margin-bottom:12px">
       <button class="btn btn-primary btn-sm" id="backup-create">${icon('package', { size: 14 })}<span>Create backup</span></button>
-      <button class="btn btn-ghost btn-sm" id="backup-create-media">Create incl. artwork</button>
+      <a class="btn btn-ghost btn-sm" href="settings#transfer" data-route="/settings#transfer">${icon('package', { size: 14 })}<span>Copy everything incl. media…</span></a>
     </div>
     ${backups.map(backup => `
       <div class="backup-row">
         <div class="row-main">
           <div class="row-title">${escapeHtml(backup.name || backup.file)}</div>
-          <div class="row-meta">${formatBytes(backup.size || 0)} · ${backup.createdAt ? formatRelativeTime(backup.createdAt) : ''}</div>
+          <div class="row-meta">${formatBytes(backup.bytes ?? backup.size ?? 0)} · ${backup.createdAt ? formatRelativeTime(backup.createdAt) : ''}</div>
         </div>
         <button class="btn btn-secondary btn-sm" data-restore="${escapeHtml(backup.name || backup.file)}">Restore</button>
         <button class="btn btn-ghost btn-sm" data-delete="${escapeHtml(backup.name || backup.file)}" aria-label="Delete backup">${icon('trash', { size: 14 })}</button>
       </div>`).join('') || '<div class="row-meta">No backups yet — create one before your next big change.</div>'}
   `;
   body.querySelector('#backup-create').addEventListener('click', () => createBackup(body, false));
-  body.querySelector('#backup-create-media').addEventListener('click', () => createBackup(body, true));
   body.querySelectorAll('[data-restore]').forEach(button => {
     button.addEventListener('click', async () => {
       const ok = await confirmDialog({
@@ -262,7 +261,7 @@ async function createBackup(body, includeMedia) {
   const progress = toast.progress('Creating backup…', { title: 'Backup' });
   try {
     const result = await api.createBackup(includeMedia);
-    progress.finish(`Backup created (${formatBytes(result.size || 0)})`);
+    progress.finish(`Backup created (${formatBytes(result.bytes ?? result.size ?? 0)})`);
     loadBackups(body);
   } catch (err) {
     progress.fail(`Backup failed: ${err.message}`);

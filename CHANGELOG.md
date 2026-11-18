@@ -2,6 +2,55 @@
 
 ## [3.0.0] — in progress (branch `arena/0deefe55-vault-v2`)
 
+### Fixed — the server stopping when a Mac locks
+- A locked, idle Mac (or any laptop) goes to sleep after a few minutes, and
+  that paused Vault until someone woke it. Vault now keeps the computer awake
+  while it runs (`server/utils/keepAwake.js`). It uses `caffeinate -i -m -s -w
+  <pid>` on macOS, a `SetThreadExecutionState` power request on Windows, and
+  `systemd-inhibit` on Linux. The hold is tied to the server's process, so a
+  crash or Stop releases it. The screen still locks and turns off.
+- On by default. Switch: **Settings → Connection → Keep running when the
+  computer is locked** (`PUT /api/server/keep-awake`, admin only, applies
+  immediately), `server.keepAwake` in config.json, or `VAULT_KEEP_AWAKE=0`.
+- The macOS sign-in entry (LaunchAgent) gains `ProcessType Interactive` (no
+  App Nap throttling while locked), `KeepAlive { SuccessfulExit: false }`
+  (comes back after a crash, not after Stop) and `ThrottleInterval 30`. Entries
+  installed by older versions are rewritten at start-up and take effect at the
+  next sign-in. A running server is never interrupted.
+- The launcher no longer exits with an error when its port is taken while
+  started at sign-in, which made launchd retry forever.
+- `deploy/com.vault.server.plist` and the docs explain what can't be
+  overridden: closing the lid on battery, and the `pmset` setting.
+
+### Added — move everything to another server
+- **Settings → Move to another server** and an **Import from another Vault**
+  option in the setup wizard. One package holds every media file in its
+  original folders and names, plus the library (with hand edits), playlists,
+  favourites, history and progress, profiles, collections, artwork, sign-in
+  and settings. It can be:
+  - downloaded as a `.zip` (streamed ZIP64 with an exact Content-Length, so
+    files over 4 GB work and the browser shows real progress),
+  - fetched on the new computer through a 2-hour link, or
+  - written as a plain folder to a drive.
+- Importing copies the media to a folder you choose. It can be resumed:
+  same-size files are skipped. It relinks every path and item id to the new
+  location, including Windows ↔ macOS/Linux, then restarts. The previous data
+  is kept in `server/backups/before-transfer-<time>`. If applying fails, it
+  rolls back instead of boot-looping.
+- The same from a terminal: `npm run export -- <folder> [--zip] [--no-media]`
+  and `npm run import -- <package> [--media-dir <dir>] [--in-place]`.
+- Left behind: trash, old backups, the SQLite index, login lockouts and
+  regenerable caches (thumbnails, scrub previews, transcodes).
+
+### Fixed — system console permissions and backup sizes
+- `/api/system` changes (restore or delete a backup, clear caches, rebuild the
+  index…) and its logs, backup and Subsonic reads now require an admin
+  profile. Previously any profile, kids' included, could restore an old backup
+  over everyone's library.
+- Backups showed "0 B" (the UI read `size`, the server sends `bytes`). The old
+  "Create incl. artwork" button, which built a backup of every media file in
+  memory, now opens the streaming transfer instead.
+
 ### Fixed — typed-in song details disappearing (seen from another computer)
 - Titles, artists, albums and covers typed into the upload form, the edit
   dialog or the album editor were overwritten on the next rescan by the file's

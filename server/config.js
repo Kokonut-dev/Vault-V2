@@ -9,6 +9,10 @@ const DEFAULT_CONFIG = {
   server: {
     port: parseInt(process.env.VAULT_PORT || '4000', 10),
     host: process.env.VAULT_HOST || '0.0.0.0',
+    // Stop the computer from idle-sleeping (e.g. after the screen locks)
+    // while Vault runs — a sleeping computer serves nothing. Screen lock and
+    // display sleep are unaffected. VAULT_KEEP_AWAKE=0 turns it off.
+    keepAwake: true,
     // Announce <hostname>.local on the LAN so TVs/phones can connect without
     // an IP (opt-in; set VAULT_MDNS=1 or server.mdns.enabled=true).
     mdns: {

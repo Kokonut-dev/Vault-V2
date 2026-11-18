@@ -772,6 +772,13 @@ export function connectionSection() {
       id: 'autostart-toggle',
       control: '<input type="checkbox" role="switch" class="switch" id="autostart-toggle" aria-describedby="autostart-toggle-help">',
     }),
+    row({
+      label: 'Keep running when the computer is locked',
+      help: '<span id="keepawake-help">Stops the computer from going to sleep while Vault runs, so phones and TVs can still play. The screen still locks and turns off.</span>',
+      keywords: 'sleep lock locked screen awake caffeinate macbook laptop idle standby suspend stops power energy',
+      id: 'keepawake-toggle',
+      control: '<input type="checkbox" role="switch" class="switch" id="keepawake-toggle" aria-describedby="keepawake-toggle-help">',
+    }),
   );
   s.body.append(server, status, remote, program);
 
@@ -805,7 +812,25 @@ export function connectionSection() {
   const programHelp = s.querySelector('#program-help');
   const autostartToggle = s.querySelector('#autostart-toggle');
   const autostartHelp = s.querySelector('#autostart-help');
+  const keepAwakeToggle = s.querySelector('#keepawake-toggle');
+  const keepAwakeHelp = s.querySelector('#keepawake-help');
   let serverInfo = null;
+  function paintKeepAwake(info) {
+    const awake = info?.keepAwake;
+    if (!awake) {
+      // Older server without this setting.
+      keepAwakeToggle.disabled = true;
+      keepAwakeHelp.textContent = OUTDATED;
+      return;
+    }
+    keepAwakeToggle.checked = Boolean(awake.enabled);
+    keepAwakeToggle.disabled = !awake.supported || keepAwakeToggle.dataset.readonly === 'true';
+    const where = serverIsOnThisDevice() ? 'this computer' : (info.hostname || 'the server');
+    if (!awake.supported) keepAwakeHelp.textContent = awake.reason || 'Not available on this system.';
+    else if (awake.enabled && awake.error) keepAwakeHelp.textContent = `On, but it isn’t working: ${awake.error}`;
+    else if (awake.enabled) keepAwakeHelp.textContent = `On — ${where} won’t go to sleep while Vault runs. ${awake.note || ''}`.trim();
+    else keepAwakeHelp.textContent = `Off — when ${where} is locked and idle it may go to sleep, and Vault stops answering until it wakes.`;
+  }
   async function refreshProgram() {
     try {
       serverInfo = await api.serverInfo();
@@ -835,6 +860,8 @@ export function connectionSection() {
     autostartHelp.textContent = !auto.supported
       ? (auto.reason || 'Not available on this system.')
       : auto.installed ? `On — ${auto.method || 'starts at sign-in'}.` : `Runs quietly in the background after you sign in to ${serverIsOnThisDevice() ? 'this computer' : serverInfo.hostname}.`;
+    if (!admin) keepAwakeToggle.dataset.readonly = 'true';
+    paintKeepAwake(serverInfo);
     const lanHelp = s.querySelector('#lan-help');
     lanHelp.textContent = serverInfo.network.lan
       ? 'Scan a QR code with your phone — it opens Vault and signs you in.'
@@ -865,6 +892,19 @@ export function connectionSection() {
       flashStatus(s, err.message, 'error');
     }
     refreshProgram();
+  });
+  keepAwakeToggle.addEventListener('change', async () => {
+    const wantOn = keepAwakeToggle.checked;
+    keepAwakeToggle.disabled = true;
+    try {
+      serverInfo = await api.setKeepAwake(wantOn);
+      paintKeepAwake(serverInfo);
+      flashStatus(s, wantOn ? 'Vault will keep the computer awake' : 'The computer may sleep when idle');
+    } catch (err) {
+      keepAwakeToggle.checked = !wantOn;
+      keepAwakeToggle.disabled = false;
+      flashStatus(s, err.message, 'error');
+    }
   });
   s.querySelector('#server-restart').addEventListener('click', async (e) => {
     const btn = e.currentTarget;

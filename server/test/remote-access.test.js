@@ -227,6 +227,12 @@ test('autostart writes and removes the sign-in entry for this platform', async (
     const plan = autostart.plan(platform);
     assert.ok(plan.files?.length || plan.file || plan.path, `${platform} has a plan`);
   }
+  // macOS: come back if it dies (not after a clean Stop), and run with full
+  // priority — the default "Background" type gets App Nap'd when the Mac locks.
+  const mac = autostart.plan('darwin').files[0].content;
+  assert.match(mac, /<key>KeepAlive<\/key>\s*<dict>\s*<key>SuccessfulExit<\/key>\s*<false\/>/);
+  assert.match(mac, /<key>ProcessType<\/key>\s*<string>Interactive<\/string>/);
+  assert.match(mac, /<key>ThrottleInterval<\/key>\s*<integer>30<\/integer>/);
   const status = autostart.status();
   if (!status.supported) return; // e.g. running inside Docker
   const on = await autostart.enable({ startServer: true });
@@ -237,6 +243,13 @@ test('autostart writes and removes the sign-in entry for this platform', async (
   assert.match(content, /launcher\.js/);
   assert.match(content, /--background/);
   assert.doesNotMatch(content, /--no-server/);
+  assert.equal(autostart.refresh(), false, 'an up-to-date entry is left alone');
+  fs.writeFileSync(on.path, `${content}\n# written by an older Vault\n`);
+  assert.equal(autostart.refresh(), true, 'an entry from an older Vault is rewritten');
+  assert.equal(fs.readFileSync(on.path, 'utf8'), content);
+  fs.writeFileSync(on.path, 'someone else’s entry');
+  assert.equal(autostart.refresh(), false, 'never overwrites a file that isn’t ours');
+  fs.writeFileSync(on.path, content);
   const off = await autostart.disable();
   assert.equal(off.installed, false);
   assert.equal(fs.existsSync(on.path), false);
