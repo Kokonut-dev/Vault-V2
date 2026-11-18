@@ -239,7 +239,8 @@ async function until(fn, ms = 8000) {
 }
 
 test('launcher: guards, start, stop, restart and config errors', { skip: !posix }, async (t) => {
-  // A stand-in for index.js: HTTP on PORT; /exit?code=N exits with N.
+  // A stand-in for index.js: HTTP on VAULT_PORT (the variable the real server
+  // and the launcher's health check both read); /exit?code=N exits with N.
   const dir = path.join(tmp, 'launcher');
   fs.mkdirSync(dir, { recursive: true });
   fs.copyFileSync(path.join(__dirname, '..', 'launcher.js'), path.join(dir, 'launcher.js'));
@@ -250,11 +251,11 @@ test('launcher: guards, start, stop, restart and config errors', { skip: !posix 
       const code = new URL(req.url, 'http://x').searchParams.get('exit');
       res.end(JSON.stringify({ ok: true, pid: process.pid, supervised: process.env.VAULT_SUPERVISED }));
       if (code !== null) setTimeout(() => process.exit(Number(code)), 20);
-    }).listen(Number(process.env.PORT), '127.0.0.1', () => console.log('Vault server ready!'));
+    }).listen(Number(process.env.VAULT_PORT), '127.0.0.1', () => console.log('Vault server ready!'));
   `);
   const launcherPort = await freePort();
   const serverPort = await freePort();
-  const env = { ...process.env, VAULT_LAUNCHER_PORT: String(launcherPort), PORT: String(serverPort) };
+  const env = { ...process.env, VAULT_LAUNCHER_PORT: String(launcherPort), VAULT_PORT: String(serverPort) };
   const proc = spawn(process.execPath, [path.join(dir, 'launcher.js'), '--no-server'], { env, stdio: 'pipe' });
   t.after(() => proc.kill('SIGTERM'));
   await until(() => request(launcherPort).then(r => r.status === 200, () => false));
@@ -293,7 +294,7 @@ test('launcher: guards, start, stop, restart and config errors', { skip: !posix 
 test('launcher: a config error (exit 78) is reported, not retried', { skip: !posix }, async (t) => {
   const dir = path.join(tmp, 'launcher');
   const launcherPort = await freePort();
-  const env = { ...process.env, VAULT_LAUNCHER_PORT: String(launcherPort), PORT: String(await freePort()), FAKE_MODE: 'config' };
+  const env = { ...process.env, VAULT_LAUNCHER_PORT: String(launcherPort), VAULT_PORT: String(await freePort()), FAKE_MODE: 'config' };
   const proc = spawn(process.execPath, [path.join(dir, 'launcher.js')], { env, stdio: 'pipe' });
   t.after(() => proc.kill('SIGTERM'));
   const status = await until(async () => {
