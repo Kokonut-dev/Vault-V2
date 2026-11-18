@@ -2,6 +2,7 @@
   "server": {
     "port": 4000,
     "host": "0.0.0.0",
+    "keepAwake": true,
     "mdns": {
       "enabled": false,
       "hostname": "vault"
@@ -147,7 +148,21 @@
     "enabled": false,
     "m3uUrl": "",
     "epgUrl": "",
+    "mainName": "",
+    "mainMaxStreams": 0,
+    "sources": [],
     "hdhrDiscover": false
+  },
+  "torrent": {
+    "enabled": false,
+    "acknowledged": false,
+    "maxActive": 3,
+    "downloadLimitKBs": 0,
+    "uploadLimitKBs": 0,
+    "seedRatio": 0,
+    "requireInterface": "",
+    "upnp": false,
+    "dht": true
   },
   "notifications": {
     "webhookUrl": "",
@@ -190,7 +205,7 @@
       },
       "upload": {
         "windowMs": 900000,
-        "max": 30
+        "max": 120
       }
     }
   },

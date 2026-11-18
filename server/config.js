@@ -113,9 +113,27 @@ const DEFAULT_CONFIG = {
   },
   livetv: {
     enabled: false,
+    // The main channel list (and its guide).
     m3uUrl: '',
     epgUrl: '',
+    mainName: '',
+    mainMaxStreams: 0,
+    // More channel lists: [{ id, name, url, epgUrl, enabled, maxStreams }]
+    sources: [],
     hdhrDiscover: false
+  },
+  // Torrents (Settings → Torrents). Off until an admin turns it on and
+  // acknowledges the responsibility notice.
+  torrent: {
+    enabled: false,
+    acknowledged: false,
+    maxActive: 3,
+    downloadLimitKBs: 0,
+    uploadLimitKBs: 0,
+    seedRatio: 0,
+    requireInterface: '',
+    upnp: false,
+    dht: true
   },
   notifications: {
     webhookUrl: '',
@@ -138,7 +156,9 @@ const DEFAULT_CONFIG = {
     rateLimit: {
       general: { windowMs: 15 * 60 * 1000, max: 2000 },
       auth: { windowMs: 15 * 60 * 1000, max: 10 },
-      upload: { windowMs: 15 * 60 * 1000, max: 30 }
+      // Requests, not files: a folder upload sends up to 50 files per
+      // request, so 120 covers ~6000 files per 15 minutes. (Was 30.)
+      upload: { windowMs: 15 * 60 * 1000, max: 120 }
     }
   },
   onboarding: {
@@ -159,6 +179,9 @@ let config = null;
 // Migrate exactly that legacy shipped default on load; any other
 // (deliberately customised) value is left untouched.
 const LEGACY_GENERAL_RATE_LIMIT_MAX = 200;
+// Same story for uploads: setup wrote the old default (30 requests per 15
+// minutes) into every config.json, which a single folder upload can use up.
+const LEGACY_UPLOAD_RATE_LIMIT_MAX = 30;
 
 function migrateLegacyRateLimits(fileConfig, mergedConfig) {
   if (
@@ -167,6 +190,13 @@ function migrateLegacyRateLimits(fileConfig, mergedConfig) {
   ) {
     mergedConfig.security.rateLimit.general.max = DEFAULT_CONFIG.security.rateLimit.general.max;
     console.log(`[Config] Migrated legacy general rate limit ${LEGACY_GENERAL_RATE_LIMIT_MAX} -> ${DEFAULT_CONFIG.security.rateLimit.general.max} per 15 min (the old default was too low for normal app use)`);
+  }
+  if (
+    fileConfig?.security?.rateLimit?.upload?.max === LEGACY_UPLOAD_RATE_LIMIT_MAX
+    && mergedConfig?.security?.rateLimit?.upload
+  ) {
+    mergedConfig.security.rateLimit.upload.max = DEFAULT_CONFIG.security.rateLimit.upload.max;
+    console.log(`[Config] Migrated legacy upload rate limit ${LEGACY_UPLOAD_RATE_LIMIT_MAX} -> ${DEFAULT_CONFIG.security.rateLimit.upload.max} per 15 min (folder uploads send many requests)`);
   }
   return mergedConfig;
 }
@@ -258,6 +288,7 @@ function saveConfig(newConfig) {
     metadata: newConfig.metadata,
     podcasts: newConfig.podcasts,
     livetv: newConfig.livetv,
+    torrent: newConfig.torrent,
     notifications: newConfig.notifications,
     cors: newConfig.cors,
     security: newConfig.security,
@@ -281,4 +312,4 @@ function getConfig() {
   return config;
 }
 
-module.exports = { loadConfig, getConfig, saveConfig, CONFIG_PATH, DEFAULT_CONFIG, _internals: { migrateLegacyRateLimits, LEGACY_GENERAL_RATE_LIMIT_MAX } };
+module.exports = { loadConfig, getConfig, saveConfig, CONFIG_PATH, DEFAULT_CONFIG, _internals: { migrateLegacyRateLimits, LEGACY_GENERAL_RATE_LIMIT_MAX, LEGACY_UPLOAD_RATE_LIMIT_MAX } };

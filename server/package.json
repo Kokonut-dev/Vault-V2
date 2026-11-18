@@ -45,11 +45,13 @@
     "morgan": "^1.10.0",
     "multer": "^1.4.5-lts.1",
     "music-metadata": "^11.16.1",
-    "validator": "^13.11.0"
+    "validator": "^13.11.0",
+    "webrtc-polyfill": "file:./vendor/webrtc-polyfill-stub"
   },
   "optionalDependencies": {
     "ffmpeg-static": "^5.2.0",
-    "ffprobe-static": "^3.1.0"
+    "ffprobe-static": "^3.1.0",
+    "webtorrent": "2.8.5"
   },
   "devDependencies": {
     "clean-css": "^5.3.3",
@@ -61,5 +63,9 @@
   },
   "allowScripts": {
     "ffmpeg-static": true
+  },
+  "overrides": {
+    "webrtc-polyfill": "$webrtc-polyfill",
+    "uint8-util": "2.2.6"
   }
 }

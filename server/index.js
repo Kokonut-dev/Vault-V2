@@ -210,6 +210,8 @@ const { requireAdmin } = require('./middleware/requireAdmin');
 app.use('/api/server', authMiddleware, require('./routes/serverControl'));
 app.use('/api/remote', authMiddleware, requireAdmin, require('./routes/remote'));
 app.use('/api/import', authMiddleware, requireAdmin, require('./routes/imports'));
+// Torrents: off by default; downloads into the library (admin-only).
+app.use('/api/torrents', authMiddleware, requireAdmin, require('./routes/torrents'));
 
 // Metadata agents (search + apply a match to an item).
 const agentRouter = express.Router();
@@ -485,6 +487,7 @@ async function onServerStart() {
     await scannerService.scanAll();
     // Start watcher
     scannerService.startWatcher();
+    require('./services/torrent').init();
     logger.info('Vault server ready!');
     remoteAccess.autoStart();
     logger.info(`Default credentials: username=${config.auth.username} (password is hashed, check setup)`);
@@ -503,6 +506,7 @@ async function shutdown() {
     hlsService.stopAll();
     mdnsService.stop();
     livetvService.stopAll();
+    await require('./services/torrent').shutdown().catch(() => {});
     await Promise.all([
       libraryService.flush(),
       libraryService.flushScoped(),

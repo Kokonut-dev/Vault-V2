@@ -569,6 +569,60 @@ class ApiClient {
     });
   }
 
+  /**
+   * One request of a folder upload: `entries` are { file, path } where path
+   * is relative ("Album/01.flac"). The path travels as the multipart file
+   * name; the server recreates the folders (?keepFolders=1).
+   * `onProgress(loadedBytes, totalBytes)`; `signal` aborts.
+   * Errors carry .status, .code and, for 429, .retryAfter (seconds).
+   */
+  uploadBatch(type, entries, { onProgress = null, signal = null } = {}) {
+    const formData = new FormData();
+    for (const { file, path } of entries) formData.append('files', file, path || file.name);
+    formData.append('metadata', '{}');
+    const token = store.get('token') || localStorage.getItem('vault_token');
+    const url = `${this.baseUrl}/api/upload/${encodeURIComponent(type)}?keepFolders=1`;
+
+    return new Promise((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      xhr.open('POST', url);
+      xhr.setRequestHeader('Authorization', `Bearer ${token}`);
+      if (onProgress) {
+        xhr.upload.onprogress = (e) => { if (e.lengthComputable) onProgress(e.loaded, e.total); };
+      }
+      const onAbort = () => xhr.abort();
+      if (signal) {
+        if (signal.aborted) { reject(Object.assign(new Error('Upload cancelled'), { code: 'ABORTED' })); return; }
+        signal.addEventListener('abort', onAbort, { once: true });
+      }
+      const done = () => signal?.removeEventListener('abort', onAbort);
+      xhr.onload = () => {
+        done();
+        let data = {};
+        try { data = JSON.parse(xhr.responseText); } catch {}
+        if (xhr.status >= 200 && xhr.status < 300) return resolve(data);
+        const error = new Error(data.error || `Upload failed (${xhr.status})`);
+        error.status = xhr.status;
+        error.code = data.code || (xhr.status === 404 ? 'UPLOAD_UNAVAILABLE' : 'UPLOAD_FAILED');
+        if (xhr.status === 429) {
+          // express-rate-limit (standardHeaders): RateLimit-Reset is seconds
+          // until the window resets; Retry-After is the same idea.
+          const reset = parseInt(xhr.getResponseHeader('RateLimit-Reset') || xhr.getResponseHeader('Retry-After') || '60', 10);
+          error.retryAfter = Number.isFinite(reset) && reset > 0 ? reset : 60;
+        }
+        reject(error);
+      };
+      xhr.onerror = () => { done(); reject(Object.assign(new Error('Network error during upload'), { code: 'NETWORK' })); };
+      xhr.onabort = () => { done(); reject(Object.assign(new Error('Upload cancelled'), { code: 'ABORTED' })); };
+      xhr.send(formData);
+    });
+  }
+
+  /** Which of these { path, size } files are already in that library? → { existing: [index] } */
+  checkUploads(type, files) {
+    return this.request('/api/upload/check', { method: 'POST', body: { type, files } });
+  }
+
   // Playlists
   getPlaylists() {
     return this.request('/api/playlists');
@@ -1112,6 +1166,59 @@ class ApiClient {
   /** Dry-run a channel list / guide (omitted keys fall back to saved values). */
   testLiveTv(data = {}) {
     return this.request('/api/livetv/test', { method: 'POST', body: data });
+  }
+
+  // Torrents (admin-only; off until turned on in the Torrents page)
+  getTorrents() {
+    return this.request('/api/torrents');
+  }
+
+  getTorrentInterfaces() {
+    return this.request('/api/torrents/interfaces');
+  }
+
+  updateTorrentSettings(data) {
+    return this.request('/api/torrents/settings', { method: 'PUT', body: data });
+  }
+
+  /** `source` is a magnet link (string) or a .torrent File. */
+  addTorrent(source, type = 'auto') {
+    if (typeof source === 'string') {
+      return this.request('/api/torrents', { method: 'POST', body: { magnet: source, type } });
+    }
+    const form = new FormData();
+    form.append('type', type);
+    form.append('torrent', source, source.name || 'download.torrent');
+    return this.request('/api/torrents', { method: 'POST', body: form });
+  }
+
+  startTorrent(id, data = {}) {
+    return this.request(`/api/torrents/${encodeURIComponent(id)}/start`, { method: 'POST', body: data });
+  }
+
+  pauseTorrent(id) {
+    return this.request(`/api/torrents/${encodeURIComponent(id)}/pause`, { method: 'POST' });
+  }
+
+  resumeTorrent(id) {
+    return this.request(`/api/torrents/${encodeURIComponent(id)}/resume`, { method: 'POST' });
+  }
+
+  removeTorrent(id) {
+    return this.request(`/api/torrents/${encodeURIComponent(id)}`, { method: 'DELETE' });
+  }
+
+  /** Extra channel lists (Settings → Live TV → More channel lists). */
+  addLiveTvSource(data) {
+    return this.request('/api/livetv/sources', { method: 'POST', body: data });
+  }
+
+  updateLiveTvSource(id, data) {
+    return this.request(`/api/livetv/sources/${encodeURIComponent(id)}`, { method: 'PUT', body: data });
+  }
+
+  removeLiveTvSource(id) {
+    return this.request(`/api/livetv/sources/${encodeURIComponent(id)}`, { method: 'DELETE' });
   }
 
   adoptLiveTvGuide(data = {}) {

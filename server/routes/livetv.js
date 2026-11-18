@@ -12,7 +12,7 @@ const { sendFileWithRange } = require('../utils/fileUtils');
  * most of them directly anyway. Playback goes through POST /channels/:id/play.
  */
 function publicChannel(c) {
-  const { url, referrer, userAgent, ...rest } = c;
+  const { url, referrer, userAgent, sourceMaxStreams, ...rest } = c;
   return { ...rest, playable: /^https?:\/\//i.test(url || '') };
 }
 
@@ -26,6 +26,9 @@ router.get('/channels', async (req, res) => {
       next: withEpg[c.tvgId || c.id]?.next || null,
     })),
     total: channels.length,
+    // Per channel list: name, channel count and load error, so the page can
+    // group by list and say which provider is down.
+    sources: livetv.getSourceStatus(),
   });
 });
 
@@ -140,7 +143,7 @@ router.put('/settings', requireAdmin, async (req, res) => {
   try {
     const body = req.body || {};
     const patch = {};
-    for (const key of ['enabled', 'hdhrDiscover', 'm3uUrl', 'epgUrl']) {
+    for (const key of ['enabled', 'hdhrDiscover', 'm3uUrl', 'epgUrl', 'mainName', 'mainMaxStreams']) {
       if (body[key] !== undefined) patch[key] = body[key];
     }
     res.json(await livetv.updateSettings(patch));
@@ -150,15 +153,49 @@ router.put('/settings', requireAdmin, async (req, res) => {
 });
 
 router.post('/test', requireAdmin, async (req, res) => {
-  const { m3uUrl, epgUrl } = req.body || {};
-  res.json(await livetv.testSources({ m3uUrl, epgUrl }));
+  const { m3uUrl, epgUrl, sourceId } = req.body || {};
+  try {
+    res.json(await livetv.testSources({ m3uUrl, epgUrl, sourceId }));
+  } catch (err) {
+    res.status(err.status || 400).json({ error: err.message, fields: err.fields || {} });
+  }
 });
 
 router.post('/settings/adopt-guide', requireAdmin, async (req, res) => {
   try {
-    res.json(await livetv.adoptPlaylistGuide({ m3uUrl: (req.body || {}).m3uUrl }));
+    const { m3uUrl, sourceId } = req.body || {};
+    res.json(await livetv.adoptPlaylistGuide({ m3uUrl, sourceId }));
   } catch (err) {
-    res.status(400).json({ error: friendlyError(err), fields: err.fields || {} });
+    res.status(err.status || 400).json({ error: friendlyError(err), fields: err.fields || {} });
+  }
+});
+
+// Extra channel lists. Links are write-only like the main list's: responses
+// carry a redacted hint, never the URL.
+const SOURCE_KEYS = ['name', 'm3uUrl', 'epgUrl', 'maxStreams', 'enabled'];
+const pickSource = (body = {}) => Object.fromEntries(SOURCE_KEYS.filter(k => body[k] !== undefined).map(k => [k, body[k]]));
+
+router.post('/sources', requireAdmin, (req, res) => {
+  try {
+    res.status(201).json(livetv.addSource(pickSource(req.body)));
+  } catch (err) {
+    res.status(err.status || 400).json({ error: err.message, fields: err.fields || {} });
+  }
+});
+
+router.put('/sources/:id', requireAdmin, (req, res) => {
+  try {
+    res.json(livetv.updateSource(req.params.id, pickSource(req.body)));
+  } catch (err) {
+    res.status(err.status || 400).json({ error: err.message, fields: err.fields || {} });
+  }
+});
+
+router.delete('/sources/:id', requireAdmin, (req, res) => {
+  try {
+    res.json(livetv.removeSource(req.params.id));
+  } catch (err) {
+    res.status(err.status || 400).json({ error: err.message, fields: err.fields || {} });
   }
 });
 

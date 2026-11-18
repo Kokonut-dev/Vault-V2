@@ -176,6 +176,10 @@ Then restart Vault: **Settings → Connection → Restart**, or `Ctrl + C` in th
 
 **Upload in the app** — sidebar → **Upload**, choose the type, then drag files in. They appear in the library when the upload finishes.
 
+**Upload whole folders** — on the Upload page, pick **Folders (auto-sort)** and drop folders in (or use **Choose folder**). An `Artist/Album` or `Show/Season 1` folder keeps its structure, and covers and subtitles stay next to their files. Vault sorts each folder into Music, Movies & Series or Videos, and you can change any folder before uploading. Files already in your library (same path and size) are skipped. Big folders upload in batches; you can pause, cancel and retry failed files. Folder upload works in Chrome, Edge, Firefox and Safari.
+
+**Download torrents** (off by default, admin only) — sidebar → **Torrents**. Read the notice and turn it on, then paste a magnet link or drop a `.torrent` file. Pick the files you want and where they go; Vault downloads them into a hidden folder and moves them into your library when they're done. You can limit speeds, set how many run at once, and keep sharing to a ratio after a download finishes. **VPN guard:** pick your VPN's network interface (e.g. `wg0`, `tun0`), and torrents only run while it's connected; they pause the moment it drops. Vault can't route torrents through a VPN by itself. For full protection, run the whole server behind the VPN (e.g. Docker with gluetun). Only download what you have the right to.
+
 **Copy files** (fastest for lots of files) — put them in `Vault-V2/server/media/` (`movies`, `music`, `videos`, `audiobooks`, `podcasts`, `comics`) or in the folders you chose in the wizard. Vault notices new files automatically. To force a rescan, go to **Settings → Connection → Scan library now**.
 
 **Import from Google Drive**
@@ -193,7 +197,7 @@ For private files, add an API key or OAuth client ID in **Settings → Links & i
 
 - **Home** — continue watching, recently added, picks
 - **Movies & Series, TV Shows, Music, Artists, Audiobooks, Videos, Podcasts, Comics** — grid or list, sort and filter
-- **Live TV & DVR** — M3U/IPTV channels, played through the server
+- **Live TV & DVR** — M3U/IPTV channels, played through the server. Add as many channel lists as you like (**Settings → Live TV → More channel lists**), each with its own guide and a streams-at-once limit so you never go over a provider's connection limit. Channels are grouped by list, and you can filter and search them.
 - **My List, Playlists, Favourites, History** — your collections and where you left off
 - **SyncPlay** — watch together in sync
 - **Your Stats** — what you've watched and listened to
@@ -303,7 +307,7 @@ ffmpeg is missing; see the ffmpeg item under [Install problems](#install-problem
 
 **Music player** — Web Audio graph with a 10-band EQ (±12 dB, presets, custom presets), gapless playback, crossfade 0–12 s, a soft fade on pause and skip, shuffle and repeat, queue, lyrics, a time preview while seeking, a full-screen Now Playing with visualiser, and lock-screen controls (Media Session).
 
-**More** — Live TV & DVR (M3U/IPTV), audiobooks, podcasts, comics, SyncPlay, profiles, listening/watching stats, Google Drive import, and an installable PWA.
+**More** — Live TV & DVR (several M3U/IPTV lists), folder upload, torrents (optional), audiobooks, podcasts, comics, SyncPlay, profiles, listening/watching stats, Google Drive import, and an installable PWA.
 
 **Look and feel** — six themes (Hearth, Linen, Parchment, Dusk, Ember, Daylight), smooth animations that respect *reduced motion*, and a layout that adapts from phone to desktop. Accessible: keyboard navigation, focus rings, ARIA labels, and contrast-checked colours.
 
@@ -311,9 +315,10 @@ ffmpeg is missing; see the ffmpeg item under [Install problems](#install-problem
 - Two factors: a password (bcrypt-hashed), then the 8-of-16 grid (12,870 combinations, or about 518 million with *order matters*).
 - Short-lived challenge token after the password, then an access token (24 h by default, configurable 1 h–30 d). Signing out revokes the token.
 - Brute-force lockout per step, which survives restarts.
-- Rate limits per 15 minutes: 2000 general, 10 sign-in, 30 upload.
+- Rate limits per 15 minutes: 2000 general, 10 sign-in, 120 upload requests (one request carries up to 50 files; the Upload page waits and carries on if you hit the limit).
 - Helmet security headers and CSP. CORS allows only the Vault app and localhost by default (add your own domains in Settings).
-- Uploads are checked by content (magic bytes), not just extension, and file names are sanitised against path traversal.
+- Uploads are checked by content (magic bytes), not just extension, and file names and folder paths are sanitised against path traversal.
+- Torrents are off by default and admin-only. `.exe` and other programs are never downloaded, and nothing leaves the library folder.
 
 ---
 
@@ -370,7 +375,12 @@ POST /api/auth/login                 { username, password } → challengeToken
 POST /api/auth/grid                  { challengeToken, pattern } → token
 GET  /api/library?search=&type=&genre=&sort=&page=&limit=
 GET  /api/media/stream/:id?token=    range requests supported
-POST /api/upload/:type               multipart
+POST /api/upload/:type               multipart (?keepFolders=1 keeps relative paths)
+POST /api/upload/check               { type, files:[{path,size}] } → { existing }
+GET  /api/livetv/channels            channels + per-list status
+POST /api/livetv/sources             add a channel list (admin)
+GET  /api/torrents                   status + downloads (admin)
+POST /api/torrents                   { magnet, type } or multipart "torrent"
 ```
 
 ---
