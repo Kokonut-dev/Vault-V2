@@ -195,7 +195,7 @@ function drawEQCurve(gains) {
   ctx.setLineDash([]);
   
   // Curve
-  ctx.strokeStyle = getComputedStyle(document.documentElement).getPropertyValue('--accent') || '#7C5CFF';
+  ctx.strokeStyle = getComputedStyle(document.documentElement).getPropertyValue('--accent').trim() || '#F2A877';
   ctx.lineWidth = 3;
   ctx.beginPath();
   
@@ -222,14 +222,14 @@ function drawEQCurve(gains) {
   ctx.lineTo(width - padding, height - padding);
   ctx.lineTo(padding, height - padding);
   ctx.closePath();
-  ctx.fillStyle = 'rgba(124,92,255,0.1)';
+  ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--accent-muted').trim() || 'rgba(242,168,119,0.14)';
   ctx.fill();
   
   // Points
   points.forEach(p => {
     ctx.beginPath();
     ctx.arc(p.x, p.y, 4, 0, Math.PI * 2);
-    ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--accent') || '#7C5CFF';
+    ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--accent').trim() || '#F2A877';
     ctx.fill();
     ctx.strokeStyle = 'white';
     ctx.lineWidth = 2;

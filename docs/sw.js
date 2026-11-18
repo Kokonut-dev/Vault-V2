@@ -6,7 +6,8 @@
 // from the network, producing errors such as "updateAlbumOrder is not a
 // function". Shell reads below are now network-first to prevent that mismatch
 // from recurring; the version bump repairs clients that already have v3.
-const CACHE_NAME = 'vault-v2-shell-v4';
+// v5: "Hearth" UI revamp — new tokens, fonts, logo and brand module.
+const CACHE_NAME = 'vault-v2-shell-v5';
 const BASE_PATH = '/Vault-V2';
 
 const SHELL_ASSETS = [
@@ -15,7 +16,11 @@ const SHELL_ASSETS = [
   `${BASE_PATH}/config.js`,
   `${BASE_PATH}/manifest.json`,
   `${BASE_PATH}/favicon.svg`,
+  `${BASE_PATH}/icon-maskable.svg`,
   `${BASE_PATH}/css/vault.css`,
+  `${BASE_PATH}/css/fonts.css`,
+  `${BASE_PATH}/fonts/figtree-latin-wght-normal.woff2`,
+  `${BASE_PATH}/fonts/fraunces-latin-full-normal.woff2`,
   `${BASE_PATH}/css/onboarding.css`,
   `${BASE_PATH}/js/config.js`,
   `${BASE_PATH}/js/api.js`,
@@ -28,6 +33,7 @@ const SHELL_ASSETS = [
   `${BASE_PATH}/js/keyboard.js`,
   `${BASE_PATH}/js/pwa.js`,
   `${BASE_PATH}/js/utils/icons.js`,
+  `${BASE_PATH}/js/utils/brand.js`,
 ];
 
 self.addEventListener('install', (event) => {

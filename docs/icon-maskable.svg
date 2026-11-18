@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <title>Vault</title>
+  <defs>
+    <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#F6B98E"/>
+      <stop offset="1" stop-color="#E58A55"/>
+    </linearGradient>
+  </defs>
+  <!-- Full-bleed for maskable launchers; the arch is scaled into the 80% safe zone -->
+  <rect width="64" height="64" fill="url(#g)"/>
+  <path fill="#1C0F07" fill-rule="evenodd" transform="translate(32 34) scale(0.72) translate(-32 -34)" d="M14 54V32a18 18 0 0 1 36 0v22Zm13.5-24v16.5L41 38.25Z"/>
+</svg>

@@ -107,9 +107,12 @@
 }
 
 .onboarding-title {
-  font-size: 24px;
-  font-weight: 800;
-  letter-spacing: -0.02em;
+  font-family: var(--font-display);
+  font-variation-settings: var(--display-soft);
+  font-optical-sizing: auto;
+  letter-spacing: var(--tracking-display);
+  font-size: 26px;
+  font-weight: var(--fw-display);
   line-height: 1.1;
   margin-bottom: 8px;
 }
@@ -450,13 +453,13 @@
 .onboarding-complete-icon {
   width: 80px;
   height: 80px;
-  background: linear-gradient(135deg in oklch, var(--accent), #22C55E);
+  background: linear-gradient(135deg in oklch, var(--accent-solid), var(--btn-accent-end));
   border-radius: 24px;
   display: flex;
   align-items: center;
   justify-content: center;
   font-size: 36px;
-  color: white;
+  color: var(--on-accent);
   margin: 0 auto 20px;
   box-shadow: 0 12px 32px var(--accent-muted);
   animation: completePop 0.6s var(--ease-out) 0.2s both;
@@ -542,39 +545,39 @@
 }
 
 .onboarding-theme {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
   padding: 12px;
-  border: 2px solid var(--border);
+  border: 2px solid var(--border-control);
   border-radius: 16px;
+  background: var(--surface-raised);
+  color: var(--text-primary);
+  font: inherit;
   cursor: pointer;
-  transition: all 0.15s ease;
+  transition: border-color 0.15s ease, background-color 0.15s ease;
   text-align: center;
 }
 
 .onboarding-theme:hover {
-  border-color: var(--border-strong);
+  border-color: var(--text-tertiary);
 }
 
-.onboarding-theme.selected {
-  border-color: var(--accent);
+.onboarding-theme.selected,
+.onboarding-theme[aria-pressed="true"] {
+  border-color: var(--focus-ring);
   background: var(--accent-muted);
 }
 
 .onboarding-theme-name {
   font-size: 13px;
   font-weight: 600;
-  margin-bottom: 4px;
 }
 
-.onboarding-theme-preview {
-  display: flex;
-  gap: 4px;
-  justify-content: center;
-}
-
-.onboarding-theme-preview span {
-  width: 16px;
-  height: 16px;
-  border-radius: calc(16px - 12px);
+.onboarding-theme-mode {
+  font-size: 11px;
+  color: var(--text-secondary);
 }
 
 /* Responsive */

@@ -72,8 +72,8 @@ class Store {
       // QoL: first run follows the OS preference; a saved theme always wins.
       theme: localStorage.getItem('vault_theme')
         || (window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark'),
-      glassIntensity: safeInt('vault_glass', 20),
-      grainIntensity: safeInt('vault_grain', 15),
+      glassIntensity: safeInt('vault_glass', 12),
+      grainIntensity: safeInt('vault_grain', 8),
       sidebarCollapsed: localStorage.getItem('vault_sidebar_collapsed') === 'true',
       sidebarSectionsCollapsed: safeParse('vault_sidebar_sections_collapsed', {}),
       theatreMode: false,

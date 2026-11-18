@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <title>Vault — Personal Media Server</title>
   <meta name="description" content="Vault — A premium self-hosted personal media server for movies, music, and videos">
-  <meta name="theme-color" content="#0A0A0A">
+  <meta name="theme-color" content="#15110E">
   
   <!-- PWA -->
   <link rel="manifest" href="./manifest.json">
@@ -22,6 +22,12 @@
   <!-- CSS: one bundled, minified sheet (built from docs/css/*.css — npm run build:css).
        Replaces 13 render-blocking <link> requests; cascade order preserved by the build. -->
   <link rel="stylesheet" href="./css/vault.css">
+  <!-- Self-hosted type (Fraunces display + Figtree UI). @font-face lives in its
+       own sheet because the bundle build forbids it; the Latin files are
+       preloaded so first paint uses the real faces. -->
+  <link rel="preload" href="./fonts/figtree-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="preload" href="./fonts/fraunces-latin-full-normal.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="./css/fonts.css">
   <!-- Onboarding styles load async — not needed for first paint.
        (CI greps index.html for this href, keep it here.) -->
   <link rel="stylesheet" href="./css/onboarding.css" media="print" onload="this.media='all'">
@@ -43,7 +49,9 @@
   <div id="auth-gate" class="auth-gate">
     <div class="auth-container">
       <div class="auth-logo">
-        <div class="auth-logo-icon">V</div>
+        <div class="auth-logo-icon" aria-hidden="true">
+          <svg class="brand-mark" width="56" height="56" viewBox="0 0 64 64" focusable="false"><rect class="brand-mark-tile" width="64" height="64" rx="16"/><path class="brand-mark-arch" fill-rule="evenodd" d="M14 54V32a18 18 0 0 1 36 0v22Zm13.5-24v16.5L41 38.25Z"/></svg>
+        </div>
         <h1>Vault</h1>
         <p>Personal Media Server</p>
       </div>
@@ -168,7 +176,7 @@
           <div class="now-playing-artist" id="now-playing-artist"></div>
         </div>
         <div class="now-playing-progress">
-          <input type="range" class="slider" id="now-playing-slider" min="0" max="100" value="0">
+          <input type="range" class="slider" id="now-playing-slider" min="0" max="100" value="0" aria-label="Seek">
           <div class="now-playing-time">
             <span id="now-playing-current">0:00</span>
             <span id="now-playing-duration">0:00</span>
@@ -290,20 +298,17 @@
     .auth-logo-icon {
       width: 56px;
       height: 56px;
-      background: linear-gradient(140deg in oklch, var(--accent-solid), var(--btn-accent-end));
-      border-radius: 16px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-weight: 800;
-      font-size: 28px;
-      color: var(--on-accent);
-      margin: 0 auto 16px;
+      margin: 0 auto 14px;
+      filter: drop-shadow(0 8px 22px var(--accent-muted));
     }
+    .auth-logo-icon .brand-mark { display: block; }
     .auth-logo h1 {
-      font-size: 28px;
-      font-weight: 800;
-      letter-spacing: -0.02em;
+      font-family: var(--font-display);
+      font-variation-settings: var(--display-soft);
+      font-size: 34px;
+      font-weight: var(--fw-display);
+      letter-spacing: var(--tracking-display);
+      line-height: 1.1;
     }
     .auth-logo p {
       color: var(--text-secondary);
@@ -318,8 +323,11 @@
       animation: pageEnter 0.3s ease-out;
     }
     .auth-step h2 {
-      font-size: 20px;
-      font-weight: 700;
+      font-family: var(--font-display);
+      font-variation-settings: var(--display-soft);
+      font-size: 22px;
+      font-weight: var(--fw-display);
+      letter-spacing: var(--tracking-display);
       margin-bottom: 8px;
     }
     .auth-subtitle {
@@ -333,8 +341,8 @@
       gap: 16px;
     }
     .auth-error {
-      background: rgba(239,68,68,0.1);
-      border: 1px solid rgba(239,68,68,0.2);
+      background: color-mix(in srgb, var(--error) 9%, var(--surface-base));
+      border: 1px solid color-mix(in srgb, var(--error) 40%, transparent);
       color: var(--error);
       padding: 10px 14px;
       border-radius: 10px;
@@ -342,8 +350,8 @@
     }
     .auth-warning {
       margin-top: 12px;
-      background: rgba(245,158,11,0.1);
-      border: 1px solid rgba(245,158,11,0.25);
+      background: color-mix(in srgb, var(--warning) 9%, var(--surface-base));
+      border: 1px solid color-mix(in srgb, var(--warning) 40%, transparent);
       color: var(--warning);
       padding: 10px 14px;
       border-radius: 10px;
@@ -353,7 +361,7 @@
     }
     .auth-warning code {
       font-family: var(--font-mono, monospace);
-      background: rgba(245,158,11,0.12);
+      background: color-mix(in srgb, var(--warning) 12%, transparent);
       padding: 1px 4px;
       border-radius: 4px;
     }
@@ -361,7 +369,7 @@
       margin-top: 24px;
       text-align: center;
       font-size: 12px;
-      color: var(--text-tertiary);
+      color: var(--text-secondary);
     }
     .grid-container {
       display: grid;
@@ -427,8 +435,11 @@
       top: 16px;
       left: 50%;
       transform: translateX(-50%);
-      background: var(--error);
-      color: white;
+      /* was white on --error: fails in light themes (1.4.3). Solid surface,
+         error-tinted edge, theme text — readable everywhere. */
+      background: var(--surface-elevated);
+      border: 1px solid var(--error);
+      color: var(--text-primary);
       padding: 8px 16px;
       border-radius: 9999px;
       font-size: 13px;
@@ -804,6 +815,12 @@
         const el = document.getElementById('breadcrumb');
         if (!el) return;
         const path = e.detail?.path || '/';
+        // C-15: on top-level pages the header title repeats the page H1, so it
+        // stays hidden until the H1 scrolls away (iOS "large title" pattern).
+        const isRoot = !!ROUTE_TITLES[path];
+        el.classList.toggle('is-root', isRoot);
+        if (isRoot) el.setAttribute('aria-hidden', 'true');
+        else el.removeAttribute('aria-hidden');
         if (ROUTE_TITLES[path]) {
           el.textContent = ROUTE_TITLES[path];
         } else if (path.startsWith('/watch') || path.startsWith('/movie') || path.startsWith('/album')) {
@@ -844,6 +861,7 @@
           if (bttFrame) return;
           bttFrame = requestAnimationFrame(() => {
             backToTop.classList.toggle('visible', window.scrollY > 600);
+            document.body.classList.toggle('is-scrolled', window.scrollY > 96);
             bttFrame = 0;
           });
         }, { passive: true });

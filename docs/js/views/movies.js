@@ -18,6 +18,7 @@ export function renderMovies(container) {
         <button class="active" data-view="grid">Grid</button>
         <button data-view="list">List</button>
       </div>
+      <label class="sr-only" for="sort-select">Sort by</label>
       <select class="form-select" id="sort-select" style="width:auto;">
         <option value="addedAt-desc">Recently Added</option>
         <option value="title-asc">Title A-Z</option>

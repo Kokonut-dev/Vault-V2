@@ -15,7 +15,7 @@ export function initShortcutsPanel() {
         <div class="modal-title">Keyboard Shortcuts</div>
         <button class="modal-close" id="shortcuts-close" aria-label="Close">${icon('x', { size: 16 })}</button>
       </div>
-      <div class="modal-body">
+      <div class="modal-body" tabindex="0" role="region" aria-label="Shortcut list">
         ${Object.entries(KEYBOARD_SHORTCUTS).map(([section, shortcuts]) => `
           <div style="margin-bottom:24px;">
             <h3 style="font-size:13px; font-weight:700; text-transform:uppercase; letter-spacing:0.05em; color:var(--text-tertiary); margin-bottom:12px;">${section}</h3>

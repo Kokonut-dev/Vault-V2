@@ -1,14 +1,18 @@
-/* Animations & Transitions */
+/* Animations & Transitions
+   Motion vocabulary (UI_REVAMP_PLAN.md §3.5, C-7): durations --dur-1/2/3
+   (140/240/360ms), ease-out to enter, ease-in to leave, transform + opacity
+   only, stagger --stagger (30ms) capped at 12 items, no perpetual motion.
+   Everything collapses under prefers-reduced-motion (bottom of file). */
 
 /* Page transitions */
 .page {
-  animation: pageEnter 0.4s var(--ease-out);
+  animation: pageEnter var(--dur-3) var(--ease-enter);
 }
 
 @keyframes pageEnter {
   from {
     opacity: 0;
-    transform: translateY(8px);
+    transform: translateY(10px);
   }
   to {
     opacity: 1;
@@ -17,7 +21,7 @@
 }
 
 .page-exit {
-  animation: pageExit 0.2s var(--ease-out) forwards;
+  animation: pageExit var(--dur-1) var(--ease-exit) forwards;
 }
 
 @keyframes pageExit {
@@ -170,17 +174,22 @@
 /* Stagger children */
 .stagger > * {
   opacity: 0;
-  animation: staggerIn 0.4s var(--ease-out) forwards;
+  animation: staggerIn var(--dur-3) var(--ease-enter) forwards;
+  animation-delay: calc(var(--i, 0) * var(--stagger));
 }
 
-.stagger > *:nth-child(1) { animation-delay: 0.05s; }
-.stagger > *:nth-child(2) { animation-delay: 0.1s; }
-.stagger > *:nth-child(3) { animation-delay: 0.15s; }
-.stagger > *:nth-child(4) { animation-delay: 0.2s; }
-.stagger > *:nth-child(5) { animation-delay: 0.25s; }
-.stagger > *:nth-child(6) { animation-delay: 0.3s; }
-.stagger > *:nth-child(7) { animation-delay: 0.35s; }
-.stagger > *:nth-child(8) { animation-delay: 0.4s; }
+/* 30ms steps; 12 × 30 = 360ms total, well under the ~1s research ceiling */
+.stagger > *:nth-child(2) { --i: 1; }
+.stagger > *:nth-child(3) { --i: 2; }
+.stagger > *:nth-child(4) { --i: 3; }
+.stagger > *:nth-child(5) { --i: 4; }
+.stagger > *:nth-child(6) { --i: 5; }
+.stagger > *:nth-child(7) { --i: 6; }
+.stagger > *:nth-child(8) { --i: 7; }
+.stagger > *:nth-child(9) { --i: 8; }
+.stagger > *:nth-child(10) { --i: 9; }
+.stagger > *:nth-child(11) { --i: 10; }
+.stagger > *:nth-child(12) { --i: 11; }
 
 /* F-13: cap entrance animations to the first 12 cards. A 1 000-card grid
    firing 1 000 simultaneous animations only burns frames — cards past the
@@ -201,6 +210,27 @@
   }
 }
 
+/* Hero "curtain up": the backdrop settles while the copy rises in sequence —
+   the one moment of theatre on the home screen. */
+@media (prefers-reduced-motion: no-preference) {
+  .hero-backdrop:not(.is-cover) { animation: heroSettle 1.2s var(--ease-enter) both; }
+  .hero-body > * { animation: staggerIn var(--dur-3) var(--ease-enter) both; }
+  .hero-body > :nth-child(2) { animation-delay: 60ms; }
+  .hero-body > :nth-child(3) { animation-delay: 120ms; }
+  .hero-body > :nth-child(n + 4) { animation-delay: 180ms; }
+  .hero-poster { animation: posterIn 600ms var(--ease-enter) 120ms both; }
+}
+
+@keyframes heroSettle {
+  from { opacity: 0; transform: scale(1.06); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+@keyframes posterIn {
+  from { opacity: 0; transform: translateY(14px) rotate(0deg); }
+  to { opacity: 1; transform: translateY(0) rotate(1.5deg); }
+}
+
 /* Reduced motion */
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
@@ -214,7 +244,10 @@
   .slide-up-enter,
   .slide-down-enter,
   .scale-enter,
-  .stagger > * {
+  .stagger > *,
+  .hero-backdrop,
+  .hero-body > *,
+  .hero-poster {
     animation: none !important;
     opacity: 1 !important;
     transform: none !important;

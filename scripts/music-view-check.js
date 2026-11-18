@@ -228,8 +228,12 @@ function assert(condition, message) {
     const btn = firstLight.querySelector('.media-card-play');
     assert(btn.tagName === 'BUTTON', `expected <button>, got <${btn.tagName}>`);
     assert(btn.getAttribute('aria-label') === 'Play First Light', `aria-label: ${btn.getAttribute('aria-label')}`);
-    assert(firstLight.getAttribute('role') === 'button' && firstLight.getAttribute('tabindex') === '0',
-      'album card is not focusable as a button');
+    // The card is a focusable, named group (not role=button): it contains a
+    // real Play <button>, and nesting interactive roles is invalid (axe
+    // nested-interactive / WCAG 4.1.2). Enter/Space behaviour is tested below.
+    assert(firstLight.getAttribute('role') === 'group' && firstLight.getAttribute('tabindex') === '0',
+      'album card is not a focusable group');
+    assert(firstLight.getAttribute('aria-label'), 'album card has no accessible name');
   });
 
   await test('the card play button still plays the whole album', () => {

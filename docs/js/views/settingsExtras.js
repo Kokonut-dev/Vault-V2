@@ -390,7 +390,7 @@ function remoteCard() {
       </div>
     </div>
     <div class="form-group" style="margin-top:12px">
-      <label class="form-label">Current address</label>
+      <label class="form-label" for="remote-url">Current address</label>
       <div style="display:flex; gap:8px;">
         <input class="form-input" id="remote-url" value="${base}" readonly style="flex:1">
         <button class="btn btn-secondary btn-sm" id="remote-copy">${icon('copy', { size: 14 })}<span>Copy</span></button>
