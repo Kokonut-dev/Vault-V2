@@ -306,7 +306,14 @@ By default Vault only works at home (`localhost`). To use from phone anywhere:
 - Default max 10GB. Check `server/config.json` → `media.maxUploadSizeMB`. Increase if needed.
 
 **"No thumbnails / Transcoding fails"**
-- ffmpeg might be missing. Server uses `ffmpeg-static` but if install failed (cert error), install ffmpeg system-wide: `brew install ffmpeg` (Mac) or `sudo apt install ffmpeg` (Linux), then restart.
+- ffmpeg might be missing. Server uses `ffmpeg-static` but if install failed (cert error), install ffmpeg system-wide: `brew install ffmpeg` (Mac) or `sudo apt install ffmpeg` (Linux), then restart. To use a specific build, set `FFMPEG_PATH` (and `FFPROBE_PATH`) before starting the server.
+- Hardware encoders (NVENC, QuickSync, VAAPI, AMF) are only used after a one-frame test encode succeeds, so a build that merely *includes* them on a GPU-less machine falls back to the CPU instead of failing.
+
+**"Live TV channel or IPTV movie won't play"**
+- Channels and movies from an M3U list are played *through the server*: it opens the stream with ffmpeg and repackages it as HLS — copying H.264/AAC, converting anything else (MPEG-TS MPEG-2, MKV, HEVC, AC-3/DTS). This needs ffmpeg; Settings → Live TV warns when it's missing.
+- **Settings → Live TV → Test links** now opens a few sample entries and reports whether they play, need converting, or fail (e.g. "access denied" = expired subscription or wrong password in the link).
+- The player names the cause instead of a generic codec error. Only `http://` and `https://` entries are played; entries pointing at local files, the server itself or cloud-metadata addresses are refused.
+- Up to 4 streams run at once (`livetv.maxStreams` in `server/config.json`); idle streams stop after 45 s (live) or 5 min (movies).
 
 **Reset everything:**
 - Delete `server/config.json` → restart server → wizard appears again. Your media files stay safe.

@@ -28,13 +28,13 @@ router.get('/hls/:id/master.m3u8', (req, res) => {
   const variants = hls.variantsFor(item);
   res.setHeader('Content-Type', 'application/vnd.apple.mpegurl');
   res.setHeader('Cache-Control', 'no-cache');
-  res.send(hls.masterPlaylist(item, variants));
+  res.send(hls.masterPlaylist(item, variants, req.query.token));
 });
 
 router.get('/hls/:id/:variant/index.m3u8', async (req, res) => {
   const item = libraryService.getById(req.params.id);
   if (!item || !fs.existsSync(item.path)) return res.status(404).json({ error: 'Item not found' });
-  const playlist = await hls.variantPlaylist(item, req.params.variant);
+  const playlist = await hls.variantPlaylist(item, req.params.variant, req.query.token);
   if (!playlist) return res.status(503).json({ error: 'Transcoder did not produce a playlist', code: 'HLS_UNAVAILABLE' });
   res.setHeader('Content-Type', 'application/vnd.apple.mpegurl');
   res.setHeader('Cache-Control', 'no-cache');

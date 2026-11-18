@@ -1029,6 +1029,28 @@ class ApiClient {
     return this.request('/api/livetv/recordings');
   }
 
+  /**
+   * Start (or join) a server-side restream of a Live TV / IPTV entry.
+   * Resolves to { sessionId, playlist, live, plan, source }; rejects with
+   * err.code (NO_FFMPEG, AUTH, NOT_FOUND, UNREACHABLE, BLOCKED, …).
+   */
+  playChannel(channelId, { transcode = false } = {}) {
+    return this.request(`/api/livetv/channels/${encodeURIComponent(channelId)}/play`, {
+      method: 'POST', body: { transcode }, retry: false,
+    });
+  }
+
+  stopChannelStream(sessionId) {
+    if (!sessionId) return Promise.resolve();
+    // keepalive: the request must survive the tab closing (pagehide).
+    return this.request(`/api/livetv/stream/${encodeURIComponent(sessionId)}`, { method: 'DELETE', retry: false, keepalive: true }).catch(() => {});
+  }
+
+  /** Absolute, token-carrying URL for a restream playlist path from playChannel(). */
+  liveStreamUrl(playlistPath) {
+    return `${this.baseUrl}${playlistPath}?token=${encodeURIComponent(this.getToken() || '')}`;
+  }
+
   startRecording(data) {
     return this.request('/api/livetv/recordings', { method: 'POST', body: data });
   }

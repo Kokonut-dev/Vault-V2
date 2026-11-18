@@ -250,7 +250,8 @@ function buildQualityButton() {
 // ---------------------------------------------------------------------------
 async function loadItemExtras(item) {
   state = { item, markers: null, chapters: [], trickplay: null, plan: null };
-  if (!item) return;
+  // Live TV / IPTV entries aren't library items: no markers, chapters or trickplay.
+  if (!item || item.external || item.channelId) return;
 
   const [markers, chapters, trickplay] = await Promise.all([
     api.getMarkers(item.id).catch(() => null),

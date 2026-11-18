@@ -111,6 +111,12 @@ function renderLiveTv(s, ctx, state) {
     </div>`);
   const report = el('<div class="test-report" id="ltv-report" role="region" aria-label="Test results" aria-live="polite" hidden></div>');
 
+  // Most IPTV streams (MPEG-TS, MKV, HEVC, AC-3) only play in a browser after
+  // the server converts them, which needs ffmpeg. Say so before anyone
+  // presses play and gets a black screen.
+  if (state.playback && state.playback.ffmpeg === false) {
+    form.append(el(`<p class="settings-callout is-warn" data-ffmpeg-missing>${icon('alert-triangle', { size: 15 })}<span><strong>ffmpeg isn’t installed on the server.</strong> Most IPTV channels and movies use formats browsers can’t play on their own, so they won’t play until ffmpeg is installed (or <code>FFMPEG_PATH</code> points at it) and Vault is restarted.</span></p>`));
+  }
   form.append(sources, tuners, actions, report);
   s.body.append(form);
 
@@ -240,6 +246,7 @@ function paintReport(report, result, { onAdoptGuide }) {
             </div>` : ''}
         </div>
       </div>`);
+      if (m.streams) parts.push(streamCheck(m.streams, m));
     } else {
       parts.push(testError('Channel list', m.error));
     }
@@ -271,6 +278,37 @@ function paintReport(report, result, { onAdoptGuide }) {
 
   report.innerHTML = parts.join('') || '<p class="test-meta">Nothing to test yet.</p>';
   report.querySelector('[data-adopt-guide]')?.addEventListener('click', (e) => onAdoptGuide(e.currentTarget));
+}
+
+/** "Do the streams actually play?" — the server opened a few sample entries. */
+function streamCheck(streams, m) {
+  const mix = m.vod ? ` (${plural(m.live || 0, 'live channel')}, ${plural(m.vod, 'movie or episode', 'movies or episodes')})` : '';
+  if (!streams.ffmpeg) {
+    return `<div class="test-item is-warn">${icon('alert-triangle', { size: 18 })}<div class="test-body">
+      <p class="test-title">Streams: couldn’t check playback</p>
+      <p class="test-meta">ffmpeg isn’t installed on the server, so formats browsers can’t play natively (MPEG-TS, MKV, HEVC, AC-3 — most IPTV) won’t play. Install ffmpeg and restart Vault.</p></div></div>`;
+  }
+  const checked = streams.checked || [];
+  const failed = checked.filter(c => !c.ok);
+  const tone = !checked.length ? 'is-info' : failed.length === checked.length ? 'is-error' : failed.length ? 'is-warn' : 'is-ok';
+  const title = !checked.length
+    ? 'Streams: nothing to check'
+    : failed.length === checked.length
+      ? `Streams: none of the ${plural(checked.length, 'sample')} played`
+      : failed.length
+        ? `Streams: ${checked.length - failed.length} of ${checked.length} samples play`
+        : `Streams: all ${plural(checked.length, 'sample')} play`;
+  const rows = checked.map(c => `<li><strong>${escapeHtml(c.name || 'Untitled')}</strong>${c.kind === 'vod' ? ' (movie)' : ''} — ${c.ok
+    ? `${escapeHtml(c.format || 'plays')}${c.converted ? ' · converted on the server' : ' · plays as-is'}`
+    : escapeHtml(c.error || 'couldn’t open it')}</li>`).join('');
+  const auth = failed.some(c => c.code === 'AUTH');
+  return `<div class="test-item ${tone}">${icon(tone === 'is-ok' ? 'check-circle' : tone === 'is-info' ? 'info' : 'alert-triangle', { size: 18 })}<div class="test-body">
+    <p class="test-title">${title}</p>
+    <p class="test-meta">Vault opened a few entries${mix} to see what happens when someone presses play.</p>
+    ${rows ? `<ul class="test-list">${rows}</ul>` : ''}
+    ${auth ? '<p class="test-meta">“Access denied” on every stream usually means the subscription expired or the link’s password changed.</p>' : ''}
+    ${streams.unsupported ? `<p class="test-meta">${plural(streams.unsupported, 'entry', 'entries')} ${streams.unsupported === 1 ? 'uses' : 'use'} a link type Vault can’t play (only http:// and https:// work).</p>` : ''}
+  </div></div>`;
 }
 
 const testError = (what, message) => `<div class="test-item is-error">${icon('alert-circle', { size: 18 })}<div class="test-body">

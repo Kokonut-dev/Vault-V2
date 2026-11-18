@@ -199,9 +199,16 @@
   <div id="video-modal" class="video-modal" hidden aria-hidden="true">
     <div class="video-player paused" id="video-player">
       <video id="video-element" playsinline></video>
-      <div class="video-error" id="video-error" style="display:none;">
+      <div class="video-status" id="video-status" role="status" aria-live="polite" hidden>
+        <span class="video-status-spinner" aria-hidden="true"></span>
+        <span class="video-status-msg"></span>
+      </div>
+      <div class="video-error" id="video-error" role="alert" style="display:none;">
         <div class="video-error-msg">Can't play this file</div>
-        <button class="btn btn-primary" type="button" id="video-retry-transcode">Try transcoding</button>
+        <div class="video-error-actions">
+          <button class="btn btn-primary" type="button" id="video-retry-transcode">Try transcoding</button>
+          <button class="btn btn-secondary" type="button" id="video-error-close">Close</button>
+        </div>
       </div>
       <div class="video-player-controls" id="video-controls">
         <div class="video-progress" id="video-progress" role="slider" tabindex="0" aria-label="Seek" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" aria-valuetext="0:00 of 0:00">

@@ -31,6 +31,7 @@ let cachedCapabilities = null;
  *  path can exist as a string while the file itself was never downloaded
  *  (installs with --ignore-scripts), and containers install ffmpeg via apt. */
 function ffmpegBinary() {
+  if (process.env.FFMPEG_PATH) return process.env.FFMPEG_PATH;
   try {
     const bundled = require('ffmpeg-static');
     if (bundled && fs.existsSync(bundled)) return bundled;
@@ -39,6 +40,7 @@ function ffmpegBinary() {
 }
 
 function ffprobeBinary() {
+  if (process.env.FFPROBE_PATH) return process.env.FFPROBE_PATH;
   try {
     const bundled = require('ffprobe-static').path;
     if (bundled && fs.existsSync(bundled)) return bundled;
@@ -70,10 +72,18 @@ function detectCapabilities(force = false) {
       const out = `${result.stdout || ''}`;
       const version = spawnSync(ffmpegBinary(), ['-version'], { encoding: 'utf8', timeout: 10000 });
       caps.version = (version.stdout || '').split('\n')[0] || null;
+      caps.unusable = [];
       for (const [key, set] of Object.entries(ENCODERS)) {
-        const present = Object.values(set).filter(v => typeof v === 'string' && out.includes(v));
-        caps.encoders[key] = present.length > 0;
-        if (present.length) caps.hardware.push({ key, label: set.label, encoders: present, h264: out.includes(set.h264) });
+        const present = Object.values(set).filter(v => typeof v === 'string' && v !== set.label && out.includes(v));
+        // Being listed by `ffmpeg -encoders` only means the encoder was
+        // compiled in — static builds ship NVENC/QSV/VAAPI/AMF whether or
+        // not the GPU exists. Picking one blindly made every transcode on a
+        // GPU-less server die with "Invalid argument". Encode one frame to
+        // find out whether it really works.
+        const works = present.includes(set.h264) && encoderWorks(key, set.h264);
+        caps.encoders[key] = works;
+        if (works) caps.hardware.push({ key, label: set.label, encoders: present, h264: true });
+        else if (present.length) caps.unusable.push(set.label);
       }
     }
   } catch (err) {
@@ -82,6 +92,20 @@ function detectCapabilities(force = false) {
 
   cachedCapabilities = caps;
   return caps;
+}
+
+function encoderWorks(kind, encoder) {
+  const args = ['-hide_banner', '-nostdin', '-loglevel', 'error'];
+  if (kind === 'vaapi') args.push('-vaapi_device', process.env.VAAPI_DEVICE || '/dev/dri/renderD128');
+  args.push('-f', 'lavfi', '-i', 'color=c=black:s=256x144:r=25:d=0.2', '-frames:v', '1');
+  if (kind === 'vaapi') args.push('-vf', 'format=nv12,hwupload');
+  args.push('-c:v', encoder, '-f', 'null', '-');
+  try {
+    const result = spawnSync(ffmpegBinary(), args, { encoding: 'utf8', timeout: 8000 });
+    return result.status === 0;
+  } catch {
+    return false;
+  }
 }
 
 function preferredEncoder(quality) {

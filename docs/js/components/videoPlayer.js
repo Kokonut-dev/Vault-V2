@@ -20,6 +20,54 @@ let lastProgressSave = 0;
 let nextEpisodeListener = null;
 let nextEpisodeInterval = null;
 let usingTranscode = false;
+let streamSession = null; // server restream (Live TV / IPTV) currently attached
+let openToken = 0; // bumps on every open/close so stale async opens bail out
+let retryOptions = { forceTranscode: true };
+
+/**
+ * Live TV / IPTV entries are not library items: they have no /api/media
+ * stream, no transcode-by-id, no history, markers or thumbnails. Treating
+ * them like library items is what made every fallback 404.
+ */
+export function isExternalItem(item) {
+  return Boolean(item && (item.channelId || item.external || String(item.id || '').startsWith('live:')));
+}
+
+// Server error codes that a retry can't fix (wrong credentials, dead link…).
+const FINAL_CODES = new Set(['NO_FFMPEG', 'AUTH', 'NOT_FOUND', 'BLOCKED', 'UNSUPPORTED_SCHEME', 'NOT_MEDIA', 'NO_STREAMS', 'CHANNEL_NOT_FOUND', 'ADMIN_REQUIRED']);
+
+function mediaErrorMessage(err) {
+  switch (err?.code) {
+    case 1: return 'Playback was stopped.';
+    case 2: return 'The stream stopped arriving — the connection to the Vault server dropped.';
+    case 3: return 'Your browser couldn\'t decode this stream.';
+    case 4: return 'Your browser can\'t play this stream\'s format.';
+    default: return 'This stream could not be played.';
+  }
+}
+
+function hlsFailureMessage(data) {
+  const status = data?.response?.code || data?.networkDetails?.status;
+  if (status === 404) return 'This stream ended on the server (it may have been idle too long).';
+  if (status === 401) return 'Your session expired. Sign in again to keep watching.';
+  if (data?.type === 'mediaError') return 'Your browser couldn\'t decode this stream, even after conversion.';
+  return 'The connection to the Vault server dropped while playing this stream.';
+}
+
+function setStatus(message) {
+  const el = document.getElementById('video-status');
+  if (!el) return;
+  const msg = el.querySelector('.video-status-msg');
+  if (msg) msg.textContent = message || '';
+  el.hidden = !message;
+}
+
+function releaseStream() {
+  if (streamSession) {
+    api.stopChannelStream(streamSession.sessionId);
+    streamSession = null;
+  }
+}
 
 function showModal(modal) {
   if (!modal) return;
@@ -37,14 +85,20 @@ function hideModal(modal) {
   modal.setAttribute('aria-hidden', 'true');
 }
 
-function setError(message, showTranscode = false) {
+function setError(message, showTranscode = false, { label = 'Try transcoding', forceTranscode = true } = {}) {
   const el = document.getElementById('video-error');
   if (!el) return;
+  setStatus(null);
   const msg = el.querySelector('.video-error-msg');
   if (msg) msg.textContent = message || 'Playback failed';
   const retry = el.querySelector('#video-retry-transcode');
-  if (retry) retry.style.display = showTranscode ? 'inline-flex' : 'none';
+  retryOptions = { forceTranscode };
+  if (retry) {
+    retry.textContent = label;
+    retry.style.display = showTranscode ? 'inline-flex' : 'none';
+  }
   el.style.display = 'flex';
+  (showTranscode ? retry : el.querySelector('#video-error-close'))?.focus?.({ preventScroll: true });
 }
 
 function clearError() {
@@ -108,6 +162,20 @@ export function initVideoPlayer() {
   videoEl.addEventListener('error', () => {
     const err = videoEl.error;
     console.error('[VideoPlayer] error', err);
+    if (!currentItem) return;
+
+    // Live TV / IPTV: never fall back to library routes (they 404 for these).
+    if (currentItem.channelId) {
+      // No attached restream means this error belongs to a stream we
+      // already tore down (hls.js reported it first) — ignore it.
+      if (!streamSession) return;
+      channelFailed(currentItem, mediaErrorMessage(err));
+      return;
+    }
+    if (isExternalItem(currentItem)) {
+      setError(`${mediaErrorMessage(err)} The source may use a format browsers can't play, or it may be offline.`, false);
+      return;
+    }
 
     // Attempt ladder: direct play → progressive transcode → HLS (if the
     // browser supports MSE and the vendored hls.js loads). Each step is only
@@ -122,6 +190,8 @@ export function initVideoPlayer() {
       import('./hlsLoader.js').then(async ({ attachHls }) => {
         const started = await attachHls(videoEl, api.hlsMasterUrl(currentItem.id), {
           startPosition: videoEl.currentTime || 0,
+          itemId: currentItem.id,
+          onFatal: () => setError('This file could not be played, even after converting it on the server. Check that ffmpeg is installed on the server, or try downloading the file instead.', false),
         });
         if (!started) {
           setError('This file could not be played. The codec may be unsupported or the server is unreachable.', false);
@@ -150,7 +220,7 @@ export function initVideoPlayer() {
         progress.setAttribute('aria-valuetext', `${formatTime(videoEl.currentTime)} of ${formatTime(videoEl.duration || 0)}`);
       }
       const now = Date.now();
-      if (currentItem && now - lastProgressSave > 5000) {
+      if (currentItem && !isExternalItem(currentItem) && now - lastProgressSave > 5000) {
         lastProgressSave = now;
         store.addToHistory(currentItem.id, percent);
       }
@@ -163,7 +233,11 @@ export function initVideoPlayer() {
   });
 
   videoEl.addEventListener('loadedmetadata', () => {
-    if (durationEl) durationEl.textContent = formatTime(videoEl.duration);
+    if (durationEl) durationEl.textContent = currentItem?.live || !Number.isFinite(videoEl.duration) ? 'Live' : formatTime(videoEl.duration);
+  });
+  videoEl.addEventListener('playing', () => setStatus(null));
+  videoEl.addEventListener('waiting', () => {
+    if (streamSession && !videoEl.currentTime) setStatus('Buffering…');
   });
 
   // OS-level media controls (lock screen, Windows/macOS media keys, Android
@@ -177,7 +251,7 @@ export function initVideoPlayer() {
         album: currentItem.season ? `S${String(currentItem.season).padStart(2, '0')}E${String(currentItem.episode || 0).padStart(2, '0')}` : (currentItem.album || 'Vault'),
         artwork: currentItem.poster || currentItem.cover
           ? [{ src: currentItem.poster || currentItem.cover, sizes: '512x512', type: 'image/jpeg' }]
-          : [{ src: api.getThumbnailUrl(currentItem.id), sizes: '320x180', type: 'image/jpeg' }],
+          : (isExternalItem(currentItem) ? [] : [{ src: api.getThumbnailUrl(currentItem.id), sizes: '320x180', type: 'image/jpeg' }]),
       });
     } catch { /* MediaMetadata unsupported */ }
 
@@ -213,7 +287,7 @@ export function initVideoPlayer() {
     // Two things used to be missing here (audit note): nothing told the
     // server the item finished, and no event fired for the "stop after N"
     // sleep timer / next-episode logic to hook into.
-    if (currentItem) {
+    if (currentItem && !isExternalItem(currentItem)) {
       api.markCompleted?.(currentItem.id).catch(() => {});
       store.addToHistory?.(currentItem.id, 100);
     }
@@ -317,14 +391,15 @@ export function initVideoPlayer() {
     window.dispatchEvent(new CustomEvent('vault:play-next-episode'));
   });
   downloadBtn?.addEventListener('click', () => {
-    if (!currentItem) return;
+    if (!currentItem || isExternalItem(currentItem)) return;
     if (api.downloadItemFile(currentItem)) toast.success(`Downloading "${currentItem.title}"`);
   });
 
 
   retryBtn?.addEventListener('click', () => {
-    if (currentItem) openPlayer(currentItem, { forceTranscode: true });
+    if (currentItem) openPlayer(currentItem, { ...retryOptions });
   });
+  document.getElementById('video-error-close')?.addEventListener('click', closePlayer);
 
   window.addEventListener('vault:player-action', (e) => {
     if (!modal.classList.contains('active')) return;
@@ -370,6 +445,10 @@ export function initVideoPlayer() {
     }, 3000);
   });
 
+  // Closing the tab mid-stream: tell the server so ffmpeg stops now rather
+  // than when the idle reaper notices.
+  window.addEventListener('pagehide', releaseStream);
+
   window.addEventListener('vault:open-video', (e) => {
     if (e.detail?.item) openPlayer(e.detail.item);
   });
@@ -383,6 +462,11 @@ export function initVideoPlayer() {
 }
 
 export function openPlayer(item, { forceTranscode = false } = {}) {
+  const token = ++openToken;
+  if (item && isExternalItem(item)) item.external = true;
+  // Switching items (or retrying) must not leave the previous restream
+  // running on the server or the previous hls.js instance attached.
+  releaseStream();
   currentItem = item;
   usingTranscode = !!forceTranscode;
   const modal = document.getElementById('video-modal');
@@ -390,8 +474,29 @@ export function openPlayer(item, { forceTranscode = false } = {}) {
   if (!videoEl || !modal) return;
 
   clearError();
+  setStatus(null);
+  if (videoEl._vaultHls) {
+    try { videoEl._vaultHls.destroy(); } catch { /* already gone */ }
+    delete videoEl._vaultHls;
+  }
+  const durationLabel = document.getElementById('video-duration');
+  const currentLabel = document.getElementById('video-current');
+  if (durationLabel) durationLabel.textContent = item?.live ? 'Live' : '0:00';
+  if (currentLabel) currentLabel.textContent = '0:00';
+  const playerEl = document.getElementById('video-player');
+  playerEl?.classList.toggle('is-external', isExternalItem(item));
+  playerEl?.classList.toggle('is-live', Boolean(item?.live));
 
   while (videoEl.firstChild) videoEl.removeChild(videoEl.firstChild);
+
+  if (item?.channelId) {
+    openChannel(item, { forceTranscode, token, modal });
+    return;
+  }
+  if (isExternalItem(item)) {
+    openExternal(item, { token, modal });
+    return;
+  }
 
   const url = api.getPlaybackUrl(item, { forceTranscode });
   if (api.isMixedContent(url)) {
@@ -447,9 +552,130 @@ export function openPlayer(item, { forceTranscode = false } = {}) {
   window.dispatchEvent(new CustomEvent('vault:video-opened', { detail: { item } }));
 }
 
+/**
+ * Live TV / IPTV entry: ask the server to restream it as HLS (copying
+ * browser-friendly codecs, converting the rest), then attach hls.js.
+ * Ladder: auto (copy where possible) → forced conversion → explained error.
+ */
+async function openChannel(item, { forceTranscode, token, modal }) {
+  const player = document.getElementById('video-player');
+  showModal(modal);
+  player?.classList.add('paused', 'show-controls');
+  setStatus(forceTranscode ? 'Converting the stream on the server…' : `Tuning in to ${item.title || 'the channel'}…`);
+  window.dispatchEvent(new CustomEvent('vault:video-opened', { detail: { item } }));
+
+  let session;
+  try {
+    session = await api.playChannel(item.channelId, { transcode: forceTranscode });
+  } catch (err) {
+    if (token !== openToken) return;
+    const retryable = !FINAL_CODES.has(err.code);
+    setError(err.message || 'This channel could not be started.', retryable, { label: 'Try again', forceTranscode });
+    return;
+  }
+  if (token !== openToken) {
+    api.stopChannelStream(session.sessionId);
+    return;
+  }
+  streamSession = session;
+  const url = api.liveStreamUrl(session.playlist);
+  if (api.isMixedContent(url)) {
+    setError(api.mixedContentHelp(url), false);
+    return;
+  }
+
+  const { attachHls } = await import('./hlsLoader.js');
+  if (token !== openToken) return;
+  const started = await attachHls(videoEl, url, {
+    live: session.live,
+    onFatal: (data) => {
+      if (token === openToken) channelFailed(item, hlsFailureMessage(data));
+    },
+  });
+  if (token !== openToken) return;
+  if (!started) {
+    setError('This browser can\'t play streamed (HLS) video. Try a current version of Chrome, Edge, Firefox or Safari.', false);
+    return;
+  }
+  setStatus(session.plan?.directPlayable === false && !forceTranscode ? 'Converting the stream on the server…' : 'Starting playback…');
+  startWhenReady(token);
+}
+
+/**
+ * play() called while hls.js is still wiring up its MediaSource rejects with
+ * an AbortError ("interrupted by a new load request") and the video then
+ * sits paused on a black frame. Try now, and again once media can play;
+ * only a real autoplay block (NotAllowedError) leaves it to the user.
+ */
+function startWhenReady(token) {
+  const player = document.getElementById('video-player');
+  const attempt = () => {
+    if (token !== openToken || !videoEl.paused) return;
+    videoEl.play().catch((err) => {
+      if (token !== openToken) return;
+      if (err?.name === 'NotAllowedError') {
+        setStatus(null);
+        player?.classList.add('paused', 'show-controls');
+      }
+    });
+  };
+  videoEl.addEventListener('canplay', attempt, { once: true });
+  attempt();
+}
+
+/** First failure → retry with full conversion; second → explain and stop. */
+function channelFailed(item, message) {
+  if (!item || currentItem !== item) return;
+  if (!usingTranscode) {
+    toast.info('Playback failed — converting the stream on the server…');
+    openPlayer(item, { forceTranscode: true });
+    return;
+  }
+  releaseStream();
+  setError(message, true, { label: 'Try again', forceTranscode: true });
+}
+
+/** An item that carries its own URL but isn't a Live TV channel. */
+async function openExternal(item, { token, modal }) {
+  const url = item.streamUrl;
+  showModal(modal);
+  document.getElementById('video-player')?.classList.add('paused', 'show-controls');
+  if (!url) {
+    setError('This item has no playable source.', false);
+    return;
+  }
+  if (api.isMixedContent(url)) {
+    setError(api.mixedContentHelp(url), false);
+    return;
+  }
+  window.dispatchEvent(new CustomEvent('vault:video-opened', { detail: { item } }));
+  if (/\.m3u8(\?|$)/i.test(url)) {
+    const { attachHls } = await import('./hlsLoader.js');
+    if (token !== openToken) return;
+    const started = await attachHls(videoEl, url, {
+      live: Boolean(item.live),
+      onFatal: (data) => {
+        if (token === openToken) setError(`${hlsFailureMessage(data)} The source may block playback from other sites (CORS) or be offline.`, false);
+      },
+    });
+    if (!started) {
+      setError('This browser can\'t play streamed (HLS) video.', false);
+      return;
+    }
+  } else {
+    videoEl.src = url;
+    videoEl.load();
+  }
+  startWhenReady(token);
+}
+
 export function closePlayer() {
+  openToken++;
+  releaseStream();
+  setStatus(null);
   const modal = document.getElementById('video-modal');
   const vEl = document.getElementById('video-element');
+  document.getElementById('video-player')?.classList.remove('is-live', 'is-external');
   window.dispatchEvent(new CustomEvent('vault:video-closed'));
   if (vEl) {
     import('./hlsLoader.js').then(({ detachHls }) => detachHls(vEl)).catch(() => {});

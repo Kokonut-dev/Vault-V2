@@ -62,7 +62,7 @@ export async function renderLiveTV(container) {
         </div>
         <div class="media-card-info">
           <div class="media-card-title">${escapeHtml(channel.name)}</div>
-          <div class="media-card-meta">${channel.number ? `<span class="channel-number">${escapeHtml(channel.number)}</span> · ` : ''}${channel.group ? escapeHtml(channel.group) : 'Live'}</div>
+          <div class="media-card-meta">${channel.number ? `<span class="channel-number">${escapeHtml(channel.number)}</span> · ` : ''}${channel.kind === 'vod' ? 'Movie · ' : ''}${channel.group ? escapeHtml(channel.group) : 'Live'}${channel.playable === false ? ' · Unsupported link' : ''}</div>
         </div>
       </button>`).join('')}</div>`;
 
@@ -78,7 +78,20 @@ export async function renderLiveTV(container) {
       card.addEventListener('click', () => {
         const channel = channels.find(c => c.id === card.dataset.channel);
         window.dispatchEvent(new CustomEvent('vault:open-video', {
-          detail: { item: { id: `live:${channel.id}`, title: channel.name, type: 'video', streamUrl: channel.url, live: true } },
+          // Played through the server (POST /api/livetv/channels/:id/play):
+          // provider URLs never reach the browser, and the server converts
+          // formats browsers can't play (MPEG-TS, MKV, HEVC, AC-3…).
+          detail: {
+            item: {
+              id: `live:${channel.id}`,
+              channelId: channel.id,
+              title: channel.name,
+              type: 'video',
+              poster: channel.logo || null,
+              live: channel.kind !== 'vod',
+              external: true,
+            },
+          },
         }));
       });
       card.addEventListener('contextmenu', (event) => {
