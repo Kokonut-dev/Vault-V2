@@ -313,6 +313,7 @@ By default Vault only works at home (`localhost`). To use from phone anywhere:
 - Channels and movies from an M3U list are played *through the server*: it opens the stream with ffmpeg and repackages it as HLS — copying H.264/AAC, converting anything else (MPEG-TS MPEG-2, MKV, HEVC, AC-3/DTS). This needs ffmpeg; Settings → Live TV warns when it's missing.
 - **Settings → Live TV → Test links** now opens a few sample entries and reports whether they play, need converting, or fail (e.g. "access denied" = expired subscription or wrong password in the link).
 - The player names the cause instead of a generic codec error. Only `http://` and `https://` entries are played; entries pointing at local files, the server itself or cloud-metadata addresses are refused.
+- **"Your browser can't play this stream's format."** in Chrome/Edge: fixed in this version — Chrome added its own HLS player in late 2025 that claims support but fails many streams, so Vault now always plays HLS through the bundled hls.js where the browser supports it (iPhones without it still use Safari's built-in player). If you still see it, hard-reload the page (Ctrl+Shift+R) so the new player code loads.
 - Up to 4 streams run at once (`livetv.maxStreams` in `server/config.json`); idle streams stop after 45 s (live) or 5 min (movies).
 
 **Reset everything:**
