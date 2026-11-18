@@ -19,7 +19,29 @@ import {
 } from './ui.js';
 
 const plural = (n, one, many = `${one}s`) => `${Number(n).toLocaleString()} ${n === 1 ? one : many}`;
-const ADMIN_ONLY = 'Only the server owner (an admin profile) can change this. You can see what’s set up.';
+const ADMIN_ONLY = 'Only an admin profile can change this. You can see what’s set up.';
+const OUTDATED = 'Your Vault server is running an older version that can’t do this yet. Update the server, restart it, then reload this page.';
+
+/**
+ * Why this section is read-only, written so the person can act on it. A 404
+ * from the new endpoints means the website was updated but the server
+ * wasn't; it doesn't mean "you aren't an admin".
+ */
+export async function readOnlyNotice(err) {
+  if (err?.status === 404) return OUTDATED;
+  try {
+    const { profiles = [], activeProfileId } = await api.getProfiles();
+    const me = profiles.find(p => p.id === (activeProfileId || 'default'));
+    const admins = profiles.filter(p => p.isAdmin && p.id !== me?.id).map(p => `“${escapeHtml(p.name)}”`);
+    if (!me) return ADMIN_ONLY;
+    const who = admins.length
+      ? `Switch to ${admins.length === 1 ? admins[0] : `${admins.slice(0, -1).join(', ')} or ${admins.at(-1)}`} to change it, or have that profile make yours an admin`
+      : 'An admin profile can make yours an admin';
+    return `You’re using the “${escapeHtml(me.name)}” profile, which isn’t an admin. ${who} on the <a href="profiles" data-route="/profiles">Profiles page</a>.`;
+  } catch {
+    return ADMIN_ONLY;
+  }
+}
 
 // ---------------------------------------------------------------------------
 // Live TV (SR-5)
@@ -36,7 +58,9 @@ export function liveTvSection(ctx) {
 
   ctx.onLiveTvRerender((state) => renderLiveTv(s, ctx, state));
   ctx.liveTv().then(state => renderLiveTv(s, ctx, state)).catch(err => {
-    s.body.innerHTML = `<p class="settings-callout is-error">${icon('alert-circle', { size: 15 })}<span>Couldn’t load Live TV settings: ${escapeHtml(err.message)}</span></p>`;
+    s.body.innerHTML = err?.status === 404
+      ? `<p class="settings-callout is-info">${icon('info', { size: 15 })}<span>${OUTDATED}</span></p>`
+      : `<p class="settings-callout is-error">${icon('alert-circle', { size: 15 })}<span>Couldn’t load Live TV settings: ${escapeHtml(err.message)}</span></p>`;
   });
   return s;
 }
@@ -91,7 +115,8 @@ function renderLiveTv(s, ctx, state) {
   s.body.append(form);
 
   if (!state.canEdit) {
-    setReadOnly(form, ADMIN_ONLY);
+    setReadOnly(form);
+    readOnlyNotice().then(message => setReadOnly(form, message));
     form.querySelector('[data-route]')?.removeAttribute('disabled');
     return;
   }
@@ -296,9 +321,10 @@ export function linksSection(ctx) {
   const input = form.querySelector('#link-url');
   const check = liveValidate(input, v => validateLink(v));
 
-  ctx.canEdit().then(canEdit => {
-    if (!canEdit) setReadOnly(paste, ADMIN_ONLY);
-  });
+  ctx.liveTv().then(
+    state => (state.canEdit ? null : readOnlyNotice()),
+    err => readOnlyNotice(err),
+  ).then(message => { if (message) setReadOnly(paste, message); });
 
   form.addEventListener('submit', async (event) => {
     event.preventDefault();
@@ -432,7 +458,9 @@ export function notificationsSection(ctx) {
   api.getNotificationSettings()
     .then(data => renderNotifications(s, data))
     .catch(err => {
-      s.body.innerHTML = `<p class="settings-callout is-error">${icon('alert-circle', { size: 15 })}<span>Couldn’t load notification settings: ${escapeHtml(err.message)}</span></p>`;
+      s.body.innerHTML = err?.status === 404
+        ? `<p class="settings-callout is-info">${icon('info', { size: 15 })}<span>${OUTDATED}</span></p>`
+        : `<p class="settings-callout is-error">${icon('alert-circle', { size: 15 })}<span>Couldn’t load notification settings: ${escapeHtml(err.message)}</span></p>`;
     });
   return s;
 }
@@ -465,7 +493,11 @@ function renderNotifications(s, { targets, canEdit }) {
   form.append(push, tg, hooks, actions, report);
   s.body.append(form);
 
-  if (!canEdit) { setReadOnly(form, ADMIN_ONLY); return; }
+  if (!canEdit) {
+    setReadOnly(form);
+    readOnlyNotice().then(message => setReadOnly(form, message));
+    return;
+  }
 
   const urlFields = [[ntfy, 'ntfyUrl'], [discord, 'discordWebhook'], [webhook, 'webhookUrl']];
   urlFields.filter(([f]) => f !== discord).forEach(([f]) => liveValidate(f.input, v => validateLink(v)));

@@ -36,8 +36,21 @@ function ensureDefaults() {
     });
     store.set(data);
   }
+  // There must always be an admin, otherwise nobody can change server
+  // settings and no screen can fix it. This heals installs where the owner
+  // profile was deleted (or predates the flag): the original `default`
+  // profile, or failing that the oldest one, becomes admin again.
+  if (!data.profiles.some(p => p.isAdmin)) {
+    const owner = data.profiles.find(p => p.id === 'default') || data.profiles[0];
+    owner.isAdmin = true;
+    store.set(data);
+  }
   if (!data.activeProfileId) data.activeProfileId = data.profiles[0].id;
   return data;
+}
+
+function adminCount(profiles) {
+  return profiles.filter(p => p.isAdmin).length;
 }
 
 function list() {
@@ -83,7 +96,12 @@ function update(id, updates) {
   if (updates.avatar !== undefined) next.avatar = updates.avatar;
   if (updates.kids !== undefined) next.kids = !!updates.kids;
   if (updates.maxRating !== undefined) next.maxRating = updates.maxRating === null ? null : Number(updates.maxRating);
-  if (updates.isAdmin !== undefined) next.isAdmin = !!updates.isAdmin;
+  if (updates.isAdmin !== undefined) {
+    next.isAdmin = !!updates.isAdmin;
+    if (!next.isAdmin && data.profiles[idx].isAdmin && adminCount(data.profiles) <= 1) {
+      throw new Error('Vault needs at least one admin profile. Make another profile an admin first.');
+    }
+  }
   if (updates.pin !== undefined) next.pinHash = updates.pin ? bcrypt.hashSync(String(updates.pin), 10) : null;
   data.profiles[idx] = next;
   store.set(data);
@@ -94,6 +112,10 @@ function update(id, updates) {
 function remove(id) {
   const data = ensureDefaults();
   if (data.profiles.length <= 1) throw new Error('At least one profile is required');
+  const target = data.profiles.find(p => p.id === id);
+  if (target?.isAdmin && adminCount(data.profiles) <= 1) {
+    throw new Error('This is the only admin profile. Make another profile an admin before deleting it.');
+  }
   const next = data.profiles.filter(p => p.id !== id);
   if (next.length === data.profiles.length) return false;
   data.profiles = next;

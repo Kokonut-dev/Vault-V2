@@ -118,7 +118,6 @@ export function renderSettings(container) {
       if (rerender) liveTvRerenders.forEach(fn => fn(state));
     },
     onLiveTvRerender: fn => liveTvRerenders.push(fn),
-    canEdit: () => ctx.liveTv().then(s => Boolean(s.canEdit)).catch(() => false),
     select: (id, opts) => select(id, opts),
   };
 
