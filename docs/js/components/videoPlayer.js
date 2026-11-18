@@ -232,9 +232,13 @@ export function initVideoPlayer() {
     });
   });
 
-  videoEl.addEventListener('loadedmetadata', () => {
+  // durationchange too: a movie converted on the server grows while the
+  // conversion runs, so the length known at loadedmetadata is only the start.
+  const syncDuration = () => {
     if (durationEl) durationEl.textContent = currentItem?.live || !Number.isFinite(videoEl.duration) ? 'Live' : formatTime(videoEl.duration);
-  });
+  };
+  videoEl.addEventListener('loadedmetadata', syncDuration);
+  videoEl.addEventListener('durationchange', syncDuration);
   videoEl.addEventListener('playing', () => setStatus(null));
   videoEl.addEventListener('waiting', () => {
     if (streamSession && !videoEl.currentTime) setStatus('Buffering…');

@@ -38,7 +38,9 @@ const media = dom.window.HTMLMediaElement.prototype;
 media.play = function play() { return Promise.resolve(); };
 media.pause = function pause() {};
 media.load = function load() {};
-media.canPlayType = () => '';
+// Current Chrome: claims native HLS ("maybe") but can't play it — the
+// player must still go through hls.js wherever MediaSource exists.
+media.canPlayType = (type) => (/mpegurl/i.test(type) ? 'maybe' : '');
 window.MediaSource = function MediaSource() {};
 
 // Fake hls.js: records sources, lets the test fire fatal errors.

@@ -3,8 +3,13 @@
  * actually about to be played.
  *
  * Why lazy: hls.js is ~250 KB and the vast majority of sessions play a plain
- * MP4/MKV stream or a progressive transcode. Safari plays HLS natively, so the
- * library is not fetched at all there.
+ * MP4/MKV stream or a progressive transcode, so it is only fetched when an
+ * HLS stream (Live TV, adaptive streaming) is actually opened.
+ *
+ * hls.js is used wherever MediaSource exists — Chrome, Edge, Firefox, desktop
+ * Safari and iOS 17.1+ (ManagedMediaSource). The browser's own HLS player is
+ * only a fallback for devices without MediaSource, because canPlayType() is
+ * not a reliable signal (Chrome answers "maybe" and then can't play).
  *
  * Usage from the player:
  *   const ok = await attachHls(videoEl, api.hlsMasterUrl(item.id));
@@ -12,10 +17,17 @@
  */
 let hlsModule = null;
 
+/** MediaSource in any form hls.js can drive (ManagedMediaSource = iOS 17.1+). */
+function mseAvailable() {
+  return Boolean(window.MediaSource || window.ManagedMediaSource || window.WebKitMediaSource);
+}
+
+function nativeHls(videoEl) {
+  return Boolean(videoEl?.canPlayType?.('application/vnd.apple.mpegurl'));
+}
+
 export function hlsSupported() {
-  if (window.Hls) return true;
-  const video = document.createElement('video');
-  return !!video.canPlayType('application/vnd.apple.mpegurl');
+  return mseAvailable() || nativeHls(document.createElement('video'));
 }
 
 async function loadHls() {
@@ -35,15 +47,29 @@ export async function attachHls(videoEl, url, { startPosition = 0, live = false,
   if (!videoEl || !url) return false;
   detachHls(videoEl);
 
-  // Native HLS (Safari, iOS, some smart-TV browsers) — no library needed.
-  if (videoEl.canPlayType('application/vnd.apple.mpegurl')) {
+  // hls.js first, native HLS only where MediaSource doesn't exist (iPhones
+  // before iOS 17.1, some TV browsers). The old order — native whenever
+  // canPlayType() answered — broke when Chrome shipped a built-in HLS
+  // player in late 2025: it answers "maybe" yet fails many streams with
+  // MEDIA_ERR_SRC_NOT_SUPPORTED, and hls.js was never loaded. This is the
+  // order hls.js itself recommends (check Hls.isSupported() first).
+  if (mseAvailable()) {
+    const started = await attachWithLibrary(videoEl, url, { startPosition, live, itemId, onFatal });
+    if (started) return true;
+  }
+  if (nativeHls(videoEl)) {
     videoEl.src = url;
-    if (startPosition) videoEl.currentTime = startPosition;
+    if (startPosition) {
+      videoEl.addEventListener('loadedmetadata', () => {
+        try { videoEl.currentTime = startPosition; } catch { /* not seekable yet */ }
+      }, { once: true });
+    }
     return true;
   }
+  return false;
+}
 
-  if (!window.MediaSource) return false;
-
+async function attachWithLibrary(videoEl, url, { startPosition, live, itemId, onFatal }) {
   try {
     const Hls = await loadHls();
     if (!Hls?.isSupported?.()) return false;
