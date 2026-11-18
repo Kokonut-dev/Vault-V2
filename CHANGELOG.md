@@ -2,6 +2,26 @@
 
 ## [3.0.0] — in progress (branch `arena/0deefe55-vault-v2`)
 
+### Fixed — fresh installs on Linux (and npm 12)
+- `npm start` before `npm install` (or after running it in the wrong folder)
+  crash-looped on `Cannot find module 'dotenv'`. The launcher now installs the
+  packages itself, then starts the server; if that fails it says why once, in
+  the terminal and in the app, instead of restarting forever. Running
+  `node index.js` directly prints a one-line explanation (exit 78).
+- A root `package.json`: `npm install` / `npm start` now work from the
+  `Vault-V2` folder too (previously `npm error enoent Could not read package.json`).
+- npm 12 blocks dependency install scripts unless approved, so ffmpeg-static
+  never downloaded ffmpeg (no thumbnails, conversions or Live TV). It is now
+  approved in `allowScripts`; ffmpeg-static/ffprobe-static became optional
+  dependencies so a failed ffmpeg download no longer aborts the whole install.
+- Node 20 is the real minimum (`file-type` needs it); `engines` said 18. Older
+  Node now gets a clear message.
+- CI: a fresh-install job (Node 20, LTS, newest) runs root `npm install` +
+  `npm start`, checks ffmpeg was downloaded, and the self-install path.
+- README rewritten around the actual install (Linux Node/nvm notes, expected
+  output, updating, install troubleshooting) and corrected (rate limits, themes,
+  settings locations, Docker).
+
 ### Fixed — deploy failing on the reorder UI test
 The GitHub Pages deploy of the previous merge failed in the `Server tests` step,
 so none of those changes reached the site. `detail.js` and `playlists.js`

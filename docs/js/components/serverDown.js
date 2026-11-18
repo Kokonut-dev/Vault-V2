@@ -36,8 +36,10 @@ export function mountServerDown(host, { onUp, compact = false } = {}) {
       host.innerHTML = `
         <div class="server-down-head">
           <span class="server-down-icon is-busy" aria-hidden="true">${icon('loader', { size: 18 })}</span>
-          <div><p class="server-down-title">Starting the Vault server…</p>
-          <p class="server-down-text">The first start scans your library, which can take a minute.</p></div>
+          <div><p class="server-down-title">${launcher?.installing ? 'Installing Vault’s packages…' : 'Starting the Vault server…'}</p>
+          <p class="server-down-text">${launcher?.installing
+            ? 'First run only — this downloads what the server needs and usually takes under a minute.'
+            : 'The first start scans your library, which can take a minute.'}</p></div>
         </div>`;
       return;
     }

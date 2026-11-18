@@ -22,6 +22,7 @@ const os = require('os');
 const path = require('path');
 const fs = require('fs');
 const { spawn } = require('child_process');
+const deps = require('./utils/deps');
 
 const SERVER_DIR = __dirname;
 const VERSION = 1;
@@ -77,8 +78,10 @@ const state = {
   startedAt: null,
   lastExit: null, // { code, signal, at }
   reason: null,
+  installing: false, // running `npm install` before the first start
 };
 let child = null;
+let installer = null; // `npm install` child on a fresh clone
 let stopRequested = false;
 let readyTimer = null;
 const crashes = [];
@@ -112,8 +115,74 @@ function waitUntilReady(proc) {
   readyTimer.unref?.();
 }
 
+/**
+ * A fresh clone (or `npm install` run in the wrong folder) has no
+ * node_modules: install them here instead of crash-looping on
+ * "Cannot find module 'dotenv'".
+ */
+function installDependencies(missing) {
+  if (installer) return true;
+  stopRequested = false;
+  state.status = 'starting';
+  state.installing = true;
+  state.reason = null;
+  state.startedAt = new Date().toISOString();
+  say(`Vault's packages aren't installed yet (missing ${missing.slice(0, 3).join(', ')}${missing.length > 3 ? ', …' : ''}).`);
+  say(`installing them now with "npm install" in ${SERVER_DIR} — first run only, usually under a minute…`);
+  const { command, args, shell } = deps.npmCommand(['install', '--no-audit', '--no-fund']);
+  let proc;
+  try {
+    proc = spawn(command, args, { cwd: SERVER_DIR, env: deps.cleanNpmEnv(), stdio: ['ignore', 'pipe', 'pipe'], shell, windowsHide: true });
+  } catch (err) {
+    return installFailed(`could not run npm (${err.message})`);
+  }
+  installer = proc;
+  const forward = (stream, target) => stream.on('data', (chunk) => {
+    remember(chunk);
+    if (logStream) logStream.write(chunk);
+    else if (!background) target.write(chunk);
+  });
+  forward(proc.stdout, process.stdout);
+  forward(proc.stderr, process.stderr);
+  let failed = null;
+  proc.on('error', (err) => { failed = `could not run npm (${err.message})`; });
+  proc.on('close', (code) => {
+    if (installer !== proc) return;
+    installer = null;
+    state.installing = false;
+    if (stopRequested) {
+      state.status = 'stopped';
+      say('install cancelled');
+      if (shuttingDown) process.exit(0);
+      return;
+    }
+    const still = deps.missingDependencies(SERVER_DIR);
+    if (failed || code !== 0 || still.length) return installFailed(failed || `npm install exited with code ${code}`);
+    say('packages installed');
+    startServer();
+  });
+  return true;
+}
+
+function installFailed(why) {
+  installer = null;
+  state.installing = false;
+  state.status = 'crashed';
+  state.reason = `Couldn't install Vault's packages automatically (${why}). Open a terminal in ${SERVER_DIR}, run "npm install", then press Try again.`;
+  say(state.reason);
+  return false;
+}
+
 function startServer() {
-  if (child) return false;
+  if (child || installer) return false;
+  if (deps.nodeTooOld()) {
+    state.status = 'crashed';
+    state.reason = deps.explainNodeTooOld().replace(/^Error:\s*/, '');
+    say(state.reason);
+    return false;
+  }
+  const missing = deps.missingDependencies(SERVER_DIR);
+  if (missing.length) return installDependencies(missing);
   stopRequested = false;
   state.status = 'starting';
   state.reason = null;
@@ -189,10 +258,16 @@ function lastProblem() {
   const interesting = tail.filter(l => /error|EADDRINUSE|cannot|failed|not found|denied/i.test(l));
   const line = (interesting.length ? interesting : tail).slice(-1)[0] || '';
   if (/EADDRINUSE/.test(line)) return `Port ${serverPort()} is already in use — another Vault (or another app) is running on it`;
-  return line.replace(/^.*?\]\s*/, '').slice(0, 300);
+  return line.replace(/^Error:\s*/, '').replace(/^.*?\]\s*/, '').slice(0, 300);
 }
 
 function stopServer() {
+  if (installer) {
+    stopRequested = true;
+    state.status = 'stopping';
+    try { installer.kill('SIGTERM'); } catch { /* gone */ }
+    return true;
+  }
   if (!child) return false;
   stopRequested = true;
   state.status = 'stopping';
@@ -240,6 +315,7 @@ function publicStatus(includeDetail) {
     startedAt: state.startedAt,
     lastExit: state.lastExit,
     reason: includeDetail ? state.reason : null,
+    installing: Boolean(state.installing),
     serverUrl: `${serverScheme()}://localhost:${serverPort()}`,
     port: serverPort(),
     platform: process.platform,

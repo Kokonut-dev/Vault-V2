@@ -1,0 +1,4 @@
+{
+  "//": "Tells Node (tests, scripts/*-check.js) that the app code here is ES modules. Browsers ignore this file.",
+  "type": "module"
+}
