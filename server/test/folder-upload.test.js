@@ -306,8 +306,13 @@ test('Upload page: pick a folder → review → queue uploads it, skipping what 
     assert.equal(uploadBtn.textContent, 'Upload 3 files', 'the existing Hunter track is not counted');
     assert.equal(host.querySelector('#metadata-form').innerHTML, '', 'no single-file title form for folders');
 
+    // Record every message the progress line shows (the rate-limit notice
+    // only lasts as long as the wait).
+    const seen = [];
+    const progressText = host.querySelector('#progress-text');
+    new window.MutationObserver(() => seen.push(progressText.textContent)).observe(progressText, { childList: true, characterData: true, subtree: true });
     uploadBtn.click();
-    await until(() => /upload limit/.test(host.querySelector('#progress-text').textContent));
+    await until(() => seen.some(t => /upload limit/.test(t)));
     await until(() => sent.length === 1 && host.querySelector('#upload-progress').style.display === 'none');
 
     assert.deepEqual(sent, [{ type: 'music', paths: ['Mixtape/cover.jpg', 'Mixtape/01 Intro.mp3', 'Mixtape/02 Song.mp3'] }]);
@@ -316,6 +321,7 @@ test('Upload page: pick a folder → review → queue uploads it, skipping what 
     assert.ok(!fs.existsSync(path.join(mediaPaths.music, 'Mixtape', 'readme.txt')));
     assert.ok(!fs.existsSync(path.join(mediaPaths.music, 'Björk', 'Homogenic', '01 Hunter_1.mp3')), 'no duplicate copy');
     assert.equal(host.querySelector('#folder-review').hidden, true, 'page resets after success');
+    assert.ok(seen.every(t => !/\d\.\d{3,} B/.test(t)), `no raw float byte counts: ${seen.find(t => /\d\.\d{3,} B/.test(t))}`);
   } finally {
     globalThis.fetch = realFetch;
     dom.window.close();

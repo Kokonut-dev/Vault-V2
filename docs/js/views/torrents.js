@@ -21,8 +21,8 @@ const LIBRARIES = {
 const ACTIVE = new Set(['metadata', 'downloading', 'moving', 'seeding', 'queued', 'waiting-vpn']);
 
 export function formatBytes(n) {
-  const v = Number(n) || 0;
-  if (v < 1024) return `${v} B`;
+  const v = Math.max(0, Number(n) || 0);
+  if (v < 1024) return `${Math.round(v)} B`;
   const units = ['KB', 'MB', 'GB', 'TB'];
   let x = v / 1024;
   let i = 0;

@@ -537,7 +537,9 @@ export function renderUpload(container) {
               attempts++;
               const wait = Math.min(err.retryAfter || 60, 15 * 60);
               const until = Date.now() + wait * 1000;
-              const tick = setInterval(() => paint(0, `Waiting for the server’s upload limit · continuing in ${Math.max(0, Math.ceil((until - Date.now()) / 1000))} s`), 1000);
+              const say = () => paint(0, `Waiting for the server’s upload limit · continuing in ${Math.max(0, Math.ceil((until - Date.now()) / 1000))} s`);
+              say();
+              const tick = setInterval(say, 1000);
               // eslint-disable-next-line no-await-in-loop
               await sleep(wait * 1000);
               clearInterval(tick);

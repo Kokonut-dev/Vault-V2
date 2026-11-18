@@ -254,8 +254,8 @@ export function batchesFor(groups, { maxFiles = BATCH_MAX_FILES, maxBytes = BATC
 }
 
 export function formatBytes(bytes) {
-  const n = Number(bytes) || 0;
-  if (n < 1024) return `${n} B`;
+  const n = Math.max(0, Number(bytes) || 0);
+  if (n < 1024) return `${Math.round(n)} B`;
   const units = ['KB', 'MB', 'GB', 'TB'];
   let v = n / 1024;
   let i = 0;
