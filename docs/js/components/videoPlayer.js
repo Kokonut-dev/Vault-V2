@@ -466,6 +466,13 @@ export function initVideoPlayer() {
 }
 
 export function openPlayer(item, { forceTranscode = false } = {}) {
+  // Podcasts and audiobooks reach here from cards, search, history and
+  // /watch/:id (only `music` was routed to the audio player). The video
+  // player has no audio-only path, so hand them over.
+  if (item && !item.live && !item.channelId && api.isAudioItem(item)) {
+    window.dispatchEvent(new CustomEvent('vault:play', { detail: { item } }));
+    return;
+  }
   const token = ++openToken;
   if (item && isExternalItem(item)) item.external = true;
   // Switching items (or retrying) must not leave the previous restream

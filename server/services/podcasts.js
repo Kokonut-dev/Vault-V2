@@ -8,8 +8,12 @@ const { getConfig } = require('../config');
 const logger = require('../utils/logger');
 const extras = require('./extras');
 const events = require('./events');
+// Feed and enclosure URLs come from users and from third-party XML, so they
+// go through the SSRF guard (no cloud-metadata / link-local targets, every
+// redirect re-checked) instead of a bare fetch().
+const { safeFetchText, safeFetchStream, friendlyError } = require('../utils/safeFetch');
 
-const AUDIO_EXT = /\.(mp3|m4a|aac|ogg|opus|flac|wav)(\?|$)/i;
+const AUDIO_EXT = /\.(mp3|m4a|m4b|aac|ogg|oga|opus|flac|wav)(\?|$)/i;
 
 function decodeEntities(text) {
   return String(text || '')
@@ -78,10 +82,31 @@ function parseFeed(xml) {
 }
 
 async function fetchFeed(url) {
-  const res = await fetch(url, { headers: { 'User-Agent': 'Vault/3.0 (podcast fetcher)', Accept: 'application/rss+xml, application/xml, text/xml, */*' } });
-  if (!res.ok) throw new Error(`Feed responded ${res.status}`);
-  const xml = await res.text();
+  let xml;
+  try {
+    ({ text: xml } = await safeFetchText(url, {
+      maxBytes: 15 * 1024 * 1024,
+      timeoutMs: 20000,
+      accept: 'application/rss+xml, application/atom+xml, application/xml, text/xml, */*',
+    }));
+  } catch (err) {
+    throw new Error(friendlyError(err));
+  }
   return parseFeed(xml);
+}
+
+/** Keep per-episode state (download, played) across feed refreshes. */
+function mergeEpisodes(previous = [], fresh = []) {
+  const byGuid = new Map(previous.map(item => [item.guid, item]));
+  return fresh.map(item => {
+    const old = byGuid.get(item.guid);
+    if (!old) return item;
+    const kept = {};
+    for (const key of ['localPath', 'downloadedAt', 'played', 'position']) {
+      if (old[key] !== undefined) kept[key] = old[key];
+    }
+    return { ...item, ...kept };
+  });
 }
 
 /** Add (or refresh) a feed and cache its episode list. */
@@ -96,7 +121,8 @@ async function subscribe(url, options = {}) {
     autoDownload: options.autoDownload || getConfig().podcasts?.autoDownload || false,
     items: parsed.items.slice(0, maxEpisodes),
   });
-  extras.updateFeed(entry.id, { items: parsed.items.slice(0, maxEpisodes) });
+  // Re-subscribing to a known feed must keep its downloaded episodes.
+  extras.updateFeed(entry.id, { items: mergeEpisodes(entry.items, parsed.items).slice(0, maxEpisodes), lastFetchedAt: new Date().toISOString() });
   events.broadcast('podcast:changed', { id: entry.id, action: 'subscribe', title: entry.title });
   return entry;
 }
@@ -105,14 +131,35 @@ async function refreshFeed(id) {
   const feed = extras.getFeeds().find(f => f.id === id);
   if (!feed) return null;
   const parsed = await fetchFeed(feed.url);
+  const maxEpisodes = getConfig().podcasts?.maxEpisodesPerFeed || 200;
   const updated = extras.updateFeed(id, {
     title: parsed.feed.title || feed.title,
     description: parsed.feed.description || feed.description,
     artwork: parsed.feed.artwork || feed.artwork,
-    items: parsed.items,
+    // A refresh used to replace the list and forget which episodes were
+    // downloaded (localPath) — they showed as not saved afterwards.
+    items: mergeEpisodes(feed.items, parsed.items).slice(0, maxEpisodes),
     lastFetchedAt: new Date().toISOString(),
   });
   events.broadcast('podcast:changed', { id, action: 'refresh', episodes: parsed.items.length });
+
+  // Auto-download (the toggle was saved but never acted on): fetch episodes
+  // that are new since the last refresh, newest first, at most 3 per run so
+  // switching it on doesn't pull a whole back-catalogue.
+  if (feed.autoDownload) {
+    const known = new Set((feed.items || []).map(item => item.guid));
+    const fresh = parsed.items.filter(item => !known.has(item.guid)).slice(0, 3);
+    (async () => {
+      for (const episode of fresh) {
+        try {
+          // eslint-disable-next-line no-await-in-loop
+          await downloadEpisode(id, episode.guid);
+        } catch (err) {
+          logger.warn(`[Podcast] auto-download failed for ${episode.title}: ${err.message}`);
+        }
+      }
+    })();
+  }
   return updated;
 }
 
@@ -140,8 +187,7 @@ async function downloadEpisode(feedId, guid) {
   const targetDir = path.join(getConfig().media.paths.podcasts || path.join(__dirname, '../media/podcasts'), safeName(feed.title));
   await fs.ensureDir(targetDir);
 
-  const ext = (episode.url.match(AUDIO_EXT) || [, '.mp3'])[1].replace('?', '');
-  const fileName = `${String(episode.published || '').slice(0, 10) || 'episode'} - ${safeName(episode.title)}${ext}`;
+  const fileName = episodeFileName(episode);
   const targetPath = path.join(targetDir, fileName);
   if (await fs.pathExists(targetPath)) {
     return { path: targetPath, skipped: true };
@@ -150,23 +196,25 @@ async function downloadEpisode(feedId, guid) {
   const jobId = `podcast_${feedId}_${Date.now()}`;
   events.jobStart(jobId, 'podcast-download', `Downloading ${episode.title}`, episode.size || 0);
 
-  const res = await fetch(episode.url, { headers: { 'User-Agent': 'Vault/3.0 (podcast downloader)' } });
-  if (!res.ok) throw new Error(`Download failed: ${res.status}`);
-
   const tmp = `${targetPath}.part`;
-  const total = Number(res.headers.get('content-length')) || episode.size || 0;
-  let received = 0;
-  const stream = fs.createWriteStream(tmp);
-  const reader = res.body.getReader();
+  const maxBytes = (getConfig().media?.maxUploadSizeMB || 10240) * 1024 * 1024;
+  let stream = null;
+  let res = null;
 
   try {
-    // eslint-disable-next-line no-constant-condition
-    while (true) {
-      // eslint-disable-next-line no-await-in-loop
-      const { done, value } = await reader.read();
-      if (done) break;
-      received += value.length;
-      if (!stream.write(Buffer.from(value))) {
+    try {
+      ({ res } = await safeFetchStream(episode.url, { accept: 'audio/*, */*' }));
+    } catch (err) {
+      throw new Error(`Download failed: ${friendlyError(err)}`);
+    }
+    const total = Number(res.headers['content-length']) || episode.size || 0;
+    if (total > maxBytes) throw new Error('Download failed: the episode is larger than the upload size limit');
+    let received = 0;
+    stream = fs.createWriteStream(tmp);
+    for await (const chunk of res) {
+      received += chunk.length;
+      if (received > maxBytes) throw new Error('Download failed: the episode is larger than the upload size limit');
+      if (!stream.write(chunk)) {
         // eslint-disable-next-line no-await-in-loop
         await new Promise(resolve => stream.once('drain', resolve));
       }
@@ -180,18 +228,49 @@ async function downloadEpisode(feedId, guid) {
 
     events.jobFinish(jobId, 'done', { path: targetPath });
     const { scanFile } = require('./scanner');
-    await scanFile(targetPath).catch(() => {});
+    const scanned = await scanFile(targetPath).catch(() => null);
+    if (scanned?.id) applyFeedMetadata(scanned, feed, episode);
     return { path: targetPath };
   } catch (err) {
-    stream.destroy();
+    res?.destroy?.();
+    stream?.destroy();
     await fs.remove(tmp).catch(() => {});
     events.jobFinish(jobId, 'error', { error: err.message });
     throw err;
   }
 }
 
+// Many enclosures carry no ID3 tags, which left downloaded episodes in the
+// library as "2026-11-09 - Episode One_ Boats" by "Unknown Artist". The feed
+// knows better, so fill in whatever the tags did not provide.
+function applyFeedMetadata(item, feed, episode) {
+  const libraryService = require('./library');
+  const base = path.basename(item.path || '', path.extname(item.path || ''));
+  const blank = v => !v || /^unknown( artist| album)?$/i.test(String(v)) || v === base;
+  const updates = { podcastFeedId: feed.id, episodeGuid: episode.guid };
+  if (blank(item.title) && episode.title) updates.title = episode.title;
+  if (blank(item.album) && feed.title) updates.album = feed.title;
+  if (blank(item.artist) && feed.title) updates.artist = feed.author || feed.title;
+  if (episode.published && !item.published) updates.published = episode.published;
+  if (episode.description && !item.description) updates.description = episode.description;
+  try { libraryService.updateItem(item.id, updates); } catch (err) { logger.warn(`[Podcast] metadata update failed: ${err.message}`); }
+}
+
+// "2026-11-09 - Episode One_ Boats.mp3". The extension must keep its dot or
+// the scanner ignores the file, and RSS pubDates ("Mon, 09 Nov 2026 ...")
+// are turned into a sortable ISO date instead of being cut at 10 characters.
+function episodeFileName(episode) {
+  let pathname = '';
+  try { pathname = new URL(episode.url).pathname; } catch { pathname = String(episode.url || ''); }
+  const m = pathname.match(/\.(mp3|m4a|m4b|aac|ogg|oga|opus|flac|wav)$/i);
+  const ext = m ? `.${m[1].toLowerCase()}` : '.mp3';
+  const ts = Date.parse(episode.published || '');
+  const date = Number.isFinite(ts) ? new Date(ts).toISOString().slice(0, 10) : 'episode';
+  return `${date} - ${safeName(episode.title || episode.guid || 'Untitled')}${ext}`;
+}
+
 function safeName(name) {
   return String(name).replace(/[\\/:*?"<>|]/g, '_').replace(/\s+/g, ' ').slice(0, 120).trim();
 }
 
-module.exports = { parseFeed, fetchFeed, subscribe, refreshFeed, refreshAll, downloadEpisode, safeName };
+module.exports = { parseFeed, fetchFeed, mergeEpisodes, subscribe, refreshFeed, refreshAll, downloadEpisode, safeName, episodeFileName };

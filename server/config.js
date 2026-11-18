@@ -54,7 +54,7 @@ const DEFAULT_CONFIG = {
     scanSchedule: 'off',
     supportedExtensions: {
       video: ['.mp4', '.mkv', '.webm', '.avi', '.mov', '.wmv', '.flv', '.m4v', '.mpg', '.mpeg'],
-      audio: ['.mp3', '.flac', '.wav', '.ogg', '.opus', '.m4a', '.aac', '.wma', '.aiff', '.alac'],
+      audio: ['.mp3', '.flac', '.wav', '.ogg', '.oga', '.opus', '.m4a', '.m4b', '.aac', '.wma', '.aiff', '.aif', '.alac'],
       subtitle: ['.srt', '.vtt', '.ass', '.ssa']
     },
     maxUploadSizeMB: 10240,

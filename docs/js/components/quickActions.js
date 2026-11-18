@@ -6,6 +6,7 @@
  * These were dispatched as `vault:*` events but nothing listened, so the menu
  * entries silently did nothing. One module owns them all.
  */
+import { seekActive } from '../utils/activeMedia.js';
 import { api } from '../api.js';
 import { store } from '../store.js';
 import { toast } from './toast.js';
@@ -228,14 +229,7 @@ async function matchMetadata(detail) {
 function handleSeek(detail) {
   const time = Number(detail?.time);
   if (!Number.isFinite(time)) return;
-  const media = document.querySelector('#video-element')
-    || document.querySelector('#audio-element')
-    || document.querySelector('audio');
-  if (media) {
-    media.currentTime = Math.max(0, time);
-    if (media.paused) media.play().catch(() => {});
-    toast.info(`Jumped to ${formatTime(time)}`);
-  }
+  if (seekActive(time)) toast.info(`Jumped to ${formatTime(time)}`);
 }
 
 async function handleLibraryRefresh() {

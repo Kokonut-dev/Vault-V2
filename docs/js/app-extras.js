@@ -7,6 +7,7 @@
  * Kept out of the inline bootstrap in index.html so the shell stays readable;
  * index.html calls `initAppExtras()` after the players are initialised.
  */
+import { activeMedia as activeMediaElement, activeTime, activeDuration } from './utils/activeMedia.js';
 import { store } from './store.js';
 import { api } from './api.js';
 import { toast } from './components/toast.js';
@@ -305,7 +306,7 @@ function initAmbient() {
 const syncplayState = { roomId: null, memberId: null, last: null };
 
 function activeMedia() {
-  return document.getElementById('video-element') || document.getElementById('audio-element');
+  return activeMediaElement();
 }
 
 function applySyncState(data) {
@@ -482,16 +483,10 @@ export function initAppExtras() {
   // timer, bookmark capture and the lyrics window). Previously referenced as
   // `window.vaultPlayback` but never defined, so seeks silently did nothing.
   window.vaultPlayback = window.vaultPlayback || {
-    currentTime() {
-      const media = document.getElementById('video-element') || document.querySelector('audio');
-      return media && Number.isFinite(media.currentTime) ? media.currentTime : 0;
-    },
-    duration() {
-      const media = document.getElementById('video-element') || document.querySelector('audio');
-      return media && Number.isFinite(media.duration) ? media.duration : 0;
-    },
+    currentTime: () => activeTime(),
+    duration: () => activeDuration(),
     paused() {
-      const media = document.getElementById('video-element') || document.querySelector('audio');
+      const media = activeMediaElement();
       return media ? media.paused : true;
     },
     seek(time) {

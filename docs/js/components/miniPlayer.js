@@ -241,18 +241,18 @@ function initVisualizer() {
   visualizerStarted = true;
 
   const bars = visualizerEl.querySelectorAll('.visualizer-bar');
-  const dataArray = new Uint8Array(256);
+  let buf = new Uint8Array(128);
 
   function animate() {
     visualizerRaf = requestAnimationFrame(animate);
     const nowPlaying = document.getElementById('now-playing');
     if (!nowPlaying || !nowPlaying.classList.contains('active')) return;
+    // Audio is only routed through Web Audio on demand (see audioPlayer.js);
+    // ask for the analyser while Now Playing is visible.
+    window.VAULT_AUDIO?.useAnalyser?.();
     const analyser = window.VAULT_AUDIO?.getAnalyser();
     if (!analyser) return;
-    if (dataArray.length !== analyser.frequencyBinCount) {
-      // recreate locally
-    }
-    const buf = new Uint8Array(analyser.frequencyBinCount);
+    if (buf.length !== analyser.frequencyBinCount) buf = new Uint8Array(analyser.frequencyBinCount);
     analyser.getByteFrequencyData(buf);
     bars.forEach((bar, idx) => {
       const value = buf[idx * 2] || 0;

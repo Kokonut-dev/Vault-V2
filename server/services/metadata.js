@@ -1,27 +1,23 @@
 const path = require('path');
 const fs = require('fs-extra');
-const { parseFile } = require('music-metadata');
+// music-metadata is ESM-only (v8+). Load it with import() so the server also
+// starts on Node 18/20, where require() of an ES module throws. v8.x is also
+// avoided on purpose: with current transitive deps it rejects valid FLAC,
+// Ogg (Opus/Vorbis), AIFF and WAV files ("Invalid FLAC preamble"), leaving
+// those tracks with no tags and a 0:00 duration.
+let musicMetadata = null;
+async function parseFile(filePath, options) {
+  if (!musicMetadata) musicMetadata = await import('music-metadata');
+  return musicMetadata.parseFile(filePath, options);
+}
 const logger = require('../utils/logger');
 const { parseMovieFilename } = require('../utils/fileUtils');
 
-let ffmpeg = null;
-let ffprobe = null;
-
-try {
-  const ffmpegStatic = require('ffmpeg-static');
-  const ffprobeStatic = require('ffprobe-static');
-  ffmpeg = require('fluent-ffmpeg');
-  ffmpeg.setFfmpegPath(ffmpegStatic);
-  ffmpeg.setFfprobePath(ffprobeStatic.path);
-  logger.info('[Metadata] Using static ffmpeg/ffprobe');
-} catch (err) {
-  try {
-    ffmpeg = require('fluent-ffmpeg');
-    logger.info('[Metadata] Using system ffmpeg/ffprobe');
-  } catch {
-    logger.warn('[Metadata] ffmpeg not available, video metadata will be limited');
-  }
-}
+// Shared binary resolution (utils/ffmpegBinaries.js): fluent-ffmpeg's path is
+// process-global, so pointing it at a missing bundled binary here used to
+// break transcoding everywhere.
+const ffmpeg = require('../utils/ffmpegBinaries').fluentFfmpeg();
+if (!ffmpeg) logger.warn('[Metadata] fluent-ffmpeg not available, video metadata will be limited');
 
 async function extractAudioMetadata(filePath) {
   try {
@@ -92,7 +88,9 @@ async function extractAudioMetadata(filePath) {
       bitrate: format.bitrate || 0,
       sampleRate: format.sampleRate || 0,
       codec: format.codec || format.dataformat || 'unknown',
-      lossless: ['flac', 'alac', 'wav', 'aiff', 'ape'].includes(String(format.codec || format.dataformat || '').toLowerCase()),
+      lossless: typeof format.lossless === 'boolean'
+        ? format.lossless
+        : /^(flac|alac|ape|wavpack|pcm)/i.test(String(format.codec || format.dataformat || '')),
       lyrics,
       lyricsLrc,
       coverArtPath,
@@ -106,6 +104,8 @@ async function extractAudioMetadata(filePath) {
       artist: 'Unknown Artist',
       album: 'Unknown Album',
       duration: 0,
+      // Unreadable tags shouldn't also cost the album its folder.jpg.
+      coverArtPath: findSidecarArtwork(filePath),
     };
   }
 }

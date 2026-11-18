@@ -4,6 +4,12 @@
 import { getApiBaseUrl } from './config.js';
 import { store } from './store.js';
 
+// Audio the browser plays as-is; everything else goes through the server's
+// audio converter (WMA, AIFF, APE, ALAC…). Safari can't do Ogg/FLAC on old
+// versions — those fall back to the converter on the first media error.
+const DIRECT_AUDIO_EXTENSIONS = ['.mp3', '.wav', '.ogg', '.oga', '.opus', '.m4a', '.m4b', '.aac', '.flac', '.webm', '.weba'];
+const AUDIO_EXTENSIONS = [...DIRECT_AUDIO_EXTENSIONS, '.wma', '.aiff', '.aif', '.alac', '.ape', '.wv'];
+
 class ApiClient {
   constructor() {
     this._tokenCache = null;
@@ -371,9 +377,10 @@ class ApiClient {
     return `${this.baseUrl}/api/transcode/${id}?quality=${quality}&token=${encodeURIComponent(token || '')}`;
   }
 
-  getAudioTranscodeUrl(id, codec = 'aac') {
+  getAudioTranscodeUrl(id, codec = 'aac', start = 0) {
     const token = store.get('token') || localStorage.getItem('vault_token');
-    return `${this.baseUrl}/api/transcode/audio/${id}?codec=${codec}&token=${encodeURIComponent(token || '')}`;
+    const startParam = start > 0 ? `&start=${Math.floor(start * 10) / 10}` : '';
+    return `${this.baseUrl}/api/transcode/audio/${id}?codec=${codec}${startParam}&token=${encodeURIComponent(token || '')}`;
   }
 
   _extOf(item) {
@@ -382,11 +389,23 @@ class ApiClient {
     return idx >= 0 ? name.slice(idx) : '';
   }
 
+  /** Music, podcasts and audiobooks (or anything with an audio extension). */
+  isAudioItem(item) {
+    if (!item) return false;
+    if (['music', 'podcast', 'audiobook'].includes(item.type)) return true;
+    return !item.type && AUDIO_EXTENSIONS.includes(this._extOf(item));
+  }
+
   needsTranscode(item) {
     if (!item) return false;
     const ext = this._extOf(item);
-    if (item.type === 'music') {
-      return !['.mp3', '.wav', '.ogg', '.opus', '.m4a', '.aac', '.flac', '.webm'].includes(ext);
+    if (this.isAudioItem(item)) {
+      // Feed episodes and other external sources have no file name; the
+      // browser gets the URL as-is.
+      if (item.streamUrl && !ext) return false;
+      if (!DIRECT_AUDIO_EXTENSIONS.includes(ext)) return true;
+      // ALAC hides inside .m4a/.m4b; only Safari decodes it.
+      return /alac/i.test(String(item.codec || '')) && !this._canPlayAlac();
     }
     const directExt = ['.mp4', '.webm', '.m4v', '.ogv'];
     if (!directExt.includes(ext)) return true;
@@ -395,19 +414,34 @@ class ApiClient {
     return false;
   }
 
-  getPlaybackUrl(item, { forceTranscode = false } = {}) {
+  _canPlayAlac() {
+    try {
+      return Boolean(document.createElement('audio').canPlayType('audio/mp4; codecs="alac"'));
+    } catch {
+      return false;
+    }
+  }
+
+  getPlaybackUrl(item, { forceTranscode = false, startAt = 0 } = {}) {
     if (!item) return '';
     // Items can carry their own source (live TV channels, recordings, plugin
-    // providers). Those must never be rewritten to /api/media/stream/<id>,
-    // which would 404 for anything not in the library index.
+    // providers, podcast feed episodes). Those must never be rewritten to
+    // /api/media/stream/<id>, which would 404 for anything not in the library.
     if (!forceTranscode && item.streamUrl && !this.needsTranscode(item)) {
       return item.streamUrl;
     }
+    // Feed episodes etc. aren't library files: the server can't convert them.
+    const external = !item.id || String(item.id).includes(':');
+    if (item.streamUrl && external && this.isAudioItem(item)) return item.streamUrl;
+    if (!item.id) return item.streamUrl || '';
     if (forceTranscode || this.needsTranscode(item)) {
-      if (item.type === 'music') return this.getAudioTranscodeUrl(item.id);
+      // Audio goes to the audio converter — the video transcoder (720p
+      // H.264) fails on files without a picture, which broke every podcast
+      // and audiobook that wasn't a plain MP3.
+      if (this.isAudioItem(item)) return this.getAudioTranscodeUrl(item.id, 'aac', startAt);
       return this.getTranscodeUrl(item.id);
     }
-    return item.streamUrl || this.getStreamUrl(item.id);
+    return this.getStreamUrl(item.id);
   }
 
   // Hosts browsers NEVER treat as mixed content. Per the Secure Contexts spec

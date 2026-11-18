@@ -56,8 +56,10 @@ app.use(helmet({
       defaultSrc: ["'self'"],
       scriptSrc: ["'self'", "'unsafe-inline'"],
       styleSrc: ["'self'", "'unsafe-inline'"],
-      imgSrc: ["'self'", 'data:', 'blob:', 'https:'],
-      mediaSrc: ["'self'", 'blob:', 'data:'],
+      // Podcast episodes and their artwork are served by the podcast's own
+      // host; with media-src 'self' every feed episode failed to load.
+      imgSrc: ["'self'", 'data:', 'blob:', 'https:', 'http:'],
+      mediaSrc: ["'self'", 'blob:', 'data:', 'https:', 'http:'],
       fontSrc: ["'self'", 'data:'],
       connectSrc: ["'self'", 'https:', 'http:', 'blob:'],
       workerSrc: ["'self'", 'blob:'],

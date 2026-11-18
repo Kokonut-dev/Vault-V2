@@ -27,26 +27,9 @@ const QUALITY_LADDER = [
 
 let cachedCapabilities = null;
 
-/** Prefer the bundled binary, but fall back to a system install. The bundled
- *  path can exist as a string while the file itself was never downloaded
- *  (installs with --ignore-scripts), and containers install ffmpeg via apt. */
-function ffmpegBinary() {
-  if (process.env.FFMPEG_PATH) return process.env.FFMPEG_PATH;
-  try {
-    const bundled = require('ffmpeg-static');
-    if (bundled && fs.existsSync(bundled)) return bundled;
-  } catch { /* package not installed */ }
-  return 'ffmpeg';
-}
-
-function ffprobeBinary() {
-  if (process.env.FFPROBE_PATH) return process.env.FFPROBE_PATH;
-  try {
-    const bundled = require('ffprobe-static').path;
-    if (bundled && fs.existsSync(bundled)) return bundled;
-  } catch { /* package not installed */ }
-  return 'ffprobe';
-}
+// FFMPEG_PATH → bundled binary if it exists → PATH. Shared with every other
+// ffmpeg user so they can't disagree (utils/ffmpegBinaries.js).
+const { ffmpegBinary, ffprobeBinary } = require('../utils/ffmpegBinaries');
 
 /**
  * Ask ffmpeg which encoders exist. Cached for the process lifetime — encoder
