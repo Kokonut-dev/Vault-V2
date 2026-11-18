@@ -71,6 +71,7 @@ const MESSAGES = {
   UNSUPPORTED_SCHEME: 'Vault can only play http:// and https:// streams.',
   TOO_MANY_STREAMS: 'Too many streams are running on the Vault server right now. Close another player and try again.',
   NO_STREAMS: 'This link contains no audio or video.',
+  CRASHED: 'ffmpeg crashed on the Vault server while opening this stream. Update ffmpeg on the server (or set FFMPEG_PATH to your system ffmpeg) and restart Vault — the server log has details.',
   FAILED: 'The Vault server couldn\'t convert this stream.',
 };
 
@@ -78,9 +79,23 @@ function messageFor(code) {
   return MESSAGES[code] || MESSAGES.FAILED;
 }
 
+/**
+ * ffmpeg killed by a signal (SIGSEGV, SIGILL, SIGBUS, SIGABRT…) rather than
+ * exiting with an error. Our own SIGKILL/SIGTERM on stop isn't a crash.
+ */
+function isCrash(exitCode, signal) {
+  if (signal) return !['SIGKILL', 'SIGTERM', 'SIGINT'].includes(signal);
+  return exitCode === 132 || exitCode === 134 || exitCode === 135 || exitCode === 139; // 128 + ILL/ABRT/BUS/SEGV
+}
+
+function describeExit(exitCode, signal) {
+  return signal ? `signal ${signal}` : `code ${exitCode}`;
+}
+
 /** Map ffmpeg's stderr (and spawn errors) to a stable error code. */
-function classifyFailure(stderr = '', spawnError = null) {
+function classifyFailure(stderr = '', spawnError = null, exit = null) {
   if (spawnError && (spawnError.code === 'ENOENT' || spawnError.code === 'EACCES')) return 'NO_FFMPEG';
+  if (exit && isCrash(exit.code, exit.signal)) return 'CRASHED';
   const text = String(stderr);
   if (/\b(401|403)\b|Forbidden|Unauthorized/i.test(text)) return 'AUTH';
   if (/\b404\b|Not Found|\b410\b/i.test(text)) return 'NOT_FOUND';
@@ -228,12 +243,13 @@ function probe(url, { userAgent, referrer, timeoutMs = PROBE_TIMEOUT_MS } = {}) 
       stderr += chunk.toString();
       if (stderr.length > 64 * 1024) stderr = stderr.slice(-64 * 1024);
     });
-    proc.on('close', () => {
+    proc.on('close', (exitCode, signal) => {
       if (settled) return; // already answered (spawn error / timeout)
       const parsed = parseProbe(stderr);
       if (parsed.video || parsed.audio) return finish(resolve, parsed);
-      const code = classifyFailure(stderr);
-      logger.warn(`[Restream] probe failed (${code}): ${scrub(stderr, url).trim().split('\n').slice(-3).join(' | ')}`);
+      const code = classifyFailure(stderr, null, { code: exitCode, signal });
+      const tail = scrub(stderr, url).trim().split('\n').slice(-3).join(' | ') || '(no output)';
+      logger.warn(`[Restream] probe failed (${code}, ffmpeg ${describeExit(exitCode, signal)}, ${transcodePlan.ffmpegBinary()}): ${tail}`);
       return finish(reject, new StreamError(messageFor(code), code));
     });
   });
@@ -448,10 +464,15 @@ async function start(channel, { transcode = false } = {}) {
     session.exited = true;
     session.spawnError = err;
   });
-  session.proc.on('close', (code) => {
+  session.proc.on('close', (code, signal) => {
     session.exited = true;
     session.exitOk = code === 0;
-    if (code && sessions.has(id)) logger.warn(`[Restream] ${session.label} ffmpeg exited ${code}: ${scrub(session.stderr, url).trim().split('\n').slice(-2).join(' | ')}`);
+    session.exitInfo = { code, signal };
+    // A crash arrives as (null, 'SIGSEGV') — log it too, not just non-zero codes.
+    if ((code || isCrash(code, signal)) && sessions.has(id)) {
+      const tail = scrub(session.stderr, url).trim().split('\n').slice(-2).join(' | ') || '(no output)';
+      logger.warn(`[Restream] ${session.label} ffmpeg exited (${describeExit(code, signal)}): ${tail}`);
+    }
   });
   sessions.set(id, session);
   startReaper();
@@ -459,7 +480,7 @@ async function start(channel, { transcode = false } = {}) {
 
   const ready = await waitForFirstSegment(session);
   if (!ready) {
-    const code = session.spawnError ? classifyFailure('', session.spawnError) : (session.exited ? classifyFailure(session.stderr) : 'TIMEOUT');
+    const code = session.spawnError ? classifyFailure('', session.spawnError) : (session.exited ? classifyFailure(session.stderr, null, session.exitInfo) : 'TIMEOUT');
     stopSession(id, `failed (${code})`);
     throw new StreamError(messageFor(code), code, code === 'NO_FFMPEG' ? 503 : (code === 'TIMEOUT' ? 504 : 502));
   }

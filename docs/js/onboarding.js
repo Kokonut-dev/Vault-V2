@@ -18,7 +18,7 @@ import { store } from './store.js';
 import { toast } from './components/toast.js';
 import { copyText } from './utils/clipboard.js';
 import { icon, setIconLabel } from './utils/icons.js';
-import { THEME_META, themeSwatch } from './themes.js';
+import { THEME_META, themeSwatch, themeManager } from './themes.js';
 
 export class OnboardingManager {
   constructor() {
@@ -37,7 +37,8 @@ export class OnboardingManager {
         videos: './media/videos',
       },
       corsOrigins: [],
-      theme: localStorage.getItem('vault_theme') || 'dark',
+      // Whatever is on screen now (a saved theme, or the OS light/dark preference).
+      theme: themeManager.getTheme(),
       serverPort: 4000,
     };
     this.setupStatus = null;
@@ -771,9 +772,10 @@ export class OnboardingManager {
             t.setAttribute('aria-pressed', String(t === el));
           });
           this.data.theme = el.dataset.themeOption;
-          // Apply theme live
-          document.documentElement.setAttribute('data-theme', this.data.theme);
-          localStorage.setItem('vault_theme', this.data.theme);
+          // Through the theme manager, not straight into localStorage: the app
+          // reads the theme from the store, which loaded before the wizard ran
+          // and would otherwise put the old theme back on "Enter Vault".
+          themeManager.setTheme(this.data.theme);
         });
       });
     }
@@ -965,9 +967,8 @@ export class OnboardingManager {
         localStorage.setItem('vault_token', result.token);
       }
 
-      // Save theme
-      localStorage.setItem('vault_theme', this.data.theme);
-      document.documentElement.setAttribute('data-theme', this.data.theme);
+      // Keep the chosen theme (store + localStorage + <html data-theme>).
+      themeManager.setTheme(this.data.theme, { animate: false });
 
       toast.success('Vault setup complete! Welcome');
 

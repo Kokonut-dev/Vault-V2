@@ -285,6 +285,7 @@ ffmpeg is missing; see the ffmpeg item under [Install problems](#install-problem
 - Streams are played through the server, which repackages them with ffmpeg. **Settings → Live TV** warns when ffmpeg is missing.
 - **Settings → Live TV → Test links** checks a few entries and tells you whether they play, need converting, or fail (e.g. "access denied" means an expired subscription or a wrong password in the link).
 - Up to 4 streams run at once (`livetv.maxStreams`). Idle streams stop after 45 s (live) or 5 min (movies).
+- **Linux, "couldn't convert this stream" or "ffmpeg crashed"**: older Vault versions ran the bundled static ffmpeg in a way that crashed on MPEG-TS channels on Linux, while the same channel worked on a Mac. Update and restart the server. If it still fails, look for the `[Restream]` line in the server log. As a last resort, install your distro's ffmpeg and set `FFMPEG_PATH=$(which ffmpeg)`.
 
 **Vault stops answering when my Mac locks** — it's going to sleep. Check that **Settings → Connection → Keep running when the computer is locked** is on, keep the lid open and the charger in. See [When your computer locks or goes idle](#when-your-computer-locks-or-goes-idle).
 

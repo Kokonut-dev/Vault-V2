@@ -2,6 +2,33 @@
 
 ## [3.0.0] — in progress (branch `arena/0deefe55-vault-v2`)
 
+### Fixed — Live TV on Linux: "The Vault server couldn't convert this stream"
+- Channels from an M3U playlist failed on Linux servers but worked on a Mac.
+  On Linux, the bundled ffmpeg (`ffmpeg-static` / `ffprobe-static`) links
+  glibc statically. MPEG-TS, the format of nearly every IPTV channel, makes
+  ffmpeg convert the channel names with iconv. Static glibc then loads the
+  host's own charset modules (`…/gconv/`), which don't match it, and ffmpeg
+  crashes (SIGSEGV) without printing anything. macOS builds aren't static
+  glibc, so they were never affected. This hit every browser, Helium included.
+- `server/utils/ffmpegBinaries.js` now detects a statically linked ffmpeg or
+  ffprobe on Linux (an ELF without an interpreter) and points `GCONV_PATH` at
+  an empty directory. iconv then fails cleanly, ffmpeg keeps the raw channel
+  name, and the stream plays. Distro ffmpeg packages, macOS, Windows and a
+  `GCONV_PATH` you set yourself are left alone. This also fixes thumbnails
+  and duration probing for `.ts` recordings in the library.
+- When ffmpeg crashes rather than failing, Live TV now says so (new code
+  `CRASHED`) instead of the generic "couldn't convert". The server log names
+  the signal and the binary, e.g. `probe failed (CRASHED, ffmpeg signal
+  SIGSEGV, …/ffmpeg)`. Before, a crash during a running stream wasn't logged
+  at all.
+
+### Fixed — the theme picked in the setup wizard didn't stick
+- The wizard saved the theme to the browser, but the app's settings store had
+  already loaded the old value at page load and put it back when the app
+  started. The wizard now goes through the theme manager, so the store and
+  the browser agree. On start-up, a valid saved theme in the browser wins over
+  a stale store value.
+
 ### Fixed — "Import from another Vault" in the setup wizard did nothing
 - The import opened in a dialog, but the setup screen covers the whole page
   (z-index 500, above dialogs at 200), so the dialog appeared out of sight
