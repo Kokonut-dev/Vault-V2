@@ -19,11 +19,42 @@ const { parseMovieFilename } = require('../utils/fileUtils');
 const ffmpeg = require('../utils/ffmpegBinaries').fluentFfmpeg();
 if (!ffmpeg) logger.warn('[Metadata] fluent-ffmpeg not available, video metadata will be limited');
 
+/**
+ * Length when the tag parser couldn't tell: FLACs written to a stream have
+ * "0 samples" in their header (read exactly from the frames instead); other
+ * formats ask ffprobe, which ships with Vault. 0 = still unknown.
+ */
+async function fallbackDuration(filePath) {
+  if (/\.flac$/i.test(filePath)) {
+    const d = require('../utils/flacDuration').flacDuration(filePath);
+    if (d > 0) return d;
+  }
+  return probeDuration(filePath);
+}
+
+function probeDuration(filePath) {
+  return new Promise((resolve) => {
+    let bin;
+    try { bin = require('../utils/ffmpegBinaries').ffprobeBinary(); } catch { return resolve(0); }
+    require('child_process').execFile(bin,
+      ['-v', 'error', '-show_entries', 'format=duration', '-of', 'default=noprint_wrappers=1:nokey=1', filePath],
+      { timeout: 15000, windowsHide: true },
+      (err, stdout) => {
+        const d = parseFloat(String(stdout || '').trim());
+        resolve(!err && Number.isFinite(d) && d > 0 ? d : 0);
+      });
+  });
+}
+
 async function extractAudioMetadata(filePath) {
   try {
     const metadata = await parseFile(filePath, { duration: true });
     const common = metadata.common || {};
     const format = metadata.format || {};
+    if (!(format.duration > 0)) {
+      const d = await fallbackDuration(filePath);
+      if (d > 0) format.duration = d;
+    }
 
     // Extract cover art if present
     let coverArtPath = null;
@@ -103,7 +134,7 @@ async function extractAudioMetadata(filePath) {
       title: path.basename(filePath, path.extname(filePath)),
       artist: 'Unknown Artist',
       album: 'Unknown Album',
-      duration: 0,
+      duration: await fallbackDuration(filePath).catch(() => 0),
       // Unreadable tags shouldn't also cost the album its folder.jpg.
       coverArtPath: findSidecarArtwork(filePath),
     };

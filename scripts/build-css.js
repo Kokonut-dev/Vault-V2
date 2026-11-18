@@ -45,6 +45,7 @@ const SHEETS = [
   'animations.css',
   'accessibility.css',
   'v3.css',
+  'music.css',
   'settings.css',
   'responsive.css', // last: fit-to-screen guards override earlier sheets
 ];
@@ -65,6 +66,7 @@ const MARKERS = {
   'animations.css': 'pageEnter',
   'accessibility.css': 'skip-link',
   'v3.css': 'queue-panel',
+  'music.css': 'trackEq',
   'settings.css': 'settings-rail',
   'responsive.css': 'fit-guard',
 };

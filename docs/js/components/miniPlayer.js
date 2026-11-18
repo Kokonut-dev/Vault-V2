@@ -6,6 +6,7 @@ import { api } from '../api.js';
 import { formatTime } from '../utils/format.js';
 import { setIcon } from '../utils/icons.js';
 import { toast } from './toast.js';
+import { attachSeekPreview } from './seekPreview.js';
 
 export function initMiniPlayer() {
   const miniPlayer = document.getElementById('mini-player');
@@ -35,6 +36,21 @@ export function initMiniPlayer() {
   const miniDownloadBtn = document.getElementById('mini-download');
   const npDownloadBtn = document.getElementById('now-playing-download');
   const nowPlayingBgImg = document.getElementById('now-playing-bg-img');
+
+  // Equaliser from the music player (it was only reachable from the video
+  // player and Settings). The dot shows when it's shaping the sound.
+  const eqButtons = ['mini-eq', 'now-playing-eq'].map(id => document.getElementById(id)).filter(Boolean);
+  const paintEq = () => eqButtons.forEach(btn => {
+    const on = Boolean(store.get('eqEnabled'));
+    btn.classList.toggle('is-on', on);
+    btn.setAttribute('aria-label', on ? 'Equaliser (on)' : 'Equaliser');
+  });
+  eqButtons.forEach(btn => btn.addEventListener('click', async () => {
+    const { showEQModal } = await import('./eqPanel.js');
+    showEQModal();
+  }));
+  store.subscribe('eqEnabled', paintEq);
+  paintEq();
   const npRepeatBtn = document.getElementById('np-repeat');
   
   function updateTrackInfo(item) {
@@ -99,10 +115,34 @@ export function initMiniPlayer() {
     setIcon(miniMuteBtn, muted ? 'volume-x' : 'volume-2', { size: 16 });
   }
   
+  // Seek preview on both timelines: hover/drag shows the time you'd jump to.
+  const seekToFraction = (fraction) => {
+    window.dispatchEvent(new CustomEvent('vault:player-action', { detail: { action: 'seekPercent', percent: fraction * 100 } }));
+  };
+  const npProgress = nowPlayingSlider.closest('.now-playing-progress');
+  const miniProgress = miniProgressBar.parentElement;
+  const miniGhost = document.createElement('div');
+  miniGhost.className = 'mini-player-progress-ghost';
+  miniProgress.prepend(miniGhost);
+  miniProgress.setAttribute('role', 'presentation');
+  attachSeekPreview(npProgress, {
+    input: nowPlayingSlider,
+    onSeek: seekToFraction,
+    // While dragging, the clock shows where you'll land.
+    onScrub: (fraction) => {
+      const total = Number(window.VAULT_AUDIO?.duration?.()) || 0;
+      if (total) nowPlayingCurrent.textContent = formatTime(fraction * total);
+    },
+  });
+  attachSeekPreview(miniProgress, { ghost: miniGhost, onSeek: seekToFraction });
+
   function updateProgress(currentTime, duration, progress) {
-    miniProgressBar.style.width = `${progress}%`;
-    nowPlayingSlider.value = progress;
-    nowPlayingCurrent.textContent = formatTime(currentTime);
+    if (!miniProgress.classList.contains('is-dragging')) miniProgressBar.style.width = `${progress}%`;
+    // Mid-drag the slider and clock belong to the user, not the playhead.
+    if (!npProgress?.classList.contains('is-dragging')) {
+      nowPlayingSlider.value = progress;
+      nowPlayingCurrent.textContent = formatTime(currentTime);
+    }
     nowPlayingDuration.textContent = formatTime(duration);
   }
   
@@ -188,10 +228,7 @@ export function initMiniPlayer() {
     window.dispatchEvent(new CustomEvent('vault:player-action', { detail: { action: 'repeat' } }));
   });
   
-  nowPlayingSlider.addEventListener('input', (e) => {
-    const percent = parseFloat(e.target.value);
-    window.dispatchEvent(new CustomEvent('vault:player-action', { detail: { action: 'seekPercent', percent } }));
-  });
+  // Seeking from the slider: see attachSeekPreview above (seeks on release).
   
   // Shuffle / repeat glyphs come from the shared icon set (utils/icons.js) —
   // the accent-coloured "on" state is the only player-specific part.

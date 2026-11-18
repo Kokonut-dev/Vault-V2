@@ -43,6 +43,9 @@
   position: relative;
   overflow: hidden;
 }
+/* .btn sets display, which beats the UA [hidden] rule — keep hidden buttons hidden. */
+.btn[hidden] { display: none; }
+
 
 .btn:disabled {
   opacity: 0.5;

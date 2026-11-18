@@ -7,7 +7,7 @@ import { icon } from '../utils/icons.js';
 import { attachContextMenu } from './contextMenu.js';
 
 export function renderMediaList(container, items, options = {}) {
-  const { onPlay, onClick, sortField = 'title', sortOrder = 'asc', onSort } = options;
+  const { onPlay, onClick, sortField = 'title', sortOrder = 'asc', onSort, hideAlbum = false } = options;
   
   container.innerHTML = '';
   
@@ -23,23 +23,26 @@ export function renderMediaList(container, items, options = {}) {
   }
   
   const list = document.createElement('div');
-  list.className = 'media-list media-list--library';
+  list.className = `media-list media-list--library${hideAlbum ? ' media-list--album' : ''}`;
   
   const header = document.createElement('div');
   header.className = 'media-list-header';
+  // Name the second column for what it actually shows.
+  const musicCount = items.filter(i => i.type === 'music').length;
+  const secondLabel = musicCount === items.length ? 'Artist' : musicCount === 0 ? 'Genre' : 'Artist / Genre';
   const columns = [
     ['title', 'Title'],
-    ['artist', 'Artist / Genre'],
+    ['artist', secondLabel],
     ['duration', 'Duration'],
     ['year', 'Year'],
   ];
   // Sortable only when the view supplies onSort; plain spans otherwise.
   header.innerHTML = columns.map(([field, label]) => {
-    if (!onSort) return `<span>${label}</span>`;
+    if (!onSort) return `<span class="media-list-col media-list-col--${field}">${label}</span>`;
     const active = sortField === field;
     const state = active ? (sortOrder === 'asc' ? 'ascending' : 'descending') : 'unsorted';
     const ind = active ? icon(sortOrder === 'asc' ? 'chevron-up' : 'chevron-down', { size: 12, strokeWidth: 2.5 }) : '';
-    return `<button type="button" class="media-list-sort${active ? ' active' : ''}" data-field="${field}" aria-label="Sort by ${label} — currently ${state}">${label}<span class="sort-ind" aria-hidden="true">${ind}</span></button>`;
+    return `<button type="button" class="media-list-sort media-list-col media-list-col--${field}${active ? ' active' : ''}" data-field="${field}" aria-label="Sort by ${label} — currently ${state}">${label}<span class="sort-ind" aria-hidden="true">${ind}</span></button>`;
   }).join('');
   if (onSort) {
     header.querySelectorAll('.media-list-sort').forEach((btn) => {
@@ -71,26 +74,27 @@ export function renderMediaList(container, items, options = {}) {
       ? (itemVersion && typeof api.getCoverUrlVersioned === 'function' ? api.getCoverUrlVersioned(item.id, itemVersion) : api.getCoverUrl(item.id))
       : api.getThumbnailUrl(item.id);
     
+    // Second line: the album for music (the filename repeated the title and
+    // artist), the filename otherwise — and nothing when it adds no info.
+    const knownAlbum = item.album && item.album !== 'Unknown Album' ? item.album : '';
+    const subtitle = item.type === 'music' ? (hideAlbum ? '' : (knownAlbum || item.filename || '')) : (item.filename || '');
+    const knownArtist = item.artist && item.artist !== 'Unknown Artist' ? item.artist : '';
+    const second = item.type === 'music' ? (knownArtist || item.genre || '') : (item.genre || knownArtist || '');
+
     row.innerHTML = `
       <div class="media-list-item-main">
         <button class="media-list-play" type="button" aria-label="Play">${icon('play', { size: 13 })}</button>
         <div class="media-list-item-cover">
           <img src="${coverSrc}" alt="" loading="lazy" onerror="this.style.display='none'">
         </div>
-        <div style="min-width:0;">
+        <div class="media-list-item-text">
           <div class="media-list-item-title">${escapeHtml(item.title)}</div>
-          <div class="media-list-item-artist">${escapeHtml(item.filename || '')}</div>
+          ${subtitle ? `<div class="media-list-item-artist">${escapeHtml(subtitle)}</div>` : ''}
         </div>
       </div>
-      <div style="font-size:13px; color:var(--text-secondary); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">
-        ${escapeHtml(item.artist || item.genre || '')}
-      </div>
-      <div style="font-size:13px; font-family:var(--font-mono); color:var(--text-secondary);">
-        ${formatDuration(item.duration)}
-      </div>
-      <div style="font-size:13px; color:var(--text-secondary);">
-        ${item.year || '—'}
-      </div>
+      <div class="media-list-cell media-list-cell--artist" title="${escapeHtml(second)}">${escapeHtml(second) || '<span class="media-list-none">—</span>'}</div>
+      <div class="media-list-cell media-list-cell--duration">${formatDuration(item.duration)}</div>
+      <div class="media-list-cell media-list-cell--year">${item.year || '<span class="media-list-none">—</span>'}</div>
     `;
 
     row.querySelector('.media-list-play').addEventListener('click', (e) => {

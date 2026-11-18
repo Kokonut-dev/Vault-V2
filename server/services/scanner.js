@@ -534,8 +534,14 @@ function startWatcher() {
         return;
       }
       logger.info(`File added: ${filePath}`);
+      // Imports/uploads index their files themselves (and announce them). When
+      // the watcher catches up, the item is already there and unchanged — don't
+      // broadcast again, since every broadcast makes each open client refetch
+      // the library.
+      const before = libraryService.getById(generateId(filePath));
       const item = await scanFile(filePath);
-      if (item) events.broadcast('library:changed', { reason: 'add', id: item.id, title: item.title });
+      const alreadyKnown = before && item && before.fileSize === item.fileSize && before.mtime === item.mtime;
+      if (item && !alreadyKnown) events.broadcast('library:changed', { reason: 'add', id: item.id, title: item.title });
     })
     .on('change', async (filePath) => {
       if (/\.(jpg|jpeg|png|webp)$/i.test(path.basename(filePath))) {

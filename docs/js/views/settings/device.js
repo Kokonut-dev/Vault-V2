@@ -6,7 +6,6 @@
 import { store } from '../../store.js';
 import { themeManager, THEME_META, themeSwatch } from '../../themes.js';
 import { getPrefs, setPrefs, resetPrefs } from '../../components/playbackPrefs.js';
-import { showEQModal } from '../../components/eqPanel.js';
 import { getMotionPreference, setMotionPreference, resolveMotion } from '../../utils/pageTransition.js';
 import { icon } from '../../utils/icons.js';
 import { section, group, row, switchRow, rangeControl, bindRange, flashStatus, el } from './ui.js';
@@ -169,6 +168,13 @@ export function playbackSection() {
       checked: localStorage.getItem('vault_gapless') !== 'false',
       keywords: 'gapless gap album preload',
     }),
+    switchRow({
+      id: 'fade-toggle',
+      label: 'Fade on pause and skip',
+      help: 'Eases the sound out when you pause, stop or skip, and back in when you resume.',
+      checked: store.get('fadePlayPause') !== false,
+      keywords: 'fade pause stop soft smooth abrupt',
+    }),
     row({
       id: 'crossfade-slider',
       label: 'Crossfade',
@@ -210,6 +216,10 @@ export function playbackSection() {
   bindRange(s, 'pref-speed', { format: speedText, onInput: v => setPrefs({ speed: v }, { silent: true }) });
   ['vol-slider', 'crossfade-slider', 'pref-speed'].forEach(id => s.querySelector(`#${id}`).addEventListener('change', () => flashStatus(s)));
 
+  s.querySelector('#fade-toggle').addEventListener('change', e => {
+    store.set('fadePlayPause', e.target.checked, true);
+    flashStatus(s, e.target.checked ? 'Fades on' : 'Fades off');
+  });
   s.querySelector('#pref-normalize').addEventListener('change', e => {
     setPrefs({ normalize: e.target.checked });
     flashStatus(s, e.target.checked ? 'Volume levelling on' : 'Volume levelling off');
@@ -222,7 +232,9 @@ export function playbackSection() {
     localStorage.setItem('vault_gapless', String(e.target.checked));
     flashStatus(s, e.target.checked ? 'Gapless on' : 'Gapless off');
   });
-  s.querySelector('#open-eq').addEventListener('click', () => showEQModal());
+  s.querySelector('#open-eq').addEventListener('click', () => {
+    import('../../components/eqPanel.js').then(m => m.showEQModal());
+  });
   s.querySelector('#pref-reset').addEventListener('click', () => {
     const fresh = resetPrefs();
     const speed = s.querySelector('#pref-speed');

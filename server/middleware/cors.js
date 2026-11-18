@@ -37,7 +37,7 @@ function createCorsMiddleware() {
     },
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH', 'HEAD'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Range'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Range', 'X-Google-Token'],
     exposedHeaders: ['Content-Range', 'Accept-Ranges', 'Content-Length', 'Content-Type', 'Content-Disposition'],
     maxAge: 86400,
   };

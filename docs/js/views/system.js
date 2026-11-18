@@ -7,6 +7,7 @@ import { icon } from '../utils/icons.js';
 import { escapeHtml, formatBytes, formatRelativeTime, formatTime } from '../utils/format.js';
 import { toast } from '../components/toast.js';
 import { confirmDialog } from '../components/confirmDialog.js';
+import { onUnmount } from '../utils/lifecycle.js';
 
 const TABS = [
   ['health', 'Health', 'shield-check'],
@@ -56,8 +57,19 @@ export async function renderSystem(container) {
   container.querySelectorAll('.settings-tab').forEach(node => {
     node.addEventListener('click', () => show(node.dataset.tab));
   });
-  window.addEventListener('vault:job-finished', () => { if (activeTab === 'jobs') loaders.jobs(body); });
-  window.addEventListener('vault:job-progress', () => { if (activeTab === 'jobs') loaders.jobs(body); });
+  // Live job updates. Progress arrives up to once a second per job, so
+  // coalesce refetches; listeners die with the view (they used to pile up on
+  // every visit and keep refetching into detached DOM).
+  let jobsTimer = null;
+  const onJob = () => {
+    if (activeTab !== 'jobs' || jobsTimer) return;
+    jobsTimer = setTimeout(() => { jobsTimer = null; if (activeTab === 'jobs' && body.isConnected) loaders.jobs(body); }, 500);
+  };
+  for (const name of ['vault:job-start', 'vault:job-progress', 'vault:job-finished']) window.addEventListener(name, onJob);
+  onUnmount(() => {
+    clearTimeout(jobsTimer);
+    for (const name of ['vault:job-start', 'vault:job-progress', 'vault:job-finished']) window.removeEventListener(name, onJob);
+  });
 
   await show('health');
 }

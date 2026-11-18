@@ -16,6 +16,19 @@
   <!-- Favicon -->
   <link rel="icon" type="image/svg+xml" href="./favicon.svg">
   
+  <!-- Apply the saved theme before the stylesheet paints: <html> defaults to
+       "dark", so light-theme users saw a dark flash and every element ran the
+       300 ms theme fade on each load. -->
+  <script>
+    (function () {
+      try {
+        var t = localStorage.getItem('vault_theme')
+          || (window.matchMedia && matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark');
+        if (/^(dark|light|warm|cold|midnight|white)$/.test(t)) document.documentElement.setAttribute('data-theme', t);
+      } catch (e) { /* storage blocked: keep the default */ }
+    })();
+  </script>
+
   <!-- Config must load first -->
   <script src="./config.js"></script>
   
@@ -58,6 +71,7 @@
       
       <!-- Login Step -->
       <div id="login-step" class="auth-step active">
+        <div id="server-down" class="server-down" role="status" aria-live="polite" hidden></div>
         <h2>Welcome back</h2>
         <p class="auth-subtitle">Enter your credentials to access your vault</p>
         <form id="login-form" class="auth-form">
@@ -74,6 +88,16 @@
             Continue
           </button>
         </form>
+        <details class="auth-code" id="auth-code">
+          <summary>Sign in with a code from another device</summary>
+          <form id="auth-code-form" class="auth-code-form" novalidate>
+            <label class="form-label" for="auth-code-input">On a signed-in device: <strong>Settings → Devices → Show pairing code</strong>. Then type the 6 digits here.</label>
+            <div class="auth-code-row">
+              <input id="auth-code-input" class="form-input" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9 ]*" maxlength="7" placeholder="123 456">
+              <button type="submit" class="btn btn-secondary">Sign in</button>
+            </div>
+          </form>
+        </details>
         <div class="auth-footer">
           <p>Server: <span id="server-url-display"></span> <button id="change-server-btn" class="btn btn-ghost btn-sm">Change</button></p>
         </div>
@@ -117,6 +141,7 @@
             <span>Search</span>
             <kbd>⌥ Space</kbd>
           </button>
+          <button id="share-device-btn" class="btn btn-icon" aria-label="Use Vault on another device" title="Use on another device" data-icon="smartphone" data-icon-size="18"></button>
           <button id="theme-toggle" class="btn btn-icon" aria-label="Toggle theme" title="Toggle theme" data-icon="contrast" data-icon-size="18"></button>
           <button id="shortcuts-btn" class="btn btn-icon" aria-label="Keyboard shortcuts" title="Keyboard shortcuts" data-icon="keyboard" data-icon-size="18"></button>
         </div>
@@ -145,6 +170,7 @@
       <button class="btn btn-icon" id="mini-prev" aria-label="Previous track" data-icon="skip-back" data-icon-size="16"></button>
       <button class="btn btn-icon" id="mini-play" aria-label="Play/Pause" data-icon="play" data-icon-size="16"></button>
       <button class="btn btn-icon" id="mini-next" aria-label="Next track" data-icon="skip-forward" data-icon-size="16"></button>
+      <button class="btn btn-icon eq-toggle-btn" id="mini-eq" aria-label="Equaliser" title="Equaliser" data-icon="sliders" data-icon-size="16"></button>
       <button class="btn btn-icon" id="mini-download" aria-label="Download current track" title="Download current track (works over remote access)" data-icon="download" data-icon-size="16"></button>
       <button class="btn btn-icon" id="mini-expand" aria-label="Expand player" data-icon="maximize" data-icon-size="16"></button>
     </div>
@@ -162,6 +188,7 @@
       <div style="font-weight:600;">Now Playing</div>
       <span style="display:inline-flex; gap:8px;">
       <button class="btn btn-icon" id="now-playing-download" aria-label="Download current track" title="Download current track (works over remote access)" data-icon="download" data-icon-size="18"></button>
+      <button class="btn btn-icon eq-toggle-btn" id="now-playing-eq" aria-label="Equaliser" title="Equaliser" data-icon="sliders" data-icon-size="18"></button>
       <button class="btn btn-icon" id="now-playing-queue" aria-label="Queue" title="Queue" data-icon="list" data-icon-size="18"></button>
       </span>
     </div>
@@ -265,8 +292,9 @@
   <div id="connection-status" class="connection-status" style="display:none;">
     <div class="connection-status-content">
       <span data-icon="wifi-off" data-icon-size="18"></span>
-      <span>Server disconnected — retrying...</span>
-      <button id="retry-connection" class="btn btn-sm btn-primary">Retry</button>
+      <span id="connection-status-text">Server disconnected — retrying...</span>
+      <button id="start-server-banner" class="btn btn-sm btn-primary" hidden><span data-icon="power" data-icon-size="14"></span><span>Start server</span></button>
+      <button id="retry-connection" class="btn btn-sm btn-secondary">Retry</button>
     </div>
   </div>
 
@@ -457,6 +485,13 @@
       z-index: 300;
       box-shadow: var(--shadow-lg);
     }
+    .auth-code { margin-top: 18px; font-size: 13px; color: var(--text-secondary); }
+    .auth-code summary { cursor: pointer; width: fit-content; margin-inline: auto; padding: 6px 4px; border-radius: 6px; }
+    .auth-code summary:hover { color: var(--text-primary); }
+    .auth-code-form { margin-top: 10px; text-align: left; }
+    .auth-code-form .form-label { font-weight: 400; line-height: 1.45; }
+    .auth-code-row { display: flex; gap: 8px; }
+    .auth-code-row .form-input { flex: 1; min-width: 0; letter-spacing: 0.2em; font-variant-numeric: tabular-nums; }
     .connection-status-content {
       display: flex;
       align-items: center;
@@ -549,6 +584,24 @@
       }
     }
     updateMixedContentWarning();
+
+    // "Server isn't running" card with a Start button (Vault launcher).
+    let serverDownCard = null;
+    async function checkServerOnGate() {
+      const host = document.getElementById('server-down');
+      if (!host) return;
+      try {
+        if (!serverDownCard) {
+          const { mountServerDown } = await import('./js/components/serverDown.js');
+          serverDownCard = mountServerDown(host, {
+            onUp: () => { if (localStorage.getItem('vault_token')) checkAuth(); },
+          });
+        }
+        await serverDownCard.refresh();
+      } catch (err) {
+        console.warn('Server status card failed:', err.message);
+      }
+    }
     
     // Auth Gate Logic
     const authGate = document.getElementById('auth-gate');
@@ -690,6 +743,7 @@
             loginError.textContent = result.error;
             loginError.style.display = 'block';
           }
+          if (/connect|fetch|network/i.test(result.error || '')) checkServerOnGate();
         }
         
         if (btn) {
@@ -704,6 +758,7 @@
       if (!token) {
         if (authGate) authGate.style.display = 'flex';
         if (appEl) appEl.style.display = 'none';
+        checkServerOnGate();
         return false;
       }
       
@@ -717,6 +772,7 @@
       
       if (authGate) authGate.style.display = 'flex';
       if (appEl) appEl.style.display = 'none';
+      checkServerOnGate();
       return false;
     }
     
@@ -790,6 +846,8 @@
           toast.error(err.message);
           const connStatus = document.getElementById('connection-status');
           if (connStatus) connStatus.style.display = 'block';
+          // Deferred: the banner's listeners are attached further down initApp().
+          setTimeout(() => window.dispatchEvent(new CustomEvent('vault:server-down', { detail: { message: 'Can’t reach the Vault server' } })), 0);
         }
       }
       
@@ -812,6 +870,7 @@
         '/home': 'Home',
         '/movies': 'Movies & Series',
         '/music': 'Music',
+        '/artists': 'Artists',
         '/videos': 'Videos',
         '/playlists': 'Playlists',
         '/favourites': 'Favourites',
@@ -856,6 +915,22 @@
           } else {
             el.textContent = 'Details';
           }
+        } else if (path.startsWith('/artist/')) {
+          let name = path.slice('/artist/'.length);
+          try { name = decodeURIComponent(name); } catch { /* already decoded */ }
+          const link = document.createElement('a');
+          link.className = 'breadcrumb-link';
+          link.setAttribute('data-route', '/artists');
+          link.href = '/artists';
+          link.textContent = 'Artists';
+          const sep = document.createElement('span');
+          sep.className = 'breadcrumb-sep';
+          sep.textContent = '›';
+          const current = document.createElement('span');
+          current.className = 'breadcrumb-current';
+          current.textContent = name;
+          current.title = name;
+          el.replaceChildren(link, sep, current);
         } else {
           el.textContent = 'Vault';
         }
@@ -901,6 +976,10 @@
         });
       }
       
+      document.getElementById('share-device-btn')?.addEventListener('click', async () => {
+        const { openShareDevice } = await import('./js/components/shareDevice.js');
+        openShareDevice();
+      });
       const shortcutsBtn = document.getElementById('shortcuts-btn');
       if (shortcutsBtn) {
         shortcutsBtn.addEventListener('click', () => {
@@ -927,17 +1006,62 @@
       window.addEventListener('vault:offline', () => {
         const connStatus = document.getElementById('connection-status');
         if (connStatus) connStatus.style.display = 'block';
+        offerBannerStart();
+      });
+      window.addEventListener('vault:server-down', (e) => {
+        const connStatus = document.getElementById('connection-status');
+        const text = document.getElementById('connection-status-text');
+        if (text) text.textContent = e.detail?.message || 'The Vault server is not running';
+        if (connStatus) connStatus.style.display = 'block';
+        offerBannerStart();
+      });
+      const startBannerBtn = document.getElementById('start-server-banner');
+      async function offerBannerStart() {
+        if (!startBannerBtn) return;
+        const { probeLauncher } = await import('./js/utils/serverLauncher.js');
+        const launcher = await probeLauncher();
+        startBannerBtn.hidden = !launcher || launcher.status === 'running';
+      }
+      async function onServerBack() {
+        const connStatus = document.getElementById('connection-status');
+        if (connStatus) connStatus.style.display = 'none';
+        const text = document.getElementById('connection-status-text');
+        if (text) text.textContent = 'Server disconnected — retrying...';
+        try {
+          const data = await api.getLibrary({ limit: 1000 });
+          store.setLibrary(data.items || []);
+        } catch { /* the banner logic will retry */ }
+        window.dispatchEvent(new CustomEvent('vault:server-up'));
+      }
+      // A Start button elsewhere (Settings → Connection) brought it back.
+      window.addEventListener('vault:server-back', () => onServerBack());
+      startBannerBtn?.addEventListener('click', async () => {
+        const { startServer, waitForServer } = await import('./js/utils/serverLauncher.js');
+        startBannerBtn.disabled = true;
+        const label = startBannerBtn.querySelector('span:last-child');
+        if (label) label.textContent = 'Starting…';
+        try {
+          await startServer();
+          if (await waitForServer()) {
+            toast.success('The Vault server is running');
+            onServerBack();
+          } else {
+            toast.error('The server didn’t start — see Settings → Connection for details');
+          }
+        } catch (err) {
+          toast.error(`Couldn’t start the server: ${err.message}`);
+        } finally {
+          startBannerBtn.disabled = false;
+          if (label) label.textContent = 'Start server';
+        }
       });
       const retryBtn = document.getElementById('retry-connection');
       if (retryBtn) {
         retryBtn.addEventListener('click', async () => {
           try {
             await api.health();
-            const connStatus = document.getElementById('connection-status');
-            if (connStatus) connStatus.style.display = 'none';
             toast.success('Server connected');
-            const data = await api.getLibrary({ limit: 1000 });
-            store.setLibrary(data.items || []);
+            onServerBack();
           } catch (err) {
             toast.error('Still cannot connect to server');
           }
@@ -1187,9 +1311,47 @@
       });
     }
 
+    /** A QR from "Use on another device" opens /?pair=<token>: swap it for a
+     *  session, then drop it from the address bar and history. */
+    async function redeemPairingLink() {
+      const params = new URLSearchParams(location.search);
+      const pairToken = params.get('pair');
+      if (!pairToken) return;
+      params.delete('pair');
+      const clean = `${location.pathname}${params.toString() ? `?${params}` : ''}${location.hash}`;
+      history.replaceState(history.state, '', clean);
+      try {
+        const result = await api.exchangePairingToken(pairToken);
+        if (result?.token) {
+          localStorage.setItem('vault_token', result.token);
+          localStorage.setItem('vault_onboarded', '1');
+          api.clearTokenCache();
+          toast.success('This device is now signed in to Vault');
+        } else {
+          toast.info('Waiting for approval on the other device…');
+        }
+      } catch (err) {
+        toast.error(err.code === 'PAIR_EXPIRED'
+          ? 'That sign-in code has expired or was already used — show a new QR code on the other device'
+          : `Couldn’t sign in with that code: ${err.message}`);
+      }
+    }
+
+    document.getElementById('auth-code-form')?.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const input = document.getElementById('auth-code-input');
+      const code = input.value.replace(/\D/g, '');
+      if (code.length !== 6) { toast.error('The code has 6 digits'); input.focus(); return; }
+      const btn = e.submitter || e.target.querySelector('button');
+      btn.disabled = true;
+      const { joinWithPairingCode } = await import('./js/components/qrPair.js');
+      if (!(await joinWithPairingCode(code, 'Signed in with a code'))) btn.disabled = false;
+    });
+
     async function start() {
       // Setup listeners once
       setupOnboardingListeners();
+      await redeemPairingLink();
 
       // Show loading state? Hide both initially
       if (authGate) authGate.style.display = 'none';
@@ -1206,7 +1368,9 @@
         console.warn('Could not check setup status:', err.message);
         // If no token and server unreachable, show onboarding in connection mode to help user
         const token = localStorage.getItem('vault_token');
-        if (!token) {
+        // Someone who has used Vault before just needs the server started —
+        // the sign-in screen offers that; the wizard is for first runs.
+        if (!token && !localStorage.getItem('vault_onboarded')) {
           const isLocalhost = getApiBaseUrl().includes('localhost') || getApiBaseUrl().includes('127.0.0.1');
           if (isLocalhost) {
             console.warn('No token and server unreachable — showing onboarding for connection help');

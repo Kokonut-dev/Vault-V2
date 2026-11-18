@@ -20,7 +20,9 @@ export function makeReorderable(container, { onMove, onEdit } = {}) {
 
   rows.forEach((row, index) => {
     row.draggable = true;
-    row.classList.add('playlist-item', 'reorderable-item');
+    // Not `.playlist-item`: that class is display:flex (v3.css) and broke the
+    // row's grid, so artist/duration/year spilled inline after the title.
+    row.classList.add('reorderable-item');
 
     const main = row.querySelector('.media-list-item-main') || row;
     const controls = document.createElement('span');

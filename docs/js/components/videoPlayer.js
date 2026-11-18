@@ -7,7 +7,6 @@ import { store } from '../store.js';
 import { api } from '../api.js';
 import { formatTime, escapeHtml } from '../utils/format.js';
 import { toast } from './toast.js';
-import { showEQModal } from './eqPanel.js';
 import { setIcon } from '../utils/icons.js';
 
 let videoEl = null;
@@ -379,8 +378,9 @@ export function initVideoPlayer() {
     }
   });
 
+  // Loaded on first use — most sessions never open the equaliser.
   eqBtn?.addEventListener('click', () => {
-    try { showEQModal(); } catch {}
+    import('./eqPanel.js').then(m => m.showEQModal()).catch(() => {});
   });
 
   let speeds = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 1.75, 2, 3];

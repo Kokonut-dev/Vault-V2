@@ -11,8 +11,11 @@ import { store } from '../../store.js';
 import { toast } from '../../components/toast.js';
 import { getApiBaseUrl, setApiBaseUrl } from '../../config.js';
 import { copyText } from '../../utils/clipboard.js';
+import { confirmDialog } from '../../components/confirmDialog.js';
 import { escapeHtml } from '../../utils/format.js';
 import { icon } from '../../utils/icons.js';
+import { onUnmount } from '../../utils/lifecycle.js';
+import { serverIsOnThisDevice, waitForServer, waitForServerDown, probeLauncher, startServer, START_COMMAND } from '../../utils/serverLauncher.js';
 import {
   section, group, row, el, flashStatus, secretField, fieldError, clearFieldError,
   applyFieldErrors, liveValidate, validateLink, setReadOnly, busy,
@@ -353,7 +356,8 @@ export function linksSection(ctx) {
     row({ label: 'Podcasts', help: 'Feeds you subscribe to refresh on the server.', keywords: 'podcast rss feed', control: '<a class="btn btn-ghost btn-sm" href="podcasts" data-route="/podcasts">Open Podcasts</a>' }),
     row({ label: 'Notifications', help: 'Webhook, ntfy, Discord and Telegram.', keywords: 'notifications webhook', control: '<button type="button" class="btn btn-ghost btn-sm" data-go="notifications">Open notification settings</button>' }),
   );
-  s.body.append(paste, where);
+  const drive = driveGroup(s);
+  s.body.append(paste, drive, where);
   s.querySelectorAll('[data-go]').forEach(b => b.addEventListener('click', () => ctx.select(b.dataset.go, { focus: true })));
 
   const input = form.querySelector('#link-url');
@@ -387,6 +391,63 @@ export function linksSection(ctx) {
     }
   });
   return s;
+}
+
+/**
+ * Google Drive: shared links work with nothing set up. An API key makes big
+ * public folders reliable; an OAuth client ID adds "Connect Google account"
+ * (private files, browsing My Drive) on the Upload page.
+ */
+function driveGroup(s) {
+  const node = group('Google Drive', { description: 'Import from Drive on the <a href="upload" data-route="/upload">Upload page</a>. Shared links work without any setup.' });
+  node.dataset.keywords = 'google drive import gdrive api key oauth client id';
+  const form = el('<form class="drive-config" novalidate></form>');
+  const apiKey = secretField({
+    id: 'gd-api-key',
+    label: 'API key (optional)',
+    help: 'Lists big shared folders faster, with file sizes. Google Cloud Console → APIs & Services → enable the Drive API → Credentials → Create API key.',
+    type: 'password',
+    placeholder: 'AIza…',
+    keywords: 'google api key drive folder',
+  });
+  const origin = window.location.origin;
+  const clientId = el(`<div class="setting-row is-stacked" data-keywords="google oauth client id account private files">
+      <div class="setting-text"><label class="setting-label" for="gd-client">OAuth client ID (optional)</label>
+        <p class="setting-help" id="gd-client-help">Adds <strong>Connect Google account</strong> for private files. Create an OAuth client ID of type <em>Web application</em> and add <code>${escapeHtml(origin)}</code> as an authorised JavaScript origin.</p></div>
+      <div class="setting-control"><input class="form-input" id="gd-client" spellcheck="false" autocapitalize="off" autocomplete="off" placeholder="1234567890-abc.apps.googleusercontent.com" aria-describedby="gd-client-help"></div>
+    </div>`);
+  const actions = el('<div class="settings-actions"><button type="submit" class="btn btn-primary" id="gd-save">Save Google Drive settings</button></div>');
+  form.append(apiKey, clientId, actions);
+  node.append(form);
+
+  const clientInput = clientId.querySelector('#gd-client');
+  api.driveConfig().then((cfg) => {
+    apiKey.reset({ configured: cfg.apiKeyConfigured, hint: cfg.apiKeyHint });
+    clientInput.value = cfg.clientId || '';
+  }, async (err) => setReadOnly(node, await readOnlyNotice(err)));
+
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const btn = form.querySelector('#gd-save');
+    clearFieldError(apiKey.input);
+    clearFieldError(clientInput);
+    busy(btn, true, 'Saving…');
+    try {
+      const body = { clientId: clientInput.value.trim() };
+      const key = apiKey.value();
+      if (key !== undefined) body.apiKey = key;
+      const cfg = await api.saveDriveConfig(body);
+      apiKey.reset({ configured: cfg.apiKeyConfigured, hint: cfg.apiKeyHint });
+      flashStatus(s, 'Google Drive settings saved');
+    } catch (err) {
+      if (err.fields?.apiKey) fieldError(apiKey.input, err.fields.apiKey);
+      else if (err.fields?.clientId) fieldError(clientInput, err.fields.clientId);
+      else flashStatus(s, err.message, 'error');
+    } finally {
+      busy(btn, false);
+    }
+  });
+  return node;
 }
 
 function summaryLines(info) {
@@ -665,14 +726,24 @@ export function connectionSection() {
     </div>`));
 
   const base = window.location.origin;
-  const remote = group('Reach Vault from elsewhere');
-  remote.append(el(`<div class="remote-guide" data-keywords="remote access lan https certificate tunnel cloudflared away from home">
-      <ol class="remote-options">
-        <li>${icon('wifi', { size: 18 })}<div><p class="remote-title">Same network</p><p class="setting-help">Use your machine’s LAN address, e.g. <code>http://192.168.x.x:4000</code>, and sign in once on each device.</p></div></li>
-        <li>${icon('zap', { size: 18 })}<div><p class="remote-title">Tunnel (easiest)</p><p class="setting-help"><code>cloudflared tunnel --url http://localhost:4000</code>, then put the tunnel address in Server URL above.</p></div></li>
-        <li>${icon('shield-check', { size: 18 })}<div><p class="remote-title">HTTPS on your own domain</p><p class="setting-help">Run <code>npm run generate-cert</code> in <code>server/</code> and enable <code>server.https</code>, or put Vault behind Caddy or nginx.</p></div></li>
-      </ol>
-      <p class="setting-help">Browsers block plain HTTP from an HTTPS page (only <code>localhost</code> is exempt), which is why a tunnel or certificate matters away from home.</p>
+  const remote = group('Use Vault on other devices', { description: 'Phones, tablets, TVs and other computers.' });
+  remote.append(
+    row({
+      label: 'Same Wi-Fi',
+      help: '<span id="lan-help">Checking…</span>',
+      keywords: 'lan local network wifi phone tablet qr code address other device',
+      control: `<button type="button" class="btn btn-secondary btn-sm" data-share="lan">${icon('smartphone', { size: 14 })}<span>Show QR code</span></button>`,
+    }),
+    row({
+      label: 'From anywhere',
+      help: '<span id="tunnel-help">A private https:// address through Cloudflare — no router settings.</span>',
+      keywords: 'remote access tunnel cloudflare cloudflared away from home internet https',
+      control: `<button type="button" class="btn btn-secondary btn-sm" data-share="remote" id="tunnel-btn">${icon('globe', { size: 14 })}<span>Set up</span></button>`,
+    }),
+  );
+  remote.append(el(`<details class="remote-advanced" data-keywords="https certificate domain caddy nginx reverse proxy">
+      <summary>Your own domain or HTTPS certificate</summary>
+      <p class="setting-help">Run <code>npm run generate-cert</code> in <code>server/</code> and enable <code>server.https</code>, or put Vault behind Caddy or nginx. Browsers block plain HTTP from an HTTPS page (only <code>localhost</code> is exempt).</p>
       <div class="setting-row is-stacked">
         <div class="setting-text"><label class="setting-label" for="remote-url">This page’s address</label></div>
         <div class="setting-control"><div class="input-with-actions">
@@ -680,8 +751,29 @@ export function connectionSection() {
           <button class="btn btn-secondary" id="remote-copy" type="button">${icon('copy', { size: 16 })}<span>Copy</span></button>
         </div></div>
       </div>
-    </div>`));
-  s.body.append(server, status, remote);
+    </details>`));
+
+  const program = group('Server program', { description: 'Start, restart or stop Vault without a terminal.' });
+  program.append(
+    row({
+      label: 'Running',
+      help: '<span id="program-help">Checking…</span>',
+      keywords: 'restart stop start server program launcher process',
+      control: `<div class="settings-actions is-inline">
+          <button type="button" class="btn btn-secondary btn-sm" id="server-restart">${icon('refresh', { size: 14 })}<span>Restart</span></button>
+          <button type="button" class="btn btn-ghost btn-sm" id="server-stop">${icon('power', { size: 14 })}<span>Stop</span></button>
+          <button type="button" class="btn btn-primary btn-sm" id="server-start" hidden>${icon('power', { size: 14 })}<span>Start server</span></button>
+        </div>`,
+    }),
+    row({
+      label: 'Start Vault when this computer starts',
+      help: '<span id="autostart-help">Runs quietly in the background after you sign in to the computer.</span>',
+      keywords: 'autostart startup login boot launch automatically background',
+      id: 'autostart-toggle',
+      control: '<input type="checkbox" role="switch" class="switch" id="autostart-toggle" aria-describedby="autostart-toggle-help">',
+    }),
+  );
+  s.body.append(server, status, remote, program);
 
   // --- wiring
   const apiInput = s.querySelector('#api-url');
@@ -705,6 +797,157 @@ export function connectionSection() {
     if (await copyText(s.querySelector('#remote-url').value)) flashStatus(s, 'Address copied');
   });
 
+  // --- other devices + server program
+  s.querySelectorAll('[data-share]').forEach(btn => btn.addEventListener('click', async () => {
+    const { openShareDevice } = await import('../../components/shareDevice.js');
+    openShareDevice({ tab: btn.dataset.share });
+  }));
+  const programHelp = s.querySelector('#program-help');
+  const autostartToggle = s.querySelector('#autostart-toggle');
+  const autostartHelp = s.querySelector('#autostart-help');
+  let serverInfo = null;
+  async function refreshProgram() {
+    try {
+      serverInfo = await api.serverInfo();
+    } catch (err) {
+      programHelp.textContent = err.status === 404 ? OUTDATED : err.message;
+      program.querySelectorAll('button, input').forEach(c => { c.disabled = true; });
+      return;
+    }
+    let admin = true;
+    try { refreshTunnel((await api.remoteStatus()).tunnel); } catch (err) {
+      if (err.code === 'ADMIN_REQUIRED') {
+        admin = false;
+        const message = await readOnlyNotice(err);
+        setReadOnly(remote, message);
+        setReadOnly(program, message);
+      }
+    }
+    const where = serverIsOnThisDevice() ? 'on this computer' : `on ${serverInfo.hostname}`;
+    programHelp.textContent = serverInfo.supervised
+      ? `Vault ${serverInfo.version} is running ${where}. Stopping it leaves a Start button here and on the sign-in page.`
+      : `Vault ${serverInfo.version} is running ${where}, started from a terminal. Start it with “npm start” to restart or stop it from here.`;
+    s.querySelector('#server-restart').disabled = !serverInfo.supervised || !admin;
+    s.querySelector('#server-stop').disabled = !serverInfo.supervised || !admin;
+    const auto = serverInfo.autostart || {};
+    autostartToggle.checked = Boolean(auto.installed);
+    autostartToggle.disabled = !auto.supported || !admin;
+    autostartHelp.textContent = !auto.supported
+      ? (auto.reason || 'Not available on this system.')
+      : auto.installed ? `On — ${auto.method || 'starts at sign-in'}.` : `Runs quietly in the background after you sign in to ${serverIsOnThisDevice() ? 'this computer' : serverInfo.hostname}.`;
+    const lanHelp = s.querySelector('#lan-help');
+    lanHelp.textContent = serverInfo.network.lan
+      ? 'Scan a QR code with your phone — it opens Vault and signs you in.'
+      : 'Off: Vault only accepts connections from this computer. You can turn it on from here.';
+  }
+  async function refreshTunnel(tunnel) {
+    const help = s.querySelector('#tunnel-help');
+    const btn = s.querySelector('#tunnel-btn span');
+    if (!tunnel) {
+      try { tunnel = (await api.remoteStatus()).tunnel; } catch { return; }
+    }
+    if (tunnel.status === 'on') { help.innerHTML = `On: <a href="${escapeHtml(tunnel.url)}" target="_blank" rel="noopener">${escapeHtml(tunnel.url.replace(/^https:\/\//, ''))}</a>`; btn.textContent = 'Show'; }
+    else if (tunnel.status === 'installing' || tunnel.status === 'starting') { help.textContent = 'Starting…'; btn.textContent = 'Show'; }
+    else if (tunnel.status === 'error') { help.textContent = tunnel.error || 'Couldn’t start'; btn.textContent = 'Try again'; }
+    else { help.textContent = 'A private https:// address through Cloudflare — no router settings.'; btn.textContent = 'Set up'; }
+  }
+  const onRemote = (e) => refreshTunnel(e.detail);
+  window.addEventListener('vault:remote-changed', onRemote);
+  onUnmount(() => window.removeEventListener('vault:remote-changed', onRemote));
+
+  autostartToggle.addEventListener('change', async () => {
+    autostartToggle.disabled = true;
+    try {
+      await api.setAutostart(autostartToggle.checked, true);
+      flashStatus(s, autostartToggle.checked ? 'Vault will start with this computer' : 'Vault won’t start automatically');
+    } catch (err) {
+      autostartToggle.checked = !autostartToggle.checked;
+      flashStatus(s, err.message, 'error');
+    }
+    refreshProgram();
+  });
+  s.querySelector('#server-restart').addEventListener('click', async (e) => {
+    const btn = e.currentTarget;
+    busy(btn, true, 'Restarting…');
+    try {
+      await api.restartServer();
+      await waitForServerDown({ timeoutMs: 15000 });
+      const back = await waitForServer({ timeoutMs: 120000 });
+      flashStatus(s, back ? 'Server restarted' : 'The server didn’t come back — check its window or log', back ? 'ok' : 'error');
+    } catch (err) {
+      flashStatus(s, err.message, 'error');
+    } finally {
+      busy(btn, false);
+      refresh();
+      refreshProgram();
+    }
+  });
+  s.querySelector('#server-stop').addEventListener('click', async (e) => {
+    const local = serverIsOnThisDevice();
+    const message = local
+      ? 'Playback stops on every device. You can start it again from this page or the sign-in screen.'
+      : `Vault on ${serverInfo?.hostname || 'its computer'} stops, and playback stops on every device. It can only be started again on that computer.`;
+    const btn = e.currentTarget;
+    const ok = await confirmDialog({ title: 'Stop the server?', message, confirmText: 'Stop server', danger: true });
+    if (!ok) return;
+    busy(btn, true, 'Stopping…');
+    try {
+      await api.stopServer();
+      await waitForServerDown({ timeoutMs: 15000 });
+      busy(btn, false);
+      await showStopped(local);
+      // The app-wide banner (with its own Start button) — a deliberate stop
+      // used to leave every page looking connected until the next request.
+      window.dispatchEvent(new CustomEvent('vault:server-down', { detail: { message: 'The Vault server is stopped' } }));
+    } catch (err) {
+      flashStatus(s, err.message, 'error');
+      busy(btn, false);
+    }
+  });
+
+  // Stopped state for this row: Start (via the launcher on this computer) or
+  // the terminal command when Vault runs elsewhere / without the launcher.
+  const startBtn = s.querySelector('#server-start');
+  const programLabel = programHelp.closest('.setting-row').querySelector('.setting-label');
+  async function showStopped(local) {
+    const launcher = local ? await probeLauncher() : null;
+    programLabel.textContent = 'Stopped';
+    s.querySelector('#server-restart').hidden = true;
+    s.querySelector('#server-stop').hidden = true;
+    startBtn.hidden = !launcher;
+    refresh();
+    programHelp.innerHTML = launcher
+      ? 'Vault is stopped. Nothing plays until you start it again.'
+      : `Vault is stopped. Start it on ${local ? 'this computer' : escapeHtml(serverInfo?.hostname || 'its computer')} with <code>${escapeHtml(START_COMMAND)}</code>.`;
+  }
+  function showRunning() {
+    programLabel.textContent = 'Running';
+    s.querySelector('#server-restart').hidden = false;
+    s.querySelector('#server-stop').hidden = false;
+    startBtn.hidden = true;
+    refreshProgram();
+    refresh();
+  }
+  startBtn.addEventListener('click', async () => {
+    busy(startBtn, true, 'Starting…');
+    try {
+      await startServer();
+      if (await waitForServer({ timeoutMs: 60000 })) {
+        toast.success('The Vault server is running');
+        window.dispatchEvent(new CustomEvent('vault:server-back'));
+      } else {
+        flashStatus(s, 'The server didn’t start. Run it from a terminal to see why.', 'error');
+      }
+    } catch (err) {
+      flashStatus(s, `Couldn’t start the server: ${err.message}`, 'error');
+    } finally {
+      busy(startBtn, false);
+    }
+  });
+  // Started from here, the banner or another tab.
+  window.addEventListener('vault:server-up', showRunning);
+  onUnmount(() => window.removeEventListener('vault:server-up', showRunning));
+
   const line = s.querySelector('#server-status');
   const facts = s.querySelector('#server-facts');
   async function refresh() {
@@ -723,7 +966,8 @@ export function connectionSection() {
         <div><dt>Videos</dt><dd>${Number(lib.videos || 0).toLocaleString()}</dd></div>`;
     } catch (err) {
       line.dataset.state = 'error';
-      line.innerHTML = `<span class="status-dot"></span><span>Can’t reach the server: ${escapeHtml(err.message)}</span>`;
+      const unreachable = err.status == null || /failed to fetch|network|load failed|abort/i.test(err.message || '');
+      line.innerHTML = `<span class="status-dot"></span><span>${unreachable ? 'Not connected — the server isn’t running or can’t be reached' : `Can’t reach the server: ${escapeHtml(err.message)}`}</span>`;
       facts.innerHTML = '';
     }
   }
@@ -744,5 +988,6 @@ export function connectionSection() {
     }
   });
   refresh();
+  refreshProgram();
   return s;
 }

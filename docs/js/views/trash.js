@@ -8,6 +8,7 @@ import { escapeHtml, formatBytes, formatRelativeTime } from '../utils/format.js'
 import { toast } from '../components/toast.js';
 import { confirmDialog } from '../components/confirmDialog.js';
 import { listOfflineItems, removeOfflineItem } from '../app-extras.js';
+import { onUnmount } from '../utils/lifecycle.js';
 
 export async function renderTrash(container) {
   container.className = 'page';
@@ -141,6 +142,7 @@ export async function renderDownloads(container) {
   }
 
   window.addEventListener('vault:offline-changed', load);
+  onUnmount(() => window.removeEventListener('vault:offline-changed', load));
   await load();
 }
 

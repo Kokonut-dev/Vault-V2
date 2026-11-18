@@ -43,6 +43,7 @@ export async function renderWatchlist(container) {
 
   await load();
   window.addEventListener('vault:watchlist-changed', load);
+  onUnmount(() => window.removeEventListener('vault:watchlist-changed', load));
 }
 
 export async function renderContinue(container) {
