@@ -35,12 +35,18 @@ function variantsFor(item) {
 }
 
 /** Master playlist with bandwidth/ resolution annotations. */
-function masterPlaylist(item, variants) {
+// <video>/hls.js can't send an Authorization header, so every URI inside a
+// playlist must carry the same ?token= the playlist itself was fetched with.
+function withToken(uri, token) {
+  return token ? `${uri}?token=${encodeURIComponent(token)}` : uri;
+}
+
+function masterPlaylist(item, variants, token) {
   const lines = ['#EXTM3U', '#EXT-X-VERSION:3'];
   for (const name of variants) {
     const q = transcodePlan.qualityFor(name);
     lines.push(`#EXT-X-STREAM-INF:BANDWIDTH=${q.videoBitrate * 1000 + q.audioBitrate * 1000},RESOLUTION=${Math.round((q.height * 16) / 9)}x${q.height},NAME="${name}"`);
-    lines.push(`/api/transcode/hls/${item.id}/${name}/index.m3u8`);
+    lines.push(withToken(`/api/transcode/hls/${item.id}/${name}/index.m3u8`, token));
   }
   return lines.join('\n');
 }
@@ -109,7 +115,7 @@ async function waitForPlaylist(playlistPath, timeoutMs = 25000) {
 }
 
 /** Rewrite absolute segment paths so the client can fetch them through the API. */
-async function variantPlaylist(item, name) {
+async function variantPlaylist(item, name, token) {
   const playlistPath = ensureVariant(item, name);
   const ready = await waitForPlaylist(playlistPath);
   if (!ready) return null;
@@ -120,7 +126,7 @@ async function variantPlaylist(item, name) {
       const trimmed = line.trim();
       if (!trimmed || trimmed.startsWith('#')) return line;
       const file = path.basename(trimmed);
-      return `/api/transcode/hls/${item.id}/${name}/${file}`;
+      return withToken(`/api/transcode/hls/${item.id}/${name}/${file}`, token);
     })
     .join('\n');
 }

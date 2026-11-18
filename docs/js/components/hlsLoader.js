@@ -31,8 +31,9 @@ async function loadHls() {
  * Attach an HLS source to a <video>. Returns true when playback was handed to
  * hls.js or the browser's native HLS support.
  */
-export async function attachHls(videoEl, url, { startPosition = 0 } = {}) {
+export async function attachHls(videoEl, url, { startPosition = 0, live = false, itemId = null, onFatal = null } = {}) {
   if (!videoEl || !url) return false;
+  detachHls(videoEl);
 
   // Native HLS (Safari, iOS, some smart-TV browsers) — no library needed.
   if (videoEl.canPlayType('application/vnd.apple.mpegurl')) {
@@ -51,6 +52,9 @@ export async function attachHls(videoEl, url, { startPosition = 0 } = {}) {
       maxBufferLength: 30,
       enableWorker: true,
       lowLatencyMode: false,
+      // Server-side restreams need a few seconds to produce the next
+      // segment; be patient before declaring the stream dead.
+      ...(live ? { liveSyncDurationCount: 3, manifestLoadingMaxRetry: 4, levelLoadingMaxRetry: 6, fragLoadingMaxRetry: 6 } : {}),
     });
     hls.loadSource(url);
     hls.attachMedia(videoEl);
@@ -59,12 +63,19 @@ export async function attachHls(videoEl, url, { startPosition = 0 } = {}) {
         try { videoEl.currentTime = startPosition; } catch { /* not seekable yet */ }
       });
     }
+    let recoveredMedia = false;
     hls.on(Hls.Events.ERROR, (_event, data) => {
-      if (data?.fatal) {
-        console.warn('[HLS] fatal error, falling back', data.type, data.details);
-        hls.destroy();
-        window.dispatchEvent(new CustomEvent('vault:hls-failed', { detail: { url, data } }));
+      if (!data?.fatal) return;
+      // A decode hiccup is often recoverable once (hls.js' documented pattern).
+      if (data.type === Hls.ErrorTypes?.MEDIA_ERROR && !recoveredMedia) {
+        recoveredMedia = true;
+        try { hls.recoverMediaError(); return; } catch { /* fall through */ }
       }
+      console.warn('[HLS] fatal error', data.type, data.details);
+      hls.destroy();
+      if (videoEl._vaultHls === hls) delete videoEl._vaultHls;
+      if (typeof onFatal === 'function') onFatal(data);
+      else window.dispatchEvent(new CustomEvent('vault:hls-failed', { detail: { url, itemId, data } }));
     });
     // Keep a handle so the player can destroy it on close.
     videoEl._vaultHls = hls;

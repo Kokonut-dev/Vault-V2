@@ -408,7 +408,7 @@ async function shutdown() {
     scannerService.stopWatcher();
     hlsService.stopAll();
     mdnsService.stop();
-    livetvService.stopAll;
+    livetvService.stopAll();
     await Promise.all([
       libraryService.flush(),
       libraryService.flushScoped(),

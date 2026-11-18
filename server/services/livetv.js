@@ -72,10 +72,13 @@ function parseM3U(text) {
     } else if (line.startsWith('#')) {
       if (line.startsWith('#EXTVLCOPT') && pending) {
         const opt = line.replace('#EXTVLCOPT:', '').split('=');
-        if (opt[0]?.includes('http-referrer')) pending.referrer = opt.slice(1).join('=');
+        const value = opt.slice(1).join('=').trim();
+        if (/http-referr?er/i.test(opt[0] || '')) pending.referrer = value;
+        if (/http-user-agent/i.test(opt[0] || '')) pending.userAgent = value;
       }
     } else if (pending) {
       pending.url = line;
+      pending.kind = entryKind(pending);
       channels.push(pending);
       pending = null;
     }
@@ -83,7 +86,53 @@ function parseM3U(text) {
   return channels.map((c, i) => ({ ...c, id: `ch_${i}_${Buffer.from(c.name).toString('base64url').slice(0, 10)}` }));
 }
 
-async function loadChannels() {
+const VOD_EXT = /\.(mkv|mp4|m4v|avi|mov|wmv|webm|mpg|mpeg|flv)(\?|$)/i;
+
+/**
+ * IPTV "M3U Plus" lists mix live channels with on-demand movies and series
+ * episodes. Live entries have #EXTINF:-1 and point at an endless stream; VOD
+ * entries usually live under /movie/ or /series/ (Xtream Codes layout), carry
+ * a real duration or end in a file extension. The player treats them
+ * differently (no live window, resumable), so tag them here.
+ */
+function entryKind(entry) {
+  let pathname = '';
+  try { pathname = new URL(entry.url).pathname; } catch { pathname = String(entry.url || ''); }
+  if (/\/live\//i.test(pathname)) return 'live';
+  if (/\/(movie|movies|series|vod)\//i.test(pathname)) return 'vod';
+  if (VOD_EXT.test(pathname)) return 'vod';
+  if (entry.duration > 0) return 'vod';
+  return 'live';
+}
+
+// Playback looks channels up by id; re-reading a 20 MB playlist on every
+// click would be slow and hammer the provider, so keep the parsed list briefly.
+const CHANNEL_CACHE_MS = 5 * 60 * 1000;
+let channelCache = { at: 0, channels: null, key: '' };
+
+function channelCacheKey() {
+  const lt = getConfig().livetv || {};
+  return JSON.stringify([lt.enabled, lt.m3uUrl, lt.hdhrDiscover]);
+}
+
+async function loadChannels({ fresh = false } = {}) {
+  const key = channelCacheKey();
+  if (!fresh && channelCache.channels && channelCache.key === key && Date.now() - channelCache.at < CHANNEL_CACHE_MS) {
+    return channelCache.channels;
+  }
+  const channels = await readChannels();
+  channelCache = { at: Date.now(), channels, key };
+  return channels;
+}
+
+/** One channel by id (from the cached list, re-reading once on a miss). */
+async function getChannel(id) {
+  let channel = (await loadChannels()).find(c => c.id === id);
+  if (!channel) channel = (await loadChannels({ fresh: true })).find(c => c.id === id);
+  return channel || null;
+}
+
+async function readChannels() {
   const config = getConfig();
   const channels = [];
 
@@ -258,6 +307,13 @@ async function getNowNext(channelIds) {
 // Recording (DVR)
 // ---------------------------------------------------------------------------
 async function record({ channelUrl, title, durationSeconds = 3600, channelId = null, startAt = null }) {
+  if (channelId && !channelUrl) {
+    const channel = await getChannel(channelId);
+    if (!channel) throw new Error('Channel not found');
+    channelUrl = channel.url;
+    title = title || channel.name;
+  }
+  channelUrl = await require('./restream').assertPlayableUrl(channelUrl);
   const config = getConfig();
   const videosDir = config.media.paths.videos || path.join(__dirname, '../media/videos');
   const recordingsDir = path.join(videosDir, 'Recordings');
@@ -287,8 +343,15 @@ async function record({ channelUrl, title, durationSeconds = 3600, channelId = n
     events.jobStart(jobId, 'record', `Recording ${safe}`, durationSeconds);
     recording.status = 'recording';
     recording.startedAt = new Date().toISOString();
-    const args = ['-hide_banner', '-loglevel', 'error', '-i', channelUrl, '-c', 'copy', '-t', String(durationSeconds), '-f', 'mpegts', output];
+    const args = ['-hide_banner', '-nostdin', '-loglevel', 'error',
+      // Only network inputs — a playlist entry must never make ffmpeg read
+      // local files (file:, concat:, pipe: …).
+      '-protocol_whitelist', 'http,https,tcp,tls,crypto,httpproxy',
+      '-i', channelUrl, '-c', 'copy', '-t', String(durationSeconds), '-f', 'mpegts', output];
     const proc = spawn(ffmpegBinary(), args);
+    // Without this listener a missing ffmpeg (ENOENT) is an unhandled
+    // 'error' event and takes the whole server down.
+    proc.on('error', (err) => logger.warn(`[LiveTV] recording could not start ffmpeg: ${err.message}`));
     activeRecordings.set(recording.id, proc);
 
     const started = Date.now();
@@ -337,7 +400,7 @@ function stopRecording(id) {
 }
 
 function listRecordings() {
-  return recordingsStore.get();
+  return recordingsStore.get().map(r => ({ ...r, channelUrl: r.channelUrl ? links.redactUrl(r.channelUrl) : r.channelUrl }));
 }
 
 async function deleteRecording(id) {
@@ -414,6 +477,46 @@ function publicSettings(livetv = getConfig().livetv || {}) {
  * Dry-run a channel list and/or guide before saving (TiviMate-style "fetch
  * and show a channel count"). Omitted values fall back to the saved ones.
  */
+let sampleStreamsEnabled = true;
+
+/**
+ * "Test" used to stop at "the list parsed". A list can parse perfectly and
+ * still be unplayable (expired account → 403 on every stream, HEVC/AC-3 that
+ * browsers can't decode, ffmpeg missing on the server). Open a few entries —
+ * the first live channel, the first movie, and the next entry — and report
+ * what would actually happen when someone presses play.
+ */
+async function sampleStreams(channels, { limit = 3, timeoutMs = 10000 } = {}) {
+  const restream = require('./restream');
+  const { detectCapabilities } = require('./transcodePlan');
+  const playable = channels.filter(c => /^https?:\/\//i.test(c.url || ''));
+  const summary = {
+    ffmpeg: Boolean(detectCapabilities().ffmpeg),
+    unsupported: channels.length - playable.length,
+    checked: [],
+  };
+  if (!summary.ffmpeg) return summary;
+
+  const picks = [];
+  const add = c => { if (c && !picks.includes(c) && picks.length < limit) picks.push(c); };
+  add(playable.find(c => c.kind === 'live'));
+  add(playable.find(c => c.kind === 'vod'));
+  for (const c of playable) add(c);
+
+  summary.checked = await Promise.all(picks.map(async (channel) => {
+    const base = { name: channel.name, kind: channel.kind };
+    try {
+      const url = await restream.assertPlayableUrl(channel.url);
+      const source = await restream.probe(url, { userAgent: channel.userAgent, referrer: channel.referrer, timeoutMs });
+      const plan = restream.planFor(source);
+      return { ...base, ok: true, format: restream.describeSource(source), converted: !plan.directPlayable, reason: plan.reason };
+    } catch (err) {
+      return { ...base, ok: false, code: err.code || 'FAILED', error: err.code ? restream.messageFor(err.code) : 'Could not open this stream' };
+    }
+  }));
+  return summary;
+}
+
 async function testSources({ m3uUrl, epgUrl } = {}) {
   const saved = getConfig().livetv || {};
   const m3uSource = m3uUrl === undefined ? saved.m3uUrl : String(m3uUrl || '').trim();
@@ -432,7 +535,10 @@ async function testSources({ m3uUrl, epgUrl } = {}) {
         m3uText = null;
       } else {
         const { entries, epgUrl: playlistGuide } = links.readM3U(m3uText);
+        const parsed = parseM3U(m3uText);
         result.m3u = {
+          live: parsed.filter(c => c.kind === 'live').length,
+          vod: parsed.filter(c => c.kind === 'vod').length,
           ok: entries.length > 0,
           channels: entries.length,
           groups: kind.summary.groups || [],
@@ -442,6 +548,7 @@ async function testSources({ m3uUrl, epgUrl } = {}) {
           hasPlaylistGuide: Boolean(playlistGuide),
           error: entries.length ? undefined : 'The playlist is empty',
         };
+        if (entries.length && sampleStreamsEnabled) result.m3u.streams = await sampleStreams(parsed);
       }
     } catch (err) {
       result.m3u = { ok: false, error: friendlyError(err) };
@@ -479,13 +586,26 @@ async function adoptPlaylistGuide({ m3uUrl } = {}) {
   return updateSettings({ epgUrl });
 }
 
+function stopAll() {
+  for (const [, proc] of activeRecordings) {
+    try { proc.kill('SIGINT'); } catch { /* already gone */ }
+  }
+  activeRecordings.clear();
+  require('./restream').stopAll();
+}
+
 async function flush() {
   await recordingsStore.flush();
 }
 
 module.exports = {
   parseM3U,
+  entryKind,
   loadChannels,
+  getChannel,
+  stopAll,
+  sampleStreams,
+  _setSampleStreams: (on) => { sampleStreamsEnabled = on; },
   discoverHDHomeRun,
   parseXmltv,
   getEpg,
