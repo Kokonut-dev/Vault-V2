@@ -166,8 +166,10 @@ export function showContextMenu(event, item, options = {}) {
   const rect = menuEl.getBoundingClientRect();
   const x = event.clientX || (event.touches && event.touches[0]?.clientX) || 0;
   const y = event.clientY || (event.touches && event.touches[0]?.clientY) || 0;
-  menuEl.style.left = `${Math.min(x, window.innerWidth - rect.width - 12)}px`;
-  menuEl.style.top = `${Math.min(y, window.innerHeight - rect.height - 12)}px`;
+  // Clamp on both sides: on a short landscape phone the menu (capped to the
+  // viewport by CSS, scrolling inside) must never start above/left of the edge.
+  menuEl.style.left = `${Math.max(12, Math.min(x, window.innerWidth - rect.width - 12))}px`;
+  menuEl.style.top = `${Math.max(12, Math.min(y, window.innerHeight - rect.height - 12))}px`;
   requestAnimationFrame(() => menuEl?.classList.add('active'));
   openFor = item;
 

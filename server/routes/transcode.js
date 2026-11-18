@@ -17,8 +17,12 @@ router.get('/audio/:id', (req, res) => {
     return res.status(404).json({ error: 'File not found on disk' });
   }
 
-  const { codec = 'aac', bitrate = '128k' } = req.query;
-  transcoderService.transcodeAudioStream(item.path, res, { codec, bitrate });
+  const codec = ['aac', 'opus', 'mp3'].includes(req.query.codec) ? req.query.codec : 'aac';
+  const bitrate = /^(64|96|128|160|192|256|320)k$/.test(String(req.query.bitrate || '')) ? req.query.bitrate : '192k';
+  // ?start= lets the player seek inside a converted stream (it can't seek by
+  // bytes: the output is produced on the fly).
+  const start = Math.max(0, Math.min(Number(req.query.start) || 0, 24 * 3600));
+  transcoderService.transcodeAudioStream(item.path, res, { codec, bitrate, start });
 });
 
 // --- HLS / adaptive streaming ---------------------------------------------

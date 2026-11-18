@@ -183,7 +183,7 @@ export function playbackSection() {
     row({
       id: 'pref-speed',
       label: 'Default speed',
-      help: 'Used for every new item; change it per item from the player.',
+      help: 'Used for every new video, podcast and audiobook (music plays at 1×); change it per item from the player.',
       keywords: 'speed rate faster slower podcast audiobook',
       control: rangeControl({ id: 'pref-speed', min: 0.5, max: 2.5, step: 0.05, value: prefs.speed, format: speedText }),
     }),

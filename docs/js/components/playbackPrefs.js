@@ -115,11 +115,9 @@ export function applySpeed(rate, { announce = false } = {}) {
     video.mozPreservesPitch = true;
     video.webkitPreservesPitch = true;
   }
-  const audio = document.querySelector('#audio-element') || document.querySelector('audio');
-  if (audio) {
-    audio.playbackRate = value;
-    audio.preservesPitch = true;
-  }
+  // The audio player's element isn't in the DOM; it decides per item
+  // (default speed → podcasts/audiobooks, explicit change → anything).
+  window.VAULT_AUDIO?.setSpeed?.(value, { explicit: announce });
   if (announce) toast.info(`Playback speed ${value}×`);
   return value;
 }

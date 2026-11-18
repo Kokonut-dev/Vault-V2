@@ -168,7 +168,7 @@ router.post('/test', async (req, res) => {
  *   confirmPassword?: string,
  *   gridPattern: number[8],
  *   gridOrderMatters?: boolean,
- *   mediaPaths?: { movies, music, videos },
+ *   mediaPaths?: { movies, music, videos, audiobooks, podcasts, comics },
  *   server?: { port?, host? },
  *   corsOrigins?: string[],
  *   theme?: string
@@ -266,7 +266,9 @@ router.post('/complete', async (req, res) => {
     // Media paths validation (optional)
     let validatedMediaPaths = { ...DEFAULT_CONFIG.media.paths };
     if (mediaPaths && typeof mediaPaths === 'object') {
-      for (const key of ['movies', 'music', 'videos']) {
+      // Every media kind the config knows about (audiobooks, podcasts and comics
+      // were silently dropped when this list was hard-coded to three).
+      for (const key of Object.keys(DEFAULT_CONFIG.media.paths)) {
         if (mediaPaths[key] && typeof mediaPaths[key] === 'string' && mediaPaths[key].trim()) {
           const p = mediaPaths[key].trim();
           // Prevent path traversal outside server dir? Allow absolute but sanitize

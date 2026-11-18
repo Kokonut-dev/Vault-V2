@@ -7,6 +7,7 @@
  * Kept out of the inline bootstrap in index.html so the shell stays readable;
  * index.html calls `initAppExtras()` after the players are initialised.
  */
+import { activeMedia as activeMediaElement, activeTime, activeDuration } from './utils/activeMedia.js';
 import { store } from './store.js';
 import { api } from './api.js';
 import { toast } from './components/toast.js';
@@ -22,6 +23,8 @@ import { initVideoExtras } from './components/videoExtras.js';
 import { initPlaybackPrefs } from './components/playbackPrefs.js';
 import { confirmDialog } from './components/confirmDialog.js';
 import { icon } from './utils/icons.js';
+import { router } from './router.js';
+import { initScrollHints } from './utils/scrollHints.js';
 import { formatTime } from './utils/format.js';
 
 // ---------------------------------------------------------------------------
@@ -256,20 +259,39 @@ function initBottomNav() {
   nav.className = 'bottom-nav';
   nav.id = 'bottom-nav';
   nav.setAttribute('aria-label', 'Primary');
+  // [path, icon, label, other routes that belong to the tab]
   const links = [
-    ['/home', 'home', 'Home'],
-    ['/movies', 'film', 'Movies'],
-    ['/music', 'music', 'Music'],
-    ['/shows', 'tv', 'Shows'],
-    ['/settings', 'settings', 'More'],
+    ['/', 'home', 'Home', ['/home', '/continue']],
+    ['/movies', 'film', 'Movies', ['/movie/', '/watch/']],
+    ['/music', 'music', 'Music', ['/album/', '/artist', '/playlists']],
+    ['/shows', 'tv', 'Shows', ['/show/']],
+    ['/settings', 'settings', 'More', []],
   ];
-  nav.innerHTML = links.map(([href, iconName, label]) => `<a href="#${href}" data-path="${href}">${icon(iconName, { size: 20 })}<span>${label}</span></a>`).join('');
+  // Real router links: the old "#/movies" hrefs flipped the app into hash
+  // routing (…/movies#/movies) and the active tab was read from
+  // location.hash, so "Home" stayed highlighted on every page.
+  nav.innerHTML = links.map(([href, iconName, label]) => `<a href="${router.hrefFor(href)}" data-path="${href}">${icon(iconName, { size: 20 })}<span>${label}</span></a>`).join('');
   document.body.appendChild(nav);
+  nav.addEventListener('click', (event) => {
+    const link = event.target.closest('a[data-path]');
+    if (!link || event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+    event.preventDefault();
+    router.navigate(link.dataset.path);
+  });
 
   const paint = () => {
-    const path = location.hash.replace('#', '') || '/home';
-    nav.querySelectorAll('a').forEach(a => a.classList.toggle('active', path.startsWith(a.dataset.path)));
+    const path = router.getCurrentPath();
+    nav.querySelectorAll('a').forEach((a) => {
+      const [base, , , related] = links.find(l => l[0] === a.dataset.path);
+      const active = base === '/'
+        ? path === '/' || related.some(r => path === r || path.startsWith(`${r}/`))
+        : path === base || path.startsWith(`${base}/`) || related.some(r => path.startsWith(r));
+      a.classList.toggle('active', active);
+      if (active) a.setAttribute('aria-current', 'page'); else a.removeAttribute('aria-current');
+    });
   };
+  window.addEventListener('vault:route-changed', paint);
+  window.addEventListener('popstate', paint);
   window.addEventListener('hashchange', paint);
   paint();
 }
@@ -305,7 +327,7 @@ function initAmbient() {
 const syncplayState = { roomId: null, memberId: null, last: null };
 
 function activeMedia() {
-  return document.getElementById('video-element') || document.getElementById('audio-element');
+  return activeMediaElement();
 }
 
 function applySyncState(data) {
@@ -462,6 +484,7 @@ export function initAppExtras() {
   initMultiSelect();
   initGestures();
   initBottomNav();
+  initScrollHints();
   initAmbient();
   initSyncPlayFollower();
   initPlayerExtras();
@@ -482,16 +505,10 @@ export function initAppExtras() {
   // timer, bookmark capture and the lyrics window). Previously referenced as
   // `window.vaultPlayback` but never defined, so seeks silently did nothing.
   window.vaultPlayback = window.vaultPlayback || {
-    currentTime() {
-      const media = document.getElementById('video-element') || document.querySelector('audio');
-      return media && Number.isFinite(media.currentTime) ? media.currentTime : 0;
-    },
-    duration() {
-      const media = document.getElementById('video-element') || document.querySelector('audio');
-      return media && Number.isFinite(media.duration) ? media.duration : 0;
-    },
+    currentTime: () => activeTime(),
+    duration: () => activeDuration(),
     paused() {
-      const media = document.getElementById('video-element') || document.querySelector('audio');
+      const media = activeMediaElement();
       return media ? media.paused : true;
     },
     seek(time) {

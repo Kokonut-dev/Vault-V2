@@ -5,6 +5,7 @@
  *   - bookmarks (timestamped notes per item)
  *   - playback stats panel ("stats for nerds")
  */
+import { activeMedia, pauseActive } from '../utils/activeMedia.js';
 import { api } from '../api.js';
 import { icon } from '../utils/icons.js';
 import { formatTime } from '../utils/format.js';
@@ -23,7 +24,7 @@ const sleep = {
 };
 
 function fadeOutAndPause() {
-  const media = document.querySelector('#video-element') || document.querySelector('#audio-element') || document.querySelector('audio');
+  const media = activeMedia();
   if (!media) return;
 
   const originalVolume = media.volume;
@@ -52,8 +53,7 @@ export function setSleepTimer(minutes, { fade = true } = {}) {
   sleep.timeoutId = setTimeout(() => {
     if (fade) fadeOutAndPause();
     else {
-      const media = document.querySelector('#video-element') || document.querySelector('audio');
-      media?.pause();
+      pauseActive();
       toast.info('Sleep timer finished — playback paused');
     }
     clearSleepTimer({ silent: true });
@@ -80,12 +80,12 @@ export function clearSleepTimer({ silent = false } = {}) {
   if (!silent) toast.info('Sleep timer cleared');
 }
 
-export function onItemFinished() {
+export function onItemFinished(event) {
   if (!sleep.stopAfter) return;
   sleep.played += 1;
   if (sleep.played >= sleep.stopAfter) {
-    const media = document.querySelector('#video-element') || document.querySelector('audio');
-    media?.pause();
+    event?.preventDefault?.(); // the audio player then doesn't start the next item
+    pauseActive();
     toast.info('Stop-after limit reached — playback paused');
     clearSleepTimer({ silent: true });
   }

@@ -8,6 +8,35 @@ import { escapeHtml, formatTime, formatRelativeTime } from '../utils/format.js';
 import { toast } from '../components/toast.js';
 import { promptModal } from '../components/modal.js';
 
+/** itunes:duration is "1:02:03", "62:03" or plain seconds. */
+export function parseEpisodeDuration(value) {
+  if (value == null || value === '') return 0;
+  if (typeof value === 'number') return Number.isFinite(value) ? value : 0;
+  const parts = String(value).trim().split(':').map(Number);
+  if (parts.some(n => !Number.isFinite(n))) return 0;
+  return parts.reduce((total, n) => total * 60 + n, 0);
+}
+
+/**
+ * Player item for a feed episode. Downloaded episodes play the library copy
+ * (seekable, convertible); others stream from the podcast host. The old
+ * payload had no stream URL and no id, so playback went to
+ * /api/transcode/undefined and always failed.
+ */
+export function episodeToPlayable(episode, feed = {}) {
+  const base = {
+    type: 'podcast',
+    title: episode.title || 'Episode',
+    artist: feed.title || '',
+    album: feed.title || '',
+    artwork: episode.artwork || feed.artwork || null,
+    duration: parseEpisodeDuration(episode.duration),
+    guid: episode.guid,
+  };
+  if (episode.downloaded && episode.localItemId) return { ...base, id: episode.localItemId };
+  return { ...base, id: `podcast:${episode.guid}`, streamUrl: episode.url };
+}
+
 export async function renderPodcasts(container, params = {}) {
   container.className = 'page';
   container.innerHTML = `
@@ -65,15 +94,15 @@ export async function renderPodcasts(container, params = {}) {
 
     const feed = feeds.find(entry => entry.id === activeFeed);
     const detail = body.querySelector('#feed-detail');
-    const episodes = feed?.episodes || [];
+    const episodes = feed?.items || [];
 
     detail.innerHTML = `
       <div class="feed-header" style="display:flex;gap:16px;align-items:flex-start;margin-bottom:16px">
-        ${feed.image ? `<img src="${escapeHtml(feed.image)}" alt="" style="width:96px;border-radius:12px">` : ''}
+        ${feed.artwork ? `<img src="${escapeHtml(feed.artwork)}" alt="" style="width:96px;border-radius:12px">` : ''}
         <div class="row-main">
           <h2 class="section-title" style="margin:0">${escapeHtml(feed.title || feed.url)}</h2>
           <div class="row-meta">${escapeHtml(feed.description || '')}</div>
-          <div class="row-meta">${episodes.length} episode(s)${feed.lastRefreshed ? ` · updated ${formatRelativeTime(feed.lastRefreshed)}` : ''}</div>
+          <div class="row-meta">${episodes.length} episode(s)${feed.lastFetchedAt ? ` · updated ${formatRelativeTime(feed.lastFetchedAt)}` : ''}</div>
         </div>
         <div style="display:flex;flex-direction:column;gap:6px">
           <button class="btn btn-secondary btn-sm" data-feed-refresh>${icon('refresh', { size: 13 })} Refresh</button>
@@ -87,9 +116,9 @@ export async function renderPodcasts(container, params = {}) {
             <button class="btn btn-icon" data-ep-play aria-label="Play ${escapeHtml(episode.title)}">${icon('play', { size: 16 })}</button>
             <div class="row-main">
               <div class="row-title">${escapeHtml(episode.title)}</div>
-              <div class="row-meta">${episode.publishedAt ? formatRelativeTime(episode.publishedAt) : ''}${episode.duration ? ` · ${formatTime(episode.duration)}` : ''}${episode.downloaded ? ' · downloaded' : ''}</div>
+              <div class="row-meta">${episode.published && !Number.isNaN(Date.parse(episode.published)) ? formatRelativeTime(new Date(episode.published).toISOString()) : ''}${parseEpisodeDuration(episode.duration) ? ` · ${formatTime(parseEpisodeDuration(episode.duration))}` : ''}${episode.downloaded ? ' · downloaded' : ''}</div>
             </div>
-            <button class="btn btn-ghost btn-sm" data-ep-download>${icon('download', { size: 14 })}<span>${episode.downloaded ? 'Saved' : 'Download'}</span></button>
+            <button class="btn btn-ghost btn-sm" data-ep-download ${episode.downloaded ? 'disabled title="Already in your library"' : ''}>${icon(episode.downloaded ? 'check' : 'download', { size: 14 })}<span>${episode.downloaded ? 'Saved' : 'Download'}</span></button>
           </div>`).join('') || '<div class="row-meta">No episodes parsed from this feed yet.</div>'}
       </div>
     `;
@@ -118,7 +147,10 @@ export async function renderPodcasts(container, params = {}) {
     detail.querySelectorAll('[data-ep-play]').forEach(button => {
       button.addEventListener('click', () => {
         const episode = episodes.find(e => e.guid === button.closest('[data-episode]').dataset.episode);
-        if (episode) window.dispatchEvent(new CustomEvent('vault:play', { detail: { item: { ...episode, type: 'podcast', id: episode.itemId || episode.id } } }));
+        if (!episode) return;
+        const queue = episodes.map(entry => episodeToPlayable(entry, feed));
+        const index = episodes.indexOf(episode);
+        window.dispatchEvent(new CustomEvent('vault:play', { detail: { item: queue[index], queue, index } }));
       });
     });
     detail.querySelectorAll('[data-ep-download]').forEach(button => {
@@ -126,10 +158,13 @@ export async function renderPodcasts(container, params = {}) {
         const row = button.closest('[data-episode]');
         const progress = toast.progress('Downloading episode…');
         try {
+          button.disabled = true;
           await api.downloadEpisode(feed.id, row.dataset.episode);
           progress.finish('Episode downloaded');
+          load(); // show it as saved; it now plays from the library copy
         } catch (err) {
-          progress.fail(`Download failed: ${err.message}`);
+          button.disabled = false;
+          progress.fail(/^download failed/i.test(err.message) ? err.message : `Download failed: ${err.message}`);
         }
       });
     });

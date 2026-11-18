@@ -4,6 +4,7 @@ const helmet = require('helmet');
 const morgan = require('morgan');
 const path = require('path');
 const fs = require('fs-extra');
+const { resolveNestedAsset } = require('./utils/spaAssets');
 const https = require('https');
 
 const { loadConfig, getConfig } = require('./config');
@@ -56,8 +57,10 @@ app.use(helmet({
       defaultSrc: ["'self'"],
       scriptSrc: ["'self'", "'unsafe-inline'"],
       styleSrc: ["'self'", "'unsafe-inline'"],
-      imgSrc: ["'self'", 'data:', 'blob:', 'https:'],
-      mediaSrc: ["'self'", 'blob:', 'data:'],
+      // Podcast episodes and their artwork are served by the podcast's own
+      // host; with media-src 'self' every feed episode failed to load.
+      imgSrc: ["'self'", 'data:', 'blob:', 'https:', 'http:'],
+      mediaSrc: ["'self'", 'blob:', 'data:', 'https:', 'http:'],
       fontSrc: ["'self'", 'data:'],
       connectSrc: ["'self'", 'https:', 'http:', 'blob:'],
       workerSrc: ["'self'", 'blob:'],
@@ -290,6 +293,15 @@ if (fs.existsSync(docsPath)) {
   app.use((req, res, next) => {
     if (req.path.startsWith('/api')) return next();
     if (req.method !== 'GET' && req.method !== 'HEAD') return next();
+    // index.html links its assets relatively (./css/vault.css, ./js/...) so it
+    // also works under GitHub Pages' /Vault-V2/. Opened directly at a nested
+    // route like /movie/<id>, the browser asks for /movie/css/vault.css - and
+    // this fallback used to answer with index.html, so CSS and every module
+    // failed and deep links/refreshes showed a dead, unstyled login screen.
+    // Resolve such requests to the real file; never send HTML for an asset.
+    const assetFile = resolveNestedAsset(docsPath, req.path);
+    if (assetFile === false) return res.status(404).end();
+    if (assetFile) return res.sendFile(assetFile);
     res.sendFile(path.join(docsPath, 'index.html'), (err) => {
       if (err) next(err);
     });

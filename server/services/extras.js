@@ -243,7 +243,10 @@ function updateFeed(id, updates) {
   const list = getFeeds();
   const idx = list.findIndex(f => f.id === id);
   if (idx === -1) return null;
-  list[idx] = { ...list[idx], ...updates, updatedAt: new Date().toISOString() };
+  // Skip undefined fields: PATCH {autoDownload} used to also send
+  // title: undefined and wipe the feed's name.
+  const defined = Object.fromEntries(Object.entries(updates || {}).filter(([, v]) => v !== undefined));
+  list[idx] = { ...list[idx], ...defined, updatedAt: new Date().toISOString() };
   podcastsStore.set(list);
   return list[idx];
 }

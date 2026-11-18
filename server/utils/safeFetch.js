@@ -282,6 +282,40 @@ async function safeFetchText(input, {
   throw new SafeFetchError('Too many redirects', 'TOO_MANY_REDIRECTS');
 }
 
+/**
+ * Open a URL for streaming (large binary downloads such as podcast
+ * episodes) with the same guarantees as safeFetchText: scheme check,
+ * connect-time address check, every redirect hop re-validated.
+ * @returns {Promise<{res: import('http').IncomingMessage, finalUrl: string}>}
+ */
+async function safeFetchStream(input, {
+  timeoutMs = 30000,
+  allowPrivate = true,
+  accept,
+  maxRedirects = 5,
+} = {}) {
+  const options = { allowPrivate, timeoutMs, accept };
+  let url = validateUrl(input);
+  for (let hop = 0; hop <= maxRedirects; hop++) {
+    const res = await requestOnce(url, options);
+    const status = res.statusCode || 0;
+    if (status >= 300 && status < 400 && res.headers.location) {
+      res.resume();
+      if (hop === maxRedirects) throw new SafeFetchError('Too many redirects', 'TOO_MANY_REDIRECTS');
+      url = validateUrl(new URL(res.headers.location, url).toString());
+      continue;
+    }
+    if (status < 200 || status >= 300) {
+      res.resume();
+      throw new SafeFetchError(`The server answered ${status}`, 'HTTP_STATUS');
+    }
+    // The connect timeout must not cut a long download short.
+    res.socket?.setTimeout?.(0);
+    return { res, finalUrl: url.toString() };
+  }
+  throw new SafeFetchError('Too many redirects', 'TOO_MANY_REDIRECTS');
+}
+
 /** Map low-level network errors to something a person can act on. */
 function friendlyError(err) {
   if (err instanceof SafeFetchError) return err.message;
@@ -293,4 +327,4 @@ function friendlyError(err) {
   return err?.message || 'The link could not be fetched';
 }
 
-module.exports = { safeFetchText, validateUrl, blockedReason, friendlyError, SafeFetchError };
+module.exports = { safeFetchText, safeFetchStream, validateUrl, blockedReason, friendlyError, SafeFetchError };

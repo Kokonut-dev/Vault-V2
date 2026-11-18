@@ -15,6 +15,11 @@ const ignoreRules = require('../utils/ignoreRules');
 let watcher = null;
 let isScanning = false;
 
+// Bump when audio tag extraction changes in a way existing entries should pick
+// up. 2 = music-metadata 11 (8.x reported AAC/ALAC as "unknown" and failed on
+// FLAC/Ogg/WAV/AIFF).
+const AUDIO_META_VERSION = 2;
+
 function generateId(filePath) {
   return crypto.createHash('md5').update(filePath).digest('hex');
 }
@@ -125,7 +130,12 @@ async function scanFile(filePath) {
     const id = generateId(filePath);
     const existing = libraryService.getById(id);
     // Skip if file hasn't changed (size + mtime)
-    if (existing && existing.fileSize === stat.size && existing.mtime === stat.mtimeMs) {
+    // ...unless an audio file's tags couldn't be read last time (duration 0),
+    // or were read by an older parser (AUDIO_META_VERSION), so a fixed or
+    // upgraded parser gets another go on the next scan.
+    const isAudio = type === 'music' || type === 'audiobook' || type === 'podcast';
+    const needsRetry = isAudio && (!(existing?.duration > 0) || existing?.audioMetaVersion !== AUDIO_META_VERSION);
+    if (existing && existing.fileSize === stat.size && existing.mtime === stat.mtimeMs && !needsRetry) {
       return existing;
     }
 
@@ -151,6 +161,7 @@ async function scanFile(filePath) {
         sampleRate: audioMeta.sampleRate,
         codec: audioMeta.codec,
         lossless: audioMeta.lossless,
+        audioMetaVersion: AUDIO_META_VERSION,
       };
       if (audioMeta.lyricsLrc || audioMeta.lyrics) {
         try {
@@ -262,6 +273,18 @@ async function scanFile(filePath) {
       tags: existing ? existing.tags : [],
     };
 
+    // Downloaded podcast episodes get their title/show from the feed (see
+    // podcasts.applyFeedMetadata); keep that across rescans when the file's
+    // own tags still have nothing better.
+    if (existing?.podcastFeedId) {
+      const base = path.basename(filePath, path.extname(filePath));
+      const blank = v => !v || /^unknown( artist| album)?$/i.test(String(v)) || v === base;
+      for (const key of ['podcastFeedId', 'episodeGuid', 'published']) item[key] = existing[key];
+      for (const key of ['title', 'album', 'artist']) {
+        if (blank(item[key]) && existing[key]) item[key] = existing[key];
+      }
+    }
+
     libraryService.addItem(item);
     return item;
   } catch (err) {
@@ -281,11 +304,7 @@ async function scanFile(filePath) {
 function detectSilences(filePath) {
   return new Promise((resolve) => {
     const { spawn } = require('child_process');
-    let bin = null;
-    try {
-      bin = require('ffmpeg-static');
-    } catch {}
-    if (!bin) bin = 'ffmpeg';
+    const bin = require('../utils/ffmpegBinaries').ffmpegBinary();
     let stderr = '';
     let proc;
     try {

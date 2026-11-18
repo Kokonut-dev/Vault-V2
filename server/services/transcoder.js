@@ -4,33 +4,10 @@ const { getConfig } = require('../config');
 const logger = require('../utils/logger');
 const { cleanCache } = require('../utils/fileUtils');
 
-let ffmpeg = null;
-try {
-  // Same fallback as transcodePlan: a bundled path that does not exist on
-  // disk (installs with --ignore-scripts, containers with apt ffmpeg) must
-  // not stop us from using the system binaries.
-  const path_ = require('path');
-  const fs_ = require('fs-extra');
-  let ffmpegPath = 'ffmpeg';
-  let ffprobePath = 'ffprobe';
-  try {
-    const bundled = require('ffmpeg-static');
-    if (bundled && fs_.existsSync(path_.resolve(bundled))) ffmpegPath = bundled;
-  } catch { /* not installed */ }
-  try {
-    const bundled = require('ffprobe-static').path;
-    if (bundled && fs_.existsSync(path_.resolve(bundled))) ffprobePath = bundled;
-  } catch { /* not installed */ }
-  ffmpeg = require('fluent-ffmpeg');
-  ffmpeg.setFfmpegPath(ffmpegPath);
-  ffmpeg.setFfprobePath(ffprobePath);
-} catch {
-  try {
-    ffmpeg = require('fluent-ffmpeg');
-  } catch {
-    logger.warn('[Transcoder] ffmpeg not available, transcoding disabled');
-  }
-}
+// Shared binary resolution (FFMPEG_PATH, bundled-if-present, PATH) — see
+// utils/ffmpegBinaries.js.
+const ffmpeg = require('../utils/ffmpegBinaries').fluentFfmpeg();
+if (!ffmpeg) logger.warn('[Transcoder] fluent-ffmpeg not available, transcoding disabled');
 
 function getCachePath(id, quality, format) {
   const config = getConfig();
@@ -191,7 +168,7 @@ function transcodeAudioStream(inputPath, res, options = {}) {
     return;
   }
 
-  const { codec = 'aac', bitrate = '128k' } = options;
+  const { codec = 'aac', bitrate = '192k', start = 0 } = options;
 
   let audioCodec = 'aac';
   let format = 'adts';
@@ -219,7 +196,13 @@ function transcodeAudioStream(inputPath, res, options = {}) {
   res.setHeader('Content-Type', contentType);
   res.setHeader('Transfer-Encoding', 'chunked');
 
-  const command = ffmpeg(inputPath)
+  res.setHeader('Cache-Control', 'no-store');
+  const command = ffmpeg(inputPath);
+  if (start > 0) command.seekInput(start);
+  command
+    // Audio only: embedded cover art is a video stream and must not be
+    // carried into (or break) the audio output.
+    .noVideo()
     .audioCodec(audioCodec)
     .audioBitrate(bitrate)
     .format(format)

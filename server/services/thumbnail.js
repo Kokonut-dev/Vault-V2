@@ -3,20 +3,9 @@ const fs = require('fs-extra');
 const { getConfig } = require('../config');
 const logger = require('../utils/logger');
 
-let ffmpeg = null;
-try {
-  const ffmpegStatic = require('ffmpeg-static');
-  const ffprobeStatic = require('ffprobe-static');
-  ffmpeg = require('fluent-ffmpeg');
-  ffmpeg.setFfmpegPath(ffmpegStatic);
-  ffmpeg.setFfprobePath(ffprobeStatic.path);
-} catch {
-  try {
-    ffmpeg = require('fluent-ffmpeg');
-  } catch {
-    logger.warn('[Thumbnail] ffmpeg not available');
-  }
-}
+// Shared binary resolution — see utils/ffmpegBinaries.js.
+const ffmpeg = require('../utils/ffmpegBinaries').fluentFfmpeg();
+if (!ffmpeg) logger.warn('[Thumbnail] ffmpeg not available');
 
 function getThumbnailPath(id) {
   const config = getConfig();

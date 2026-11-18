@@ -73,11 +73,14 @@
         ".flac",
         ".wav",
         ".ogg",
+        ".oga",
         ".opus",
         ".m4a",
+        ".m4b",
         ".aac",
         ".wma",
         ".aiff",
+        ".aif",
         ".alac"
       ],
       "subtitle": [
