@@ -2,6 +2,31 @@
 
 ## [3.0.0] — in progress (branch `arena/0deefe55-vault-v2`)
 
+### Fixed — typed-in song details disappearing (seen from another computer)
+- Titles, artists, albums and covers typed into the upload form, the edit
+  dialog or the album editor were overwritten on the next rescan by the file's
+  own tags. Often that meant "Unknown Artist", the filename as the title and no
+  cover. The folder watcher re-reads a new upload a moment after it lands,
+  whenever the duration couldn't be read, so this could happen within seconds.
+  It also didn't tell open tabs: the tab that did the upload kept showing the
+  old values, and only another browser, e.g. on a Linux computer using the Mac's
+  server, showed the real (wiped) data.
+  - Hand-set fields are now recorded per item (`manualFields`), and rescans
+    keep them over the file's tags.
+  - Even without that record, a rescan never swaps a real value for a
+    placeholder or drops an uploaded cover.
+  - The watcher now broadcasts whenever a rescan changed an item.
+- `scripts/restore-metadata-from-tab.js` is a one-time snippet. Paste it into
+  the console of a tab that still shows the right details, and it copies them
+  back to the server.
+
+### Fixed — Remote access: cloudflared install on macOS
+- "did not match its published checksum": Cloudflare's release notes list
+  SHA-256 values for the macOS `.tgz` downloads that don't match the files.
+  GitHub's own asset digest is now the authority. The notes hash is still
+  accepted when it matches the archive or the extracted binary, and a download
+  matching neither is refused.
+
 ### Fixed — fresh installs on Linux (and npm 12)
 - `npm start` before `npm install` (or after running it in the wrong folder)
   crash-looped on `Cannot find module 'dotenv'`. The launcher now installs the

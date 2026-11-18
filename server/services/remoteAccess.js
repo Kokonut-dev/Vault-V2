@@ -137,6 +137,12 @@ function assetName(platform = process.platform, arch = process.arch) {
   return table[platform]?.[arch] || null;
 }
 
+/** GitHub's own SHA-256 of a release asset ("sha256:<hex>"), when published. */
+function githubDigest(entry) {
+  const m = /^sha256:([a-f0-9]{64})$/i.exec(String(entry?.digest || ''));
+  return m ? m[1].toLowerCase() : null;
+}
+
 /** Pull "<asset>: <sha256>" out of the release notes. */
 function checksumFor(body, asset) {
   const escaped = asset.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -201,16 +207,30 @@ function extractFromTar(tarBuffer, wanted) {
 }
 
 let installing = null;
-async function installCloudflared({ onProgress } = {}) {
+/**
+ * Download, verify and install cloudflared.
+ *
+ * Verification: GitHub's own SHA-256 of the asset (the `digest` the release
+ * API reports for every upload) is authoritative when present — the download
+ * must match it. The SHA256 block in the release notes is the fallback.
+ * Cloudflare's notes list a hash for the macOS .tgz that never matches the
+ * archive GitHub serves (true for every release checked, 2026.10.4–2026.11.1;
+ * every Linux/Windows entry matches), which made the install fail on every Mac
+ * with "did not match its published checksum". A notes hash is therefore also
+ * accepted when it matches the extracted binary, and only logged when GitHub's
+ * digest already vouched for the file.
+ */
+async function installCloudflared({ onProgress, platform = process.platform, arch = process.arch } = {}) {
   if (installing) return installing;
   installing = (async () => {
-    const asset = assetName();
-    if (!asset) throw Object.assign(new Error(`Cloudflare doesn't publish cloudflared for ${process.platform}/${process.arch} — install it yourself and set remoteAccess.cloudflaredPath`), { code: 'UNSUPPORTED_PLATFORM' });
+    const asset = assetName(platform, arch);
+    if (!asset) throw Object.assign(new Error(`Cloudflare doesn't publish cloudflared for ${platform}/${arch} — install it yourself and set remoteAccess.cloudflaredPath`), { code: 'UNSUPPORTED_PLATFORM' });
     const release = await readJson(await githubGet(RELEASE_API, { accept: 'application/vnd.github+json' }));
     const entry = (release.assets || []).find(a => a.name === asset);
     if (!entry) throw new Error(`The latest cloudflared release has no ${asset}`);
-    const expected = checksumFor(release.body, asset);
-    if (!expected) throw Object.assign(new Error('The release notes have no checksum for this download, so it was not installed'), { code: 'NO_CHECKSUM' });
+    const digest = githubDigest(entry);
+    const noted = checksumFor(release.body, asset);
+    if (!digest && !noted) throw Object.assign(new Error('Neither GitHub nor the release notes publish a checksum for this download, so it was not installed'), { code: 'NO_CHECKSUM' });
 
     fs.mkdirSync(BIN_DIR, { recursive: true });
     const res = await githubGet(entry.browser_download_url);
@@ -226,13 +246,24 @@ async function installCloudflared({ onProgress } = {}) {
       if (received > 300 * 1024 * 1024) throw new Error('Download is unexpectedly large');
     }
     const actual = hash.digest('hex');
-    if (actual !== expected) {
-      throw Object.assign(new Error('The download did not match its published checksum and was discarded'), { code: 'CHECKSUM_MISMATCH' });
-    }
+    const mismatch = () => Object.assign(new Error('The download did not match its published checksum and was discarded'), { code: 'CHECKSUM_MISMATCH' });
+    if (digest && actual !== digest) throw mismatch();
+
     let binary = Buffer.concat(chunks);
     if (asset.endsWith('.tgz')) {
-      binary = extractFromTar(zlib.gunzipSync(binary), 'cloudflared');
+      try {
+        binary = extractFromTar(zlib.gunzipSync(binary), 'cloudflared');
+      } catch {
+        binary = null;
+      }
       if (!binary) throw new Error('cloudflared was not found inside the download');
+    }
+    if (noted && noted !== actual) {
+      const innerHash = binary !== null && asset.endsWith('.tgz') ? crypto.createHash('sha256').update(binary).digest('hex') : null;
+      if (noted !== innerHash) {
+        if (!digest) throw mismatch();
+        logger.info(`[Remote] ${asset}: the release notes' checksum differs from GitHub's; GitHub's digest matched, so the download is genuine`);
+      }
     }
     const target = path.join(BIN_DIR, `cloudflared${EXE}`);
     const tmp = `${target}.download`;
@@ -390,6 +421,7 @@ module.exports = {
   installCloudflared,
   assetName,
   checksumFor,
+  githubDigest,
   extractFromTar,
   status,
   startTunnel,

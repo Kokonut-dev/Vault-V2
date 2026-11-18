@@ -247,7 +247,7 @@ router.put('/albums/order', (req, res) => {
     return res.status(404).json({ error: 'None of these tracks are in the library any more', missing });
   }
 
-  const updated = found.map((item, i) => libraryService.updateItem(item.id, { track: i + 1 }));
+  const updated = found.map((item, i) => libraryService.updateItem(item.id, { track: i + 1 }, { manual: true }));
   events.broadcast('library:changed', { reason: 'album-reorder' });
   res.json({ items: updated, missing });
 });
@@ -257,7 +257,7 @@ router.put('/albums/metadata', (req, res) => {
   const album = req.body?.album !== undefined ? sanitizeString(req.body.album, 500).trim() : undefined;
   if (!items) return res.status(400).json({ error: 'ids required' });
   if (!album) return res.status(400).json({ error: 'Album title is required' });
-  const updated = items.map(item => libraryService.updateItem(item.id, { album }));
+  const updated = items.map(item => libraryService.updateItem(item.id, { album }, { manual: true }));
   events.broadcast('library:changed', { reason: 'album-edit' });
   res.json({ items: updated });
 });
@@ -278,7 +278,7 @@ router.post(['/albums/cover', '/cover'], (req, res) => {
     const updated = items.map(item => libraryService.updateItem(item.id, {
       coverArtPath: req.file.path,
       posterPath: req.file.path,
-    }));
+    }, { manual: true }));
     // Clean up previous cover files in cache that are no longer used by any other item
     for (const prev of previousCovers) {
       if (prev !== req.file.path && path.resolve(prev).startsWith(path.resolve(COVERS_DIR))) {
@@ -359,7 +359,8 @@ router.put('/:id', (req, res) => {
       }
     }
 
-    const updated = libraryService.updateItem(req.params.id, updates);
+    // Hand edits outlive rescans (rating isn't a tag, so it is never re-read).
+    const updated = libraryService.updateItem(req.params.id, updates, { manual: true });
     if (!updated) return res.status(404).json({ error: 'Item not found' });
 
     res.json(updated);

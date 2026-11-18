@@ -273,6 +273,8 @@ async function scanFile(filePath) {
       tags: existing ? existing.tags : [],
     };
 
+    applyManualFields(item, existing);
+
     // Downloaded podcast episodes get their title/show from the feed (see
     // podcasts.applyFeedMetadata); keep that across rescans when the file's
     // own tags still have nothing better.
@@ -291,6 +293,61 @@ async function scanFile(filePath) {
     logger.warn(`Failed to scan file ${filePath}: ${err.message}`);
     return null;
   }
+}
+
+/**
+ * Keep what a person typed in over what the file's tags say. Uploads with
+ * metadata entered in the form, edits from the detail dialog and album edits
+ * record their fields in `manualFields`; without this a rescan replaced them
+ * with the file's own (often empty) tags and dropped the uploaded cover.
+ */
+const ARTWORK_FIELDS = ['coverArtPath', 'posterPath', 'thumbnailPath'];
+const TEXT_FIELDS = ['title', 'artist', 'albumArtist', 'album', 'year', 'genre'];
+const COVERS_DIR = path.resolve(__dirname, '../cache/covers');
+// Covers a person uploaded (upload form → upload-*, album editor → cover-*),
+// as opposed to artwork the scanner extracted from the file's own tags.
+const isUploadedCover = p => typeof p === 'string'
+  && path.resolve(p).startsWith(COVERS_DIR + path.sep)
+  && /^(upload|cover)-/.test(path.basename(p))
+  && fs.existsSync(p);
+
+function applyManualFields(item, existing) {
+  if (!existing) return item;
+  const fields = Array.isArray(existing.manualFields) ? existing.manualFields : [];
+  for (const key of fields) {
+    const value = existing[key];
+    if (value === undefined || value === null || value === '') continue;
+    // A hand-picked cover that has since been deleted shouldn't hide the
+    // file's own artwork.
+    if (ARTWORK_FIELDS.includes(key) && !fs.existsSync(value)) continue;
+    item[key] = value;
+  }
+  if (fields.length) item.manualFields = fields.slice();
+
+  // Items edited before manualFields existed carry no marker. Never trade a
+  // real value for a placeholder: when the file has nothing ("Unknown
+  // Artist", the filename as title, no year, no artwork) keep what the
+  // library already had — and remember it as hand-set from now on.
+  if (item.type === 'music' || item.type === 'audiobook') {
+    const base = item.path ? path.basename(item.path, path.extname(item.path)) : null;
+    const blank = (key, v) => v === undefined || v === null || v === ''
+      || (typeof v === 'string' && /^unknown( artist| album)?$/i.test(v.trim()))
+      || (key === 'title' && v === base);
+    const kept = [];
+    for (const key of TEXT_FIELDS) {
+      if (blank(key, item[key]) && !blank(key, existing[key])) {
+        item[key] = existing[key];
+        kept.push(key);
+      }
+    }
+    if (!item.coverArtPath && isUploadedCover(existing.coverArtPath)) {
+      for (const key of ARTWORK_FIELDS) {
+        if (!item[key] && isUploadedCover(existing[key])) { item[key] = existing[key]; kept.push(key); }
+      }
+    }
+    if (kept.length) item.manualFields = [...new Set([...(item.manualFields || []), ...kept])];
+  }
+  return item;
 }
 
 /**
@@ -540,8 +597,13 @@ function startWatcher() {
       // the library.
       const before = libraryService.getById(generateId(filePath));
       const item = await scanFile(filePath);
-      const alreadyKnown = before && item && before.fileSize === item.fileSize && before.mtime === item.mtime;
-      if (item && !alreadyKnown) events.broadcast('library:changed', { reason: 'add', id: item.id, title: item.title });
+      if (!item) return;
+      // scanFile hands back the stored item itself when it skipped the file.
+      // Anything else means it re-read the tags, so open clients must refetch
+      // — comparing size/mtime missed that, and a browser kept showing data
+      // the server no longer had.
+      if (!before) events.broadcast('library:changed', { reason: 'add', id: item.id, title: item.title });
+      else if (item !== before) events.broadcast('library:changed', { reason: 'change', id: item.id });
     })
     .on('change', async (filePath) => {
       if (/\.(jpg|jpeg|png|webp)$/i.test(path.basename(filePath))) {
@@ -589,4 +651,5 @@ module.exports = {
   detectIntroOutro,
   detectSilences,
   refreshArtworkInDir,
+  applyManualFields,
 };
