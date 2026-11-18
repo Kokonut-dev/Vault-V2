@@ -5,6 +5,7 @@
  */
 import { getBasePath } from './config.js';
 import { icon } from './utils/icons.js';
+import { recoverFromStaleModule, installStaleModuleGuard, isStaleModuleError } from './utils/staleModule.js';
 
 export class Router {
   constructor() {
@@ -141,16 +142,26 @@ export class Router {
       await handler(params, nav);
     } catch (err) {
       if (!nav.isCurrent()) return;
+      // A deploy happened while this tab was open: old modules are still in
+      // memory and the new view can't link against them. Reload once.
+      if (recoverFromStaleModule(err)) return;
       console.error('[Router] Handler error for', path, err);
+      const stale = isStaleModuleError(err);
       const viewContainer = document.getElementById('view-container');
       if (viewContainer) {
         viewContainer.innerHTML = `
           <div class="empty-state" style="padding:40px;">
-            <div class="empty-state-title">Error loading page</div>
-            <div class="empty-state-message">${this.escapeHtml(err.message || String(err))}</div>
-            <button class="btn btn-primary" type="button" data-route="/">Go Home</button>
+            <div class="empty-state-title">${stale ? 'Vault was updated' : 'Error loading page'}</div>
+            <div class="empty-state-message">${stale
+              ? 'A newer version is available. Reload to continue.'
+              : this.escapeHtml(err.message || String(err))}</div>
+            <div style="display:flex; gap:10px; justify-content:center; flex-wrap:wrap;">
+              <button class="btn btn-primary" type="button" data-reload>Reload</button>
+              <button class="btn btn-secondary" type="button" data-route="/">Go Home</button>
+            </div>
           </div>
         `;
+        viewContainer.querySelector('[data-reload]')?.addEventListener('click', () => window.location.reload());
       }
     }
 
@@ -232,6 +243,7 @@ export class Router {
       return;
     }
     this._inited = true;
+    installStaleModuleGuard();
 
     window.addEventListener('popstate', this._onPopState);
     window.addEventListener('hashchange', this._onHashChange);
