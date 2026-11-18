@@ -1,288 +1,304 @@
 /**
- * Settings view
+ * Settings (SETTINGS_REVAMP_PLAN.md SR-1 … SR-4).
+ *
+ * A shell with a sticky section rail (a chip bar on narrow screens), one
+ * section visible at a time, `#hash` deep links (/settings#live-tv) and a
+ * search box that filters every setting by label, help text and keywords.
+ * Each section lives in views/settings/*.js.
  */
-import { store } from '../store.js';
-import { themeManager, THEME_META, themeSwatch } from '../themes.js';
 import { api } from '../api.js';
-import { toast } from '../components/toast.js';
-import { getApiBaseUrl, setApiBaseUrl } from '../config.js';
-import { renderEQPanel } from '../components/eqPanel.js';
-import { renderSettingsExtras } from './settingsExtras.js';
-import { copyText } from '../utils/clipboard.js';
+import { router } from '../router.js';
+import { THEME_META } from '../themes.js';
 import { icon } from '../utils/icons.js';
+import { escapeHtml } from '../utils/format.js';
+import { onUnmount } from '../utils/lifecycle.js';
+import { section, el } from './settings/ui.js';
+import { appearanceSection, playbackSection, subtitlesSection } from './settings/device.js';
+import { liveTvSection, linksSection, notificationsSection, connectionSection } from './settings/server.js';
+import { securitySection, devicesSection } from './settings/account.js';
+
+const GROUPS = [
+  {
+    id: 'device',
+    label: 'This device',
+    items: [
+      { id: 'appearance', label: 'Appearance', icon: 'palette', build: appearanceSection },
+      { id: 'playback', label: 'Playback', icon: 'play', build: playbackSection },
+      { id: 'subtitles', label: 'Subtitles', icon: 'captions', build: subtitlesSection },
+    ],
+  },
+  {
+    id: 'server',
+    label: 'Server',
+    items: [
+      { id: 'live-tv', label: 'Live TV', icon: 'tv', build: liveTvSection },
+      { id: 'links', label: 'Links & imports', icon: 'link', build: linksSection },
+      { id: 'notifications', label: 'Notifications', icon: 'message', build: notificationsSection },
+      { id: 'connection', label: 'Connection', icon: 'database', build: connectionSection },
+    ],
+  },
+  {
+    id: 'account',
+    label: 'Account',
+    items: [
+      { id: 'security', label: 'Sign-in & security', icon: 'shield', build: securitySection },
+      { id: 'devices', label: 'Devices', icon: 'monitor', build: devicesSection },
+    ],
+  },
+  {
+    id: 'info',
+    label: '',
+    items: [{ id: 'about', label: 'About Vault', icon: 'info', build: aboutSection }],
+  },
+];
+
+const ALL = GROUPS.flatMap(g => g.items);
+const ALIASES = {
+  livetv: 'live-tv', 'live-tv': 'live-tv', iptv: 'live-tv', m3u: 'live-tv', epg: 'live-tv',
+  theme: 'appearance', motion: 'appearance', server: 'connection', remote: 'connection',
+  'two-factor': 'security', totp: 'security', pairing: 'devices', sessions: 'devices',
+  import: 'links', imports: 'links',
+};
+const resolveId = (frag) => {
+  const key = String(frag || '').toLowerCase().replace(/^panel-/, '');
+  if (ALL.some(i => i.id === key)) return key;
+  return ALIASES[key] || null;
+};
 
 export function renderSettings(container) {
-  container.className = 'page';
+  container.className = 'page settings-page';
   container.innerHTML = `
-    <div class="page-header">
-      <h1 class="page-title">Settings</h1>
-      <p class="page-subtitle">Customize your Vault experience</p>
+    <header class="page-header settings-header">
+      <div>
+        <h1 class="page-title">Settings</h1>
+        <p class="page-subtitle">Your home for how Vault looks, plays and connects.</p>
+      </div>
+    </header>
+    <div class="settings-layout">
+      <div class="settings-side">
+      <div class="settings-search" role="search">
+          <label class="sr-only" for="settings-search">Search settings</label>
+          <span class="settings-search-icon" aria-hidden="true">${icon('search', { size: 16 })}</span>
+          <input type="search" id="settings-search" class="form-input" placeholder="Search settings" autocomplete="off" spellcheck="false" aria-describedby="settings-search-status">
+          <p class="sr-only" id="settings-search-status" role="status" aria-live="polite"></p>
+        </div>
+      <nav class="settings-rail" aria-label="Settings sections">
+        ${GROUPS.map(g => `
+          <div class="rail-group">
+            ${g.label ? `<p class="rail-group-label" id="rail-group-${g.id}">${g.label}</p>` : ''}
+            <ul class="rail-list"${g.label ? ` aria-labelledby="rail-group-${g.id}"` : ''}>
+              ${g.items.map(i => `
+                <li><a class="rail-link" href="#${i.id}" data-target="${i.id}" aria-controls="panel-${i.id}">
+                  <span class="rail-icon" aria-hidden="true">${icon(i.icon, { size: 17 })}</span><span class="rail-label">${i.label}</span>
+                  <span class="rail-count" aria-hidden="true"></span>
+                </a></li>`).join('')}
+            </ul>
+          </div>`).join('')}
+      </nav>
+      </div>
+      <div class="settings-panels" id="settings-panels"></div>
     </div>
-    
-    <div class="settings-grid">
-      <!-- Appearance -->
-      <div class="settings-card">
-        <h3><span class="settings-card-icon" aria-hidden="true">${icon('palette', { size: 17 })}</span>Appearance</h3>
-        
-        <div class="form-group">
-          <span class="form-label" id="theme-picker-label">Theme</span>
-          <div class="theme-picker" role="group" aria-labelledby="theme-picker-label">
-            ${THEME_META.map(meta => `
-              <button type="button" class="theme-option" data-theme-option="${meta.id}"
-                      aria-pressed="${store.get('theme') === meta.id}">
-                ${themeSwatch(meta)}
-                <span class="theme-option-text"><span class="theme-option-name">${meta.name}</span><span class="theme-option-mode">${meta.mode}</span></span>
-              </button>
-            `).join('')}
-          </div>
-        </div>
-        
-        <div id="glass-slider-container"></div>
-        <div id="grain-slider-container"></div>
-      </div>
-      
-      <!-- Playback -->
-      <div class="settings-card">
-        <h3><span class="settings-card-icon" aria-hidden="true">${icon('play', { size: 17 })}</span>Playback</h3>
-        
-        <div class="form-group">
-          <label class="form-label" for="vol-slider">Default Volume: <span id="vol-value">${Math.round(store.get('volume') * 100)}%</span></label>
-          <input type="range" class="slider" id="vol-slider" min="0" max="100" value="${store.get('volume') * 100}">
-        </div>
-        
-        <div class="form-group">
-          <label class="form-label" for="crossfade-slider">Crossfade Duration: <span id="crossfade-value">${store.get('crossfade')}s</span></label>
-          <input type="range" class="slider" id="crossfade-slider" min="0" max="12" value="${store.get('crossfade')}">
-        </div>
-        
-        <div class="form-group">
-          <label style="display:flex; align-items:center; gap:8px;">
-            <input type="checkbox" id="gapless-toggle" ${localStorage.getItem('vault_gapless') !== 'false' ? 'checked' : ''}> Gapless Playback
-          </label>
-        </div>
-        
-        <div class="form-group">
-          <button class="btn btn-secondary" id="open-eq">Open Equalizer</button>
-        </div>
-      </div>
-      
-      <!-- Server -->
-      <div class="settings-card">
-        <h3><span class="settings-card-icon" aria-hidden="true">${icon('database', { size: 17 })}</span>Server</h3>
-        
-        <div class="form-group">
-          <label class="form-label" for="api-url">API Base URL</label>
-          <div style="display:flex; gap:8px;">
-            <input type="text" class="form-input" id="api-url" value="${getApiBaseUrl()}" style="flex:1;">
-            <button class="btn btn-secondary" id="copy-api-url" type="button">${icon('copy', { size: 16 })}<span>Copy</span></button>
-            <button class="btn btn-secondary" id="save-api-url">Save</button>
-          </div>
-          <div style="font-size:11px; color:var(--text-tertiary); margin-top:4px;">Change if your server is on a different URL (e.g., Cloudflare Tunnel)</div>
-        </div>
-        
-        <div class="form-group">
-          <button class="btn btn-secondary btn-sm" id="test-connection">Test Connection</button>
-          <button class="btn btn-secondary btn-sm" id="trigger-scan">Trigger Library Scan</button>
-        </div>
-        
-        <div id="server-info" style="font-size:12px; color:var(--text-secondary); background:rgba(var(--glass-tint),0.09); padding:12px; border-radius:8px; margin-top:12px; font-family:var(--font-mono);"></div>
-      </div>
-      
-      <!-- Security -->
-      <div class="settings-card">
-        <h3><span class="settings-card-icon" aria-hidden="true">${icon('shield', { size: 17 })}</span>Security</h3>
-        
-        <div class="form-group">
-          <label class="form-label">Change Credentials</label>
-          <input type="password" class="form-input" id="current-pass" placeholder="Current password" style="margin-bottom:8px;">
-          <input type="text" class="form-input" id="new-user" placeholder="New username (optional)" style="margin-bottom:8px;">
-          <input type="password" class="form-input" id="new-pass" placeholder="New password (optional)" style="margin-bottom:8px;">
-          <input type="text" class="form-input" id="new-grid" placeholder="New grid pattern (8 numbers 0-15 comma-separated, optional)">
-          <button class="btn btn-primary btn-sm" id="save-creds" style="margin-top:12px;">Update Credentials</button>
-        </div>
-        
-        <div class="form-group" style="margin-top:16px;">
-          <button class="btn btn-secondary btn-sm" id="logout-btn">Logout</button>
-        </div>
-      </div>
-      
-      <!-- About -->
-      <div class="settings-card">
-        <h3><span class="settings-card-icon" aria-hidden="true">${icon('info', { size: 17 })}</span>About Vault</h3>
-        <div style="font-size:13px; color:var(--text-secondary); line-height:1.6;">
-          <p style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;"><strong>Vault v2.0.0</strong><span class="badge badge-accent">self-hosted</span></p>
-          <p style="margin-top:8px;">A premium self-hosted personal media server — built with vanilla JS, Web Audio API, and Node.js. Supports all major audio/video codecs with on-the-fly transcoding.</p>
-          <p style="margin-top:8px;">Themes: Dark, Light, Warm, Cold • Glassmorphism • Film Grain • 10-band EQ • Global Search</p>
-          <p style="margin-top:12px;"><a href="https://github.com/Kokonut-dev/Vault-V2" target="_blank" rel="noopener" style="color:var(--accent-text); font-weight:600; text-decoration:none;">GitHub Repository ${icon('external-link', { size: 14, className: 'icon icon-inline' })}</a></p>
-        </div>
-      </div>
-    </div>
-    
-    <div id="eq-modal-host"></div>
+    <p class="settings-empty" id="settings-empty" hidden></p>
   `;
-  
-  // v3 cards: playback quality, subtitles, devices/pairing, TOTP, remote access.
-  renderSettingsExtras(container);
 
-  // Theme buttons
-  // (data-theme-option, NOT data-theme: a data-theme attribute re-scopes every
-  // theme token onto the button itself, which made the labels unreadable.)
-  container.querySelectorAll('[data-theme-option]').forEach(btn => {
-    btn.addEventListener('click', () => {
-      themeManager.setTheme(btn.dataset.themeOption);
-      container.querySelectorAll('[data-theme-option]').forEach(b => {
-        b.setAttribute('aria-pressed', String(b === btn));
-      });
+  const panels = container.querySelector('#settings-panels');
+  const rail = container.querySelector('.settings-rail');
+  const links = [...rail.querySelectorAll('.rail-link')];
+  const search = container.querySelector('#settings-search');
+  const searchStatus = container.querySelector('#settings-search-status');
+  const empty = container.querySelector('#settings-empty');
+
+  // Shared context for sections (Live TV state is used by two sections).
+  let liveTvPromise = null;
+  const liveTvRerenders = [];
+  const ctx = {
+    liveTv: () => (liveTvPromise ||= api.getLiveTvSettings()),
+    setLiveTv(state, { rerender = false } = {}) {
+      liveTvPromise = Promise.resolve(state);
+      if (rerender) liveTvRerenders.forEach(fn => fn(state));
+    },
+    onLiveTvRerender: fn => liveTvRerenders.push(fn),
+    canEdit: () => ctx.liveTv().then(s => Boolean(s.canEdit)).catch(() => false),
+    select: (id, opts) => select(id, opts),
+  };
+
+  const nodes = new Map();
+  for (const item of ALL) {
+    let node;
+    try {
+      node = item.build(ctx);
+    } catch (err) {
+      console.error('[Settings] section failed', item.id, err);
+      node = section({ id: item.id, title: item.label, iconName: item.icon, scope: 'info' });
+      node.body.innerHTML = `<p class="settings-callout is-error">${icon('alert-circle', { size: 15 })}<span>This section couldn’t load: ${escapeHtml(err.message)}</span></p>`;
+    }
+    node.hidden = true;
+    nodes.set(item.id, node);
+    panels.append(node);
+  }
+
+  let current = null;
+  async function select(id, { focus = false, test = false, updateUrl = true } = {}) {
+    const target = resolveId(id) || 'appearance';
+    if (search.value) clearSearch({ silent: true });
+    current = target;
+    for (const [key, node] of nodes) node.hidden = key !== target;
+    links.forEach(a => {
+      const on = a.dataset.target === target;
+      if (on) a.setAttribute('aria-current', 'page');
+      else a.removeAttribute('aria-current');
     });
-  });
-  
-  // Glass & Grain sliders
-  const { createGlassSlider, createGrainSlider } = (() => {
-    // Inline simple versions
-    const glassContainer = container.querySelector('#glass-slider-container');
-    const grainContainer = container.querySelector('#grain-slider-container');
-    
-    glassContainer.innerHTML = `
-      <div class="form-group">
-        <label class="form-label" for="glass-slider">Glass Intensity: <span id="glass-val">${store.get('glassIntensity')}%</span></label>
-        <input type="range" class="slider" id="glass-slider" min="0" max="100" value="${store.get('glassIntensity')}">
-      </div>
-    `;
-    grainContainer.innerHTML = `
-      <div class="form-group">
-        <label class="form-label" for="grain-slider">Grain Intensity: <span id="grain-val">${store.get('grainIntensity')}%</span></label>
-        <input type="range" class="slider" id="grain-slider" min="0" max="100" value="${store.get('grainIntensity')}">
-      </div>
-    `;
-    
-    return {};
-  })();
-  
-  container.querySelector('#glass-slider')?.addEventListener('input', (e) => {
-    const val = parseInt(e.target.value, 10);
-    container.querySelector('#glass-val').textContent = `${val}%`;
-    themeManager.setGlassIntensity(val);
-  });
-  
-  container.querySelector('#grain-slider')?.addEventListener('input', (e) => {
-    const val = parseInt(e.target.value, 10);
-    container.querySelector('#grain-val').textContent = `${val}%`;
-    themeManager.setGrainIntensity(val);
-  });
-  
-  // Volume
-  container.querySelector('#vol-slider').addEventListener('input', (e) => {
-    const vol = parseInt(e.target.value, 10) / 100;
-    store.set('volume', vol, true);
-    container.querySelector('#vol-value').textContent = `${e.target.value}%`;
-  });
-  
-  // Crossfade
-  container.querySelector('#crossfade-slider').addEventListener('input', (e) => {
-    const val = parseInt(e.target.value, 10);
-    store.set('crossfade', val, true);
-    container.querySelector('#crossfade-value').textContent = `${val}s`;
-  });
-  
-  // EQ
-  container.querySelector('#open-eq').addEventListener('click', () => {
-    const backdrop = document.createElement('div');
-    backdrop.className = 'modal-backdrop active';
-    backdrop.innerHTML = `<div id="eq-container" style="max-width:800px; width:100%; margin:20px;"></div>`;
-    document.body.appendChild(backdrop);
-    renderEQPanel(backdrop.querySelector('#eq-container'));
-    backdrop.addEventListener('click', (e) => { if (e.target === backdrop) backdrop.remove(); });
-    backdrop.querySelector('#eq-close')?.addEventListener('click', () => backdrop.remove());
-  });
-  
-  // API URL
-  container.querySelector('#copy-api-url').addEventListener('click', async () => {
-    const url = container.querySelector('#api-url').value.trim();
-    if (await copyText(url)) toast.success('Server URL copied to clipboard');
-    else toast.error('Could not copy — select the URL and copy manually');
-  });
+    if (updateUrl) router.setFragment(target);
+    const active = links.find(a => a.dataset.target === target);
+    // Keep the active chip visible in the narrow-screen chip bar.
+    active?.scrollIntoView?.({ block: 'nearest', inline: 'nearest' });
+    if (focus) {
+      const node = nodes.get(target);
+      node.focus({ preventScroll: true });
+      const top = container.querySelector('.settings-layout').getBoundingClientRect().top;
+      if (top < 0) container.querySelector('.settings-layout').scrollIntoView({ block: 'start' });
+    }
+    if (test && target === 'live-tv') {
+      await ctx.liveTv().catch(() => null);
+      nodes.get('live-tv').runTest?.();
+    }
+  }
 
-  container.querySelector('#save-api-url').addEventListener('click', () => {
-    const url = container.querySelector('#api-url').value.trim().replace(/\/+$/, '');
-    if (url) {
-      setApiBaseUrl(url);
-      container.querySelector('#api-url').value = url;
-      toast.success(`API URL saved: ${url}`);
-    }
-  });
-  
-  container.querySelector('#test-connection').addEventListener('click', async () => {
-    try {
-      const health = await api.health();
-      toast.success(`Connected: ${health.library?.total || 0} items`);
-      container.querySelector('#server-info').textContent = JSON.stringify(health, null, 2);
-    } catch (err) {
-      toast.error(`Connection failed: ${err.message}`);
-      container.querySelector('#server-info').textContent = `Error: ${err.message}`;
-    }
-  });
-  
-  container.querySelector('#trigger-scan').addEventListener('click', async () => {
-    try {
-      toast.info('Starting library scan...');
-      const res = await api.triggerScan();
-      toast.success(`Scan complete: ${res.scanned} items`);
-      const data = await api.getLibrary({ limit: 1000 });
-      store.setLibrary(data.items || []);
-    } catch (err) {
-      toast.error(err.message);
-    }
-  });
-  
-  // Security
-  container.querySelector('#save-creds').addEventListener('click', async () => {
-    const currentPassword = container.querySelector('#current-pass').value;
-    const newUsername = container.querySelector('#new-user').value.trim();
-    const newPassword = container.querySelector('#new-pass').value;
-    const newGridStr = container.querySelector('#new-grid').value.trim();
-    
-    if (!currentPassword) {
-      toast.error('Current password required');
-      return;
-    }
-    
-    const payload = { currentPassword };
-    if (newUsername) payload.newUsername = newUsername;
-    if (newPassword) payload.newPassword = newPassword;
-    if (newGridStr) {
-      try {
-        const pattern = newGridStr.split(',').map(s => parseInt(s.trim(), 10));
-        if (pattern.length !== 8 || pattern.some(n => isNaN(n) || n < 0 || n > 15)) throw new Error();
-        payload.newGridPattern = pattern;
-      } catch {
-        toast.error('Invalid grid pattern — must be 8 numbers 0-15 comma-separated');
+  links.forEach((a, index) => {
+    a.addEventListener('click', (e) => {
+      if (e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0) return;
+      e.preventDefault();
+      select(a.dataset.target, { focus: true });
+    });
+    // Up/Down (and Left/Right in the chip bar) move between sections.
+    a.addEventListener('keydown', (e) => {
+      const step = { ArrowDown: 1, ArrowRight: 1, ArrowUp: -1, ArrowLeft: -1 }[e.key];
+      if (e.key === 'Home' || e.key === 'End') {
+        e.preventDefault();
+        links[e.key === 'Home' ? 0 : links.length - 1].focus();
         return;
       }
+      if (!step) return;
+      e.preventDefault();
+      links[(index + step + links.length) % links.length].focus();
+    });
+  });
+
+  // --- search (SR-3)
+  let searchTimer = null;
+  function clearSearch({ silent = false } = {}) {
+    search.value = '';
+    container.classList.remove('is-searching');
+    panels.querySelectorAll('.is-search-hidden').forEach(n => n.classList.remove('is-search-hidden'));
+    links.forEach(a => { a.classList.remove('has-no-match'); a.querySelector('.rail-count').textContent = ''; });
+    empty.hidden = true;
+    if (!silent) {
+      searchStatus.textContent = '';
+      for (const [key, node] of nodes) node.hidden = key !== current;
     }
-    
-    try {
-      await api.updateCredentials(payload);
-      toast.success('Credentials updated');
-      container.querySelector('#current-pass').value = '';
-      container.querySelector('#new-user').value = '';
-      container.querySelector('#new-pass').value = '';
-      container.querySelector('#new-grid').value = '';
-    } catch (err) {
-      toast.error(err.message);
+  }
+
+  function runSearch() {
+    const q = search.value.trim().toLowerCase();
+    if (!q) { clearSearch(); return; }
+    container.classList.add('is-searching');
+    const terms = q.split(/\s+/).filter(Boolean);
+    const matches = (text) => terms.every(t => text.includes(t));
+    let total = 0;
+    let sectionsHit = 0;
+    for (const [key, node] of nodes) {
+      const label = ALL.find(i => i.id === key).label.toLowerCase();
+      const sectionText = `${label} ${node.querySelector('.settings-section-intro')?.textContent.toLowerCase() || ''}`;
+      const sectionMatch = matches(sectionText);
+      let hits = 0;
+      node.querySelectorAll('.settings-group').forEach(groupNode => {
+        const extra = [...groupNode.querySelectorAll('[data-keywords]:not(.setting-row)')].map(n => n.dataset.keywords).join(' ');
+        const groupKeywords = `${groupNode.dataset.keywords || ''} ${extra} ${groupNode.querySelector('.settings-group-title')?.textContent || ''}`.toLowerCase();
+        const groupMatch = sectionMatch || matches(groupKeywords);
+        let groupHits = 0;
+        const rows = groupNode.querySelectorAll('.setting-row');
+        rows.forEach(r => {
+          const text = `${r.dataset.keywords || ''} ${r.textContent}`.toLowerCase();
+          const hit = groupMatch || matches(text);
+          r.classList.toggle('is-search-hidden', !hit);
+          if (hit) groupHits += 1;
+        });
+        if (!rows.length && groupMatch) groupHits = 1;
+        groupNode.classList.toggle('is-search-hidden', groupHits === 0);
+        hits += groupHits;
+      });
+      node.hidden = hits === 0;
+      const link = links.find(a => a.dataset.target === key);
+      link.classList.toggle('has-no-match', hits === 0);
+      link.querySelector('.rail-count').textContent = hits ? String(hits) : '';
+      total += hits;
+      if (hits) sectionsHit += 1;
+    }
+    empty.hidden = total > 0;
+    if (!total) empty.innerHTML = `No settings match “${escapeHtml(search.value.trim())}”. Try a different word, such as <em>theme</em>, <em>M3U</em> or <em>password</em>.`;
+    searchStatus.textContent = total
+      ? `${total} matching setting${total === 1 ? '' : 's'} in ${sectionsHit} section${sectionsHit === 1 ? '' : 's'}`
+      : 'No matching settings';
+  }
+  search.addEventListener('input', () => {
+    clearTimeout(searchTimer);
+    searchTimer = setTimeout(runSearch, 120);
+  });
+  search.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && search.value) {
+      e.preventDefault();
+      e.stopPropagation();
+      clearSearch();
     }
   });
-  
-  container.querySelector('#logout-btn').addEventListener('click', () => {
-    window.dispatchEvent(new CustomEvent('vault:logout'));
-  });
-  
-  // Load server info. The write must survive the user navigating away before
-  // the request resolves (the element is gone once the view unmounts).
-  const showServerInfo = (text) => {
-    const el = container.querySelector('#server-info');
-    if (el) el.textContent = text;
+
+  // --- deep links: /settings#live-tv (and back/forward between fragments)
+  const onFragment = () => {
+    const id = resolveId(router.getFragment());
+    if (id && id !== current) select(id, { focus: true, updateUrl: false });
   };
-  api.health()
-    .then(health => showServerInfo(JSON.stringify(health, null, 2)))
-    .catch(err => showServerInfo(`Cannot connect: ${err.message}`));
+  window.addEventListener('vault:fragment-changed', onFragment);
+  onUnmount(() => {
+    window.removeEventListener('vault:fragment-changed', onFragment);
+    clearTimeout(searchTimer);
+  });
+
+  const initial = resolveId(router.getFragment());
+  select(initial || 'appearance', { updateUrl: Boolean(initial) && initial !== router.getFragment() });
+  if (initial) {
+    // Arriving from a deep link (e.g. the Live TV page): move focus to it.
+    requestAnimationFrame(() => nodes.get(initial)?.focus({ preventScroll: true }));
+  }
 }
+
+// ---------------------------------------------------------------------------
+// About
+// ---------------------------------------------------------------------------
+function aboutSection() {
+  const s = section({ id: 'about', title: 'About Vault', iconName: 'info', scope: 'info' });
+  const themeNames = THEME_META.map(m => m.name);
+  s.body.append(el(`<div class="about">
+      <div class="about-brand">
+        <p class="about-name">Vault <span class="about-version" id="about-version"></span></p>
+        <span class="chip">Self-hosted</span>
+      </div>
+      <p class="about-text">A personal media server for your films, shows, music, podcasts and live TV — vanilla JavaScript in the browser, Node.js on the server, with on-the-fly transcoding.</p>
+      <ul class="about-facts">
+        <li>${icon('palette', { size: 16 })}<span>${themeNames.length} themes: ${themeNames.map(escapeHtml).join(', ')}</span></li>
+        <li>${icon('sliders', { size: 16 })}<span>10-band equaliser, gapless playback and crossfade</span></li>
+        <li>${icon('tv', { size: 16 })}<span>Live TV from M3U channel lists with XMLTV guides</span></li>
+      </ul>
+      <div class="settings-actions">
+        <button type="button" class="btn btn-secondary btn-sm" id="about-shortcuts">${icon('keyboard', { size: 15 })}<span>Keyboard shortcuts</span></button>
+        <a class="btn btn-ghost btn-sm" href="https://github.com/Kokonut-dev/Vault-V2" target="_blank" rel="noopener">${icon('external-link', { size: 15 })}<span>Source on GitHub</span><span class="sr-only"> (opens in a new tab)</span></a>
+      </div>
+    </div>`));
+  s.querySelector('#about-shortcuts').addEventListener('click', () => window.dispatchEvent(new CustomEvent('vault:show-shortcuts')));
+  api.health().then(h => {
+    const v = s.querySelector('#about-version');
+    if (v && h.version) v.textContent = `v${h.version}`;
+  }).catch(() => {});
+  return s;
+}
+
+export default { renderSettings };

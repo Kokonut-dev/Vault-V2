@@ -1,6 +1,7 @@
 /**
  * Playlists view — optimized
  */
+import { createModal } from '../components/modal.js';
 import { store } from '../store.js';
 import { api } from '../api.js';
 import { toast } from '../components/toast.js';
@@ -64,7 +65,10 @@ export function renderPlaylists(container) {
           <h1 class="page-title">Playlists & Collections</h1>
           <p class="page-subtitle">Your curated playlists and collections</p>
         </div>
-        <button class="btn btn-primary" id="create-playlist-btn">Create Playlist</button>
+        <div class="page-header-actions">
+          <button class="btn btn-secondary" id="import-link-btn" type="button">${icon('link', { size: 16 })}<span>Import from link</span></button>
+          <button class="btn btn-primary" id="create-playlist-btn" type="button">Create Playlist</button>
+        </div>
       </div>
     </div>
     <div id="playlists-content"></div>
@@ -74,6 +78,7 @@ export function renderPlaylists(container) {
   const createBtn = container.querySelector('#create-playlist-btn');
   
   createBtn.addEventListener('click', () => showCreateModal());
+  container.querySelector('#import-link-btn').addEventListener('click', () => showImportLinkModal());
   
   loadPlaylists();
   
@@ -122,6 +127,66 @@ export function renderPlaylists(container) {
     }
   }
   
+  // SR-6: build a playlist from an M3U/M3U8 link. The server fetches it
+  // (SSRF-safe), matches entries against the library and reports how many hit.
+  function showImportLinkModal() {
+    const { backdrop, close } = createModal({
+      title: 'Import a playlist from a link',
+      content: `
+        <form class="modal-form" id="import-link-form" novalidate>
+          <p class="modal-text">Paste a link to an .m3u or .m3u8 playlist. Songs already in your library are matched by file path or name.</p>
+          <label class="form-label" for="import-link-url">Playlist link</label>
+          <input class="form-input" id="import-link-url" type="url" inputmode="url" spellcheck="false" autocapitalize="off" placeholder="https://…/mix.m3u" aria-describedby="import-link-error">
+          <label class="form-label" for="import-link-name">Name <span class="form-optional">(optional)</span></label>
+          <input class="form-input" id="import-link-name" maxlength="100" placeholder="Uses the file name if empty">
+          <p class="field-error" id="import-link-error" role="alert"></p>
+          <div class="modal-actions">
+            <button type="button" class="btn btn-secondary" data-cancel>Cancel</button>
+            <button type="submit" class="btn btn-primary" id="import-link-go">Import</button>
+          </div>
+        </form>`,
+    });
+    const form = backdrop.querySelector('#import-link-form');
+    const urlInput = backdrop.querySelector('#import-link-url');
+    const error = backdrop.querySelector('#import-link-error');
+    urlInput.focus();
+    backdrop.querySelector('[data-cancel]').addEventListener('click', close);
+    form.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      const url = urlInput.value.trim();
+      let problem = '';
+      try {
+        const parsed = new URL(url);
+        if (!/^https?:$/.test(parsed.protocol)) problem = 'Only http:// and https:// links are supported';
+      } catch {
+        problem = url ? 'Enter a full link, starting with http:// or https://' : 'Paste a playlist link first';
+      }
+      if (problem) {
+        error.textContent = problem;
+        urlInput.setAttribute('aria-invalid', 'true');
+        urlInput.focus();
+        return;
+      }
+      urlInput.removeAttribute('aria-invalid');
+      error.textContent = '';
+      const go = backdrop.querySelector('#import-link-go');
+      go.disabled = true;
+      go.textContent = 'Importing…';
+      try {
+        const res = await api.importPlaylistFromUrl(url, backdrop.querySelector('#import-link-name').value.trim());
+        close();
+        const remote = res.remote ? ` · ${res.remote} web link${res.remote === 1 ? '' : 's'} skipped` : '';
+        toast.success(`“${res.playlist?.name}” created: ${res.matched} of ${res.considered} found in your library${remote}`);
+        loadPlaylists();
+      } catch (err) {
+        error.textContent = err.code === 'ADMIN_REQUIRED' ? 'Only an admin profile can import from links.' : err.message;
+        urlInput.setAttribute('aria-invalid', 'true');
+        go.disabled = false;
+        go.textContent = 'Import';
+      }
+    });
+  }
+
   function showCreateModal() {
     const backdrop = document.createElement('div');
     backdrop.className = 'modal-backdrop active';

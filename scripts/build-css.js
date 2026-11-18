@@ -45,6 +45,7 @@ const SHEETS = [
   'animations.css',
   'accessibility.css',
   'v3.css',
+  'settings.css',
 ];
 
 // One marker string per sheet (verified unique across sources) — proves the
@@ -63,6 +64,7 @@ const MARKERS = {
   'animations.css': 'pageEnter',
   'accessibility.css': 'skip-link',
   'v3.css': 'queue-panel',
+  'settings.css': 'settings-rail',
 };
 
 function loadCleanCss() {

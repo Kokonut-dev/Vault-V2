@@ -296,7 +296,8 @@ router.post('/totp/enable', authMiddleware, (req, res) => {
 
 router.post('/totp/disable', authMiddleware, (req, res) => {
   const result = authService.disableTotp(req.body.password);
-  if (!result.ok) return res.status(401).json({ error: result.error });
+  // 400 (not 401): a wrong password here must not end the session client-side.
+  if (!result.ok) return res.status(400).json({ error: result.error, code: 'WRONG_PASSWORD' });
   res.json({ message: 'Two-factor authentication disabled' });
 });
 

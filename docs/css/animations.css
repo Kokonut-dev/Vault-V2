@@ -20,6 +20,13 @@
   }
 }
 
+/* SR-15: route changes are animated by utils/pageTransition.js (WAAPI).
+   The CSS entrance above only covers the very first paint; the Motion
+   setting (html[data-motion]) is honoured for it too. */
+html.has-page-transitions #view-container.page { animation: none; }
+html[data-motion="off"] .page { animation: none; }
+html[data-motion="reduced"] .page { animation-name: fadeIn; animation-duration: 120ms; }
+
 .page-exit {
   animation: pageExit var(--dur-1) var(--ease-exit) forwards;
 }

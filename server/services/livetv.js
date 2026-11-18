@@ -16,6 +16,27 @@ const { createJsonStore } = require('../utils/jsonStore');
 
 const recordingsStore = createJsonStore('recordings.json', []);
 const { ffmpegBinary } = require('./transcodePlan');
+const zlib = require('zlib');
+const { safeFetchText, validateUrl, friendlyError } = require('../utils/safeFetch');
+const links = require('./links');
+
+const M3U_MAX_BYTES = 25 * 1024 * 1024;
+const EPG_MAX_BYTES = 120 * 1024 * 1024;
+const LOCAL_SOURCE_EXT = /\.(m3u8?|xml|xmltv|gz)$/i;
+
+/** Read an M3U/XMLTV source: http(s) via the SSRF-hardened fetcher, or a local file. */
+async function readSource(source, { maxBytes, accept } = {}) {
+  if (/^https?:\/\//i.test(source)) {
+    const { text } = await safeFetchText(source, { maxBytes, accept, timeoutMs: 30000 });
+    return text;
+  }
+  if (!path.isAbsolute(source) || !LOCAL_SOURCE_EXT.test(source)) {
+    throw new Error('Local sources must be an absolute path to a .m3u, .m3u8, .xml or .xml.gz file');
+  }
+  const buffer = await fs.readFile(source);
+  if (buffer[0] === 0x1f && buffer[1] === 0x8b) return zlib.gunzipSync(buffer, { maxOutputLength: maxBytes }).toString('utf8');
+  return buffer.toString('utf8');
+}
 
 let epgCache = { fetchedAt: 0, programs: [], source: null };
 const activeRecordings = new Map();
@@ -36,13 +57,15 @@ function parseM3U(text) {
       const attrRe = /([a-zA-Z0-9_-]+)="([^"]*)"/g;
       let m;
       while ((m = attrRe.exec(line))) attrs[m[1].toLowerCase()] = m[2];
-      const name = line.split(',').slice(1).join(',').trim();
+      const name = links.extinfName(line);
+      const chno = attrs['tvg-chno'] || attrs['channel-number'] || attrs['tvg-num'] || '';
       const idMatch = line.match(/^#EXTINF:(-?\d+(?:\.\d+)?)\s*(.*)$/);
       pending = {
         name: name || attrs['tvg-name'] || 'Unknown channel',
         tvgId: attrs['tvg-id'] || null,
         logo: attrs['tvg-logo'] || null,
         group: attrs['group-title'] || 'Ungrouped',
+        number: /^\d+(\.\d+)?$/.test(chno.trim()) ? chno.trim() : null,
         duration: idMatch ? Number(idMatch[1]) : -1,
         url: null,
       };
@@ -68,9 +91,7 @@ async function loadChannels() {
     const source = config.livetv.m3uUrl;
     if (source) {
       try {
-        const text = source.startsWith('http')
-          ? await (await fetch(source)).text()
-          : await fs.readFile(source, 'utf8');
+        const text = await readSource(source, { maxBytes: M3U_MAX_BYTES, accept: 'audio/x-mpegurl, application/vnd.apple.mpegurl, */*' });
         channels.push(...parseM3U(text));
       } catch (err) {
         logger.warn(`[LiveTV] failed to load channel list: ${err.message}`);
@@ -86,6 +107,18 @@ async function loadChannels() {
     }
   }
 
+  // Providers that number channels (tvg-chno) expect them in that order;
+  // unnumbered channels keep their list order after the numbered ones.
+  if (channels.some(c => c.number)) {
+    return channels
+      .map((c, i) => ({ c, i }))
+      .sort((a, b) => {
+        const an = a.c.number ? parseFloat(a.c.number) : Infinity;
+        const bn = b.c.number ? parseFloat(b.c.number) : Infinity;
+        return an - bn || a.i - b.i;
+      })
+      .map(({ c }) => c);
+  }
   return channels;
 }
 
@@ -192,9 +225,7 @@ async function getEpg(force = false) {
   if (!source) return { ...epgCache, programs: [], source: null };
 
   try {
-    const xml = source.startsWith('http')
-      ? await (await fetch(source)).text()
-      : await fs.readFile(source, 'utf8');
+    const xml = await readSource(source, { maxBytes: EPG_MAX_BYTES, accept: 'application/xml, text/xml, */*' });
     const programs = parseXmltv(xml).map(p => ({
       ...p,
       startIso: parseXmltvDate(p.start),
@@ -320,11 +351,132 @@ async function deleteRecording(id) {
   return true;
 }
 
-async function updateSettings(patch) {
+/**
+ * Validate one source field. Returns the cleaned string ('' clears it).
+ * Throws an Error with a field-specific, fixable message.
+ */
+function cleanSource(value, label) {
+  const v = String(value ?? '').trim();
+  if (!v) return '';
+  if (v.length > 2048) throw new Error(`${label} is too long`);
+  if (/^https?:\/\//i.test(v)) {
+    validateUrl(v);
+    return v;
+  }
+  if (/^[a-z][a-z0-9+.-]*:/i.test(v) && !/^[a-z]:[\\/]/i.test(v)) {
+    throw new Error(`${label} must start with http:// or https:// (or be a full path to a local file)`);
+  }
+  if (!path.isAbsolute(v) || !LOCAL_SOURCE_EXT.test(v)) {
+    throw new Error(`${label} must be a link, or a full path to a .m3u, .m3u8, .xml or .xml.gz file`);
+  }
+  return v;
+}
+
+/**
+ * Patch semantics (write-only secrets, SR-5): a source key that is *absent*
+ * keeps the saved value, '' clears it, anything else replaces it.
+ */
+async function updateSettings(patch = {}) {
   const config = getConfig();
-  config.livetv = { ...config.livetv, ...patch };
+  const current = { enabled: false, m3uUrl: '', epgUrl: '', hdhrDiscover: false, ...(config.livetv || {}) };
+  const next = { ...current };
+  const errors = {};
+
+  if (patch.enabled !== undefined) next.enabled = Boolean(patch.enabled);
+  if (patch.hdhrDiscover !== undefined) next.hdhrDiscover = Boolean(patch.hdhrDiscover);
+  for (const [key, label] of [['m3uUrl', 'Channel list link'], ['epgUrl', 'TV guide link']]) {
+    if (patch[key] === undefined) continue;
+    try { next[key] = cleanSource(patch[key], label); } catch (err) { errors[key] = err.message; }
+  }
+  if (Object.keys(errors).length) {
+    const err = new Error('Some Live TV settings need fixing');
+    err.fields = errors;
+    throw err;
+  }
+
+  if (next.epgUrl !== current.epgUrl) epgCache = { fetchedAt: 0, programs: [], source: null };
+  config.livetv = next;
   saveConfig(config);
-  return config.livetv;
+  return publicSettings(next);
+}
+
+/** What the browser may see: flags + redacted hints, never the raw URLs. */
+function publicSettings(livetv = getConfig().livetv || {}) {
+  return {
+    enabled: Boolean(livetv.enabled),
+    hdhrDiscover: Boolean(livetv.hdhrDiscover),
+    m3u: links.describeSecret(livetv.m3uUrl),
+    epg: links.describeSecret(livetv.epgUrl),
+  };
+}
+
+/**
+ * Dry-run a channel list and/or guide before saving (TiviMate-style "fetch
+ * and show a channel count"). Omitted values fall back to the saved ones.
+ */
+async function testSources({ m3uUrl, epgUrl } = {}) {
+  const saved = getConfig().livetv || {};
+  const m3uSource = m3uUrl === undefined ? saved.m3uUrl : String(m3uUrl || '').trim();
+  const epgSource = epgUrl === undefined ? saved.epgUrl : String(epgUrl || '').trim();
+  const result = { m3u: null, epg: null, match: null };
+  let m3uText = null;
+  let epgText = null;
+
+  if (m3uSource) {
+    try {
+      cleanSource(m3uSource, 'Channel list link');
+      m3uText = await readSource(m3uSource, { maxBytes: M3U_MAX_BYTES });
+      const kind = links.classify(m3uText);
+      if (kind.kind !== 'm3u-live' && kind.kind !== 'm3u-audio') {
+        result.m3u = { ok: false, error: kind.hint || `That link is a ${kind.label.toLowerCase()}, not a channel list` };
+        m3uText = null;
+      } else {
+        const { entries, epgUrl: playlistGuide } = links.readM3U(m3uText);
+        result.m3u = {
+          ok: entries.length > 0,
+          channels: entries.length,
+          groups: kind.summary.groups || [],
+          sample: entries.slice(0, 6).map(e => e.name).filter(Boolean),
+          withGuideIds: entries.filter(e => e.tvgId).length,
+          playlistGuide: playlistGuide ? links.redactUrl(playlistGuide) : null,
+          hasPlaylistGuide: Boolean(playlistGuide),
+          error: entries.length ? undefined : 'The playlist is empty',
+        };
+      }
+    } catch (err) {
+      result.m3u = { ok: false, error: friendlyError(err) };
+    }
+  }
+
+  if (epgSource) {
+    try {
+      cleanSource(epgSource, 'TV guide link');
+      epgText = await readSource(epgSource, { maxBytes: EPG_MAX_BYTES });
+      const kind = links.classify(epgText);
+      if (kind.kind !== 'xmltv') {
+        result.epg = { ok: false, error: kind.hint || `That link is a ${kind.label.toLowerCase()}, not an XMLTV guide` };
+        epgText = null;
+      } else {
+        result.epg = { ok: true, channels: kind.summary.channels, programmes: kind.summary.programmes };
+      }
+    } catch (err) {
+      result.epg = { ok: false, error: friendlyError(err) };
+    }
+  }
+
+  if (m3uText && epgText) result.match = links.guideMatch(m3uText, epgText);
+  return result;
+}
+
+/** Copy the guide URL embedded in the saved/given playlist (url-tvg) into epgUrl. */
+async function adoptPlaylistGuide({ m3uUrl } = {}) {
+  const source = m3uUrl === undefined ? (getConfig().livetv || {}).m3uUrl : String(m3uUrl || '').trim();
+  if (!source) throw new Error('Add a channel list link first');
+  cleanSource(source, 'Channel list link');
+  const text = await readSource(source, { maxBytes: M3U_MAX_BYTES });
+  const { epgUrl } = links.readM3U(text);
+  if (!epgUrl) throw new Error('This playlist doesn\'t name a guide (no url-tvg in its header)');
+  return updateSettings({ epgUrl });
 }
 
 async function flush() {
@@ -343,5 +495,10 @@ module.exports = {
   listRecordings,
   deleteRecording,
   updateSettings,
+  publicSettings,
+  testSources,
+  adoptPlaylistGuide,
+  cleanSource,
+  readSource,
   flush,
 };

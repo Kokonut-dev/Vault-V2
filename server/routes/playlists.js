@@ -8,6 +8,7 @@ const libraryService = require('../services/library');
 const extras = require('../services/extras');
 const events = require('../services/events');
 const { sanitizeString } = require('../utils/validators');
+const links = require('../services/links');
 
 // Every route in here is profile-scoped: the default profile keeps using the
 // original flat data files, extra profiles get their own copies.
@@ -274,16 +275,9 @@ router.post('/import', (req, res) => {
   try {
     const { name, content, paths } = req.body || {};
     const entries = Array.isArray(paths) ? paths : String(content || '').split(/\r?\n/);
-    const matched = [];
-    const all = libraryService.getAll();
-    for (const raw of entries) {
-      const line = String(raw).trim();
-      if (!line || line.startsWith('#')) continue;
-      const hit = all.find(i => i.path === line || i.path.endsWith(line) || path.basename(i.path) === path.basename(line));
-      if (hit) matched.push(hit.id);
-    }
+    const { matched, missed } = links.matchEntries(entries, libraryService.getAll());
     const playlist = scoped(req).createPlaylist({ name: name || 'Imported playlist', items: matched });
-    res.json({ ...playlist, matched: matched.length, missed: entries.filter(e => e.trim() && !e.startsWith('#')).length - matched.length });
+    res.json({ ...playlist, matched: matched.length, missed });
   } catch (err) {
     res.status(500).json({ error: 'Import failed' });
   }

@@ -1,6 +1,7 @@
 /**
  * EQ Panel — 10-band parametric EQ with Web Audio API
  */
+import { createFocusTrap } from '../utils/focusTrap.js';
 import { store } from '../store.js';
 import { EQ_PRESETS, EQ_FREQUENCIES } from '../utils/constants.js';
 import { toast } from './toast.js';
@@ -21,7 +22,7 @@ export function renderEQPanel(container) {
     <div class="eq-panel">
       <div class="eq-header">
         <div>
-          <div class="eq-title">Equalizer</div>
+          <h2 class="eq-title">Equaliser</h2>
           <label style="display:flex; align-items:center; gap:8px; margin-top:8px; font-size:13px;">
             <input type="checkbox" id="eq-enabled" ${enabled ? 'checked' : ''}> Enable EQ
           </label>
@@ -46,7 +47,7 @@ export function renderEQPanel(container) {
         ${EQ_FREQUENCIES.map((freq, idx) => `
           <div class="eq-band ${gains[idx] !== 0 ? 'active' : ''}" data-index="${idx}">
             <div class="eq-band-freq">${freq >= 1000 ? (freq/1000)+'k' : freq}Hz</div>
-            <input type="range" class="eq-band-slider" min="-12" max="12" step="0.5" value="${gains[idx]}" data-index="${idx}" orient="vertical">
+            <input type="range" class="eq-band-slider" min="-12" max="12" step="0.5" value="${gains[idx]}" data-index="${idx}" orient="vertical" aria-label="${freq >= 1000 ? (freq/1000)+' kHz' : freq+' Hz'} gain">
             <div class="eq-band-gain">${gains[idx] > 0 ? '+' : ''}${gains[idx]}dB</div>
           </div>
         `).join('')}
@@ -54,7 +55,7 @@ export function renderEQPanel(container) {
       
       <div class="eq-footer">
         <div class="eq-save">
-          <input type="text" id="eq-preset-name" placeholder="Custom preset name">
+          <input type="text" id="eq-preset-name" placeholder="Custom preset name" aria-label="Custom preset name">
           <button class="btn btn-secondary btn-sm" id="eq-save-preset">Save Custom</button>
         </div>
         <button class="btn btn-primary btn-sm" id="eq-close">Done</button>
@@ -238,18 +239,38 @@ function drawEQCurve(gains) {
 }
 
 export function showEQModal() {
+  const opener = document.activeElement;
   const backdrop = document.createElement('div');
   backdrop.className = 'modal-backdrop active';
-  backdrop.innerHTML = `<div id="eq-modal-container" style="max-width:800px; width:100%;"></div>`;
+  // A real dialog: labelled, focus-trapped, closes on Escape / backdrop /
+  // Done, and hands focus back to whatever opened it (SR-11).
+  backdrop.innerHTML = `<div id="eq-modal-container" class="eq-modal" role="dialog" aria-modal="true" aria-label="Equalizer"></div>`;
   document.body.appendChild(backdrop);
-  
+
   renderEQPanel(backdrop.querySelector('#eq-modal-container'));
-  
-  backdrop.addEventListener('click', (e) => {
-    if (e.target === backdrop) backdrop.remove();
+
+  const trap = createFocusTrap(backdrop, {
+    initialFocus: () => backdrop.querySelector('#eq-enabled'),
   });
-  
-  backdrop.querySelector('#eq-close')?.addEventListener('click', () => backdrop.remove());
-  
+  let closed = false;
+  const close = () => {
+    if (closed) return;
+    closed = true;
+    window.removeEventListener('vault:escape', close);
+    document.removeEventListener('keydown', onKeydown);
+    trap.release();
+    backdrop.remove();
+    if (opener && document.body.contains(opener)) opener.focus?.();
+  };
+  const onKeydown = (e) => { if (e.key === 'Escape') close(); };
+  window.addEventListener('vault:escape', close);
+  document.addEventListener('keydown', onKeydown);
+
+  backdrop.addEventListener('click', (e) => {
+    if (e.target === backdrop) close();
+  });
+  backdrop.querySelector('#eq-close')?.addEventListener('click', close);
+  trap.activate();
+
   return backdrop;
 }

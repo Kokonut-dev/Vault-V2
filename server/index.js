@@ -173,6 +173,7 @@ app.use('/api/system', authMiddleware, require('./routes/system'));
 app.use('/api/podcasts', authMiddleware, require('./routes/podcasts'));
 app.use('/api/comics', authMiddleware, require('./routes/comics'));
 app.use('/api/livetv', authMiddleware, require('./routes/livetv'));
+app.use('/api/links', authMiddleware, require('./routes/links'));
 app.use('/api/syncplay', authMiddleware, require('./routes/syncplay'));
 
 // Metadata agents (search + apply a match to an item).

@@ -54,14 +54,14 @@ export function createModal({ title, content, onClose }) {
  * Promise-based prompt used by the newer flows (save queue as playlist,
  * rename, add feed URL…). Resolves with the string, or null if cancelled.
  */
-export function promptModal({ title, message = '', label = 'Value', value = '', placeholder = '', confirmLabel = 'Save', validate = null } = {}) {
+export function promptModal({ title, message = '', label = 'Value', value = '', placeholder = '', confirmLabel = 'Save', validate = null, inputType = 'text', autocomplete = 'off', inputMode = '' } = {}) {
   return new Promise(resolve => {
     const { backdrop, close } = createModal({
       title,
       content: `
         ${message ? `<p class="modal-text">${message}</p>` : ''}
         <label class="form-label" for="prompt-input">${label}</label>
-        <input class="form-input" id="prompt-input" type="text" value="${String(value).replace(/"/g, '&quot;')}" placeholder="${placeholder}">
+        <input class="form-input" id="prompt-input" type="${inputType === 'password' ? 'password' : 'text'}" autocomplete="${autocomplete}"${inputMode ? ` inputmode="${inputMode}"` : ''} value="${String(value).replace(/"/g, '&quot;')}" placeholder="${placeholder}">
         <div class="modal-error" id="prompt-error" role="alert"></div>
         <div class="modal-actions">
           <button type="button" class="btn btn-secondary" data-cancel>Cancel</button>

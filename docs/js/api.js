@@ -185,6 +185,9 @@ class ApiClient {
           const err = new Error(data.error || `Request failed: ${res.status}`);
           err.status = res.status;
           err.code = data.code || 'REQUEST_FAILED';
+          // Per-field validation messages (Settings forms show them inline).
+          if (data.fields && typeof data.fields === 'object') err.fields = data.fields;
+          else if (data.field) err.fields = { [data.field]: data.error };
           err.path = data.path || path;
           err.endpointNotFound = data.code === 'NOT_FOUND' && typeof data.path === 'string';
           throw err;
@@ -1038,8 +1041,43 @@ class ApiClient {
     return this.request(`/api/livetv/recordings/${id}`, { method: 'DELETE' });
   }
 
+  getLiveTvSettings() {
+    return this.request('/api/livetv/settings');
+  }
+
   updateLiveTvSettings(data) {
     return this.request('/api/livetv/settings', { method: 'PUT', body: data });
+  }
+
+  /** Dry-run a channel list / guide (omitted keys fall back to saved values). */
+  testLiveTv(data = {}) {
+    return this.request('/api/livetv/test', { method: 'POST', body: data });
+  }
+
+  adoptLiveTvGuide(data = {}) {
+    return this.request('/api/livetv/settings/adopt-guide', { method: 'POST', body: data });
+  }
+
+  // --- Links ("paste a link") ---------------------------------------------
+  inspectLink(url) {
+    return this.request('/api/links/inspect', { method: 'POST', body: { url } });
+  }
+
+  importPlaylistFromUrl(url, name = '') {
+    return this.request('/api/links/import-playlist', { method: 'POST', body: { url, name } });
+  }
+
+  // --- Notification targets -------------------------------------------------
+  getNotificationSettings() {
+    return this.request('/api/settings/notifications');
+  }
+
+  updateNotificationSettings(data) {
+    return this.request('/api/settings/notifications', { method: 'PUT', body: data });
+  }
+
+  testNotifications() {
+    return this.request('/api/settings/notifications/test', { method: 'POST' });
   }
 
   // --- SyncPlay (watch party) ----------------------------------------------

@@ -332,6 +332,25 @@ function handleAction(action, percent) {
   }
 }
 
+function setMediaSession(item) {
+  if (!('mediaSession' in navigator)) return;
+  try {
+    navigator.mediaSession.metadata = new MediaMetadata({
+      title: item.title,
+      artist: item.artist || 'Unknown',
+      album: item.album || '',
+      artwork: [{ src: api.getCoverUrl(item.id), sizes: '512x512', type: 'image/jpeg' }]
+    });
+    navigator.mediaSession.setActionHandler('play', () => currentAudio.play());
+    navigator.mediaSession.setActionHandler('pause', () => currentAudio.pause());
+    navigator.mediaSession.setActionHandler('nexttrack', playNext);
+    navigator.mediaSession.setActionHandler('previoustrack', playPrev);
+  } catch {}
+}
+
+/** Settings → Playback → Gapless (default on). */
+const gaplessEnabled = () => localStorage.getItem('vault_gapless') !== 'false';
+
 export async function playItem(item, { forceTranscode = false } = {}) {
   if (!item) return;
 
@@ -339,20 +358,7 @@ export async function playItem(item, { forceTranscode = false } = {}) {
     await unlockAudio();
     store.set('currentTrack', item);
 
-    if ('mediaSession' in navigator) {
-      try {
-        navigator.mediaSession.metadata = new MediaMetadata({
-          title: item.title,
-          artist: item.artist || 'Unknown',
-          album: item.album || '',
-          artwork: [{ src: api.getCoverUrl(item.id), sizes: '512x512', type: 'image/jpeg' }]
-        });
-        navigator.mediaSession.setActionHandler('play', () => currentAudio.play());
-        navigator.mediaSession.setActionHandler('pause', () => currentAudio.pause());
-        navigator.mediaSession.setActionHandler('nexttrack', playNext);
-        navigator.mediaSession.setActionHandler('previoustrack', playPrev);
-      } catch {}
-    }
+    setMediaSession(item);
 
     const streamUrl = api.getPlaybackUrl(item, { forceTranscode });
     if (warnMixedContent(streamUrl)) {
@@ -390,6 +396,12 @@ function preloadNext() {
   const queue = store.get('queue') || [];
   const idx = store.get('queueIndex');
   const nextIdx = nextIndex(queue, idx);
+  // Only buffer the next track when something uses it: gapless hand-off or
+  // crossfade. With both off this saves a stream per track.
+  if (!gaplessEnabled() && !((store.get('crossfade') || 0) > 0)) {
+    preloadedIdx = -1;
+    return;
+  }
   preloadedIdx = nextIdx;
   if (nextIdx >= 0 && nextAudio) {
     const nextItem = queue[nextIdx];
@@ -546,7 +558,46 @@ function onEnded() {
     currentAudio.play().catch(() => {});
     return;
   }
+  if (gaplessEnabled() && !isCrossfading && handOffToPreloaded()) return;
   playNext();
+}
+
+/**
+ * Gapless playback: the next track is already buffered in `nextAudio`
+ * (preloadNext), so swap the elements and start it immediately instead of
+ * re-requesting the stream. Returns false when the hand-off isn't possible
+ * (not buffered yet, queue changed…) so the caller falls back to playNext().
+ */
+function handOffToPreloaded() {
+  const queue = store.get('queue') || [];
+  const idx = store.get('queueIndex');
+  const nextIdx = nextIndex(queue, idx);
+  const nextItem = nextIdx >= 0 ? queue[nextIdx] : null;
+  if (!nextItem || !nextAudio || preloadedIdx !== nextIdx) return false;
+  if (nextAudio.readyState < 2 || !nextAudio.currentSrc) return false; // HAVE_CURRENT_DATA
+
+  const finished = currentAudio;
+  cleanupAudioListeners(finished);
+  currentAudio = nextAudio;
+  nextAudio = finished;
+  try { nextAudio.pause(); nextAudio.removeAttribute('src'); nextAudio.load(); } catch {}
+
+  connectAudioToGraph(currentAudio);
+  attachAudioListeners(currentAudio);
+  currentAudio.volume = store.get('volume') ?? 0.8;
+  currentAudio.muted = Boolean(store.get('isMuted'));
+  try { currentAudio.currentTime = 0; } catch {}
+
+  commitAdvance(queue, idx, nextIdx);
+  store.set('currentTrack', nextItem);
+  setMediaSession(nextItem);
+  currentAudio.play().catch(() => playItem(nextItem));
+
+  store.addToHistory(nextItem.id, 0);
+  api.addHistory({ itemId: nextItem.id, progress: 0, duration: nextItem.duration }).catch(() => {});
+  preloadNext();
+  window.dispatchEvent(new CustomEvent('vault:track-changed', { detail: { item: nextItem } }));
+  return true;
 }
 
 function playNext() {
