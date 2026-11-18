@@ -23,6 +23,8 @@ import { initVideoExtras } from './components/videoExtras.js';
 import { initPlaybackPrefs } from './components/playbackPrefs.js';
 import { confirmDialog } from './components/confirmDialog.js';
 import { icon } from './utils/icons.js';
+import { router } from './router.js';
+import { initScrollHints } from './utils/scrollHints.js';
 import { formatTime } from './utils/format.js';
 
 // ---------------------------------------------------------------------------
@@ -257,20 +259,39 @@ function initBottomNav() {
   nav.className = 'bottom-nav';
   nav.id = 'bottom-nav';
   nav.setAttribute('aria-label', 'Primary');
+  // [path, icon, label, other routes that belong to the tab]
   const links = [
-    ['/home', 'home', 'Home'],
-    ['/movies', 'film', 'Movies'],
-    ['/music', 'music', 'Music'],
-    ['/shows', 'tv', 'Shows'],
-    ['/settings', 'settings', 'More'],
+    ['/', 'home', 'Home', ['/home', '/continue']],
+    ['/movies', 'film', 'Movies', ['/movie/', '/watch/']],
+    ['/music', 'music', 'Music', ['/album/', '/artist', '/playlists']],
+    ['/shows', 'tv', 'Shows', ['/show/']],
+    ['/settings', 'settings', 'More', []],
   ];
-  nav.innerHTML = links.map(([href, iconName, label]) => `<a href="#${href}" data-path="${href}">${icon(iconName, { size: 20 })}<span>${label}</span></a>`).join('');
+  // Real router links: the old "#/movies" hrefs flipped the app into hash
+  // routing (…/movies#/movies) and the active tab was read from
+  // location.hash, so "Home" stayed highlighted on every page.
+  nav.innerHTML = links.map(([href, iconName, label]) => `<a href="${router.hrefFor(href)}" data-path="${href}">${icon(iconName, { size: 20 })}<span>${label}</span></a>`).join('');
   document.body.appendChild(nav);
+  nav.addEventListener('click', (event) => {
+    const link = event.target.closest('a[data-path]');
+    if (!link || event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+    event.preventDefault();
+    router.navigate(link.dataset.path);
+  });
 
   const paint = () => {
-    const path = location.hash.replace('#', '') || '/home';
-    nav.querySelectorAll('a').forEach(a => a.classList.toggle('active', path.startsWith(a.dataset.path)));
+    const path = router.getCurrentPath();
+    nav.querySelectorAll('a').forEach((a) => {
+      const [base, , , related] = links.find(l => l[0] === a.dataset.path);
+      const active = base === '/'
+        ? path === '/' || related.some(r => path === r || path.startsWith(`${r}/`))
+        : path === base || path.startsWith(`${base}/`) || related.some(r => path.startsWith(r));
+      a.classList.toggle('active', active);
+      if (active) a.setAttribute('aria-current', 'page'); else a.removeAttribute('aria-current');
+    });
   };
+  window.addEventListener('vault:route-changed', paint);
+  window.addEventListener('popstate', paint);
   window.addEventListener('hashchange', paint);
   paint();
 }
@@ -463,6 +484,7 @@ export function initAppExtras() {
   initMultiSelect();
   initGestures();
   initBottomNav();
+  initScrollHints();
   initAmbient();
   initSyncPlayFollower();
   initPlayerExtras();

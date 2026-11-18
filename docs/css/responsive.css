@@ -1,0 +1,248 @@
+/* ============================================================
+   Responsive fit — keeps every screen inside the viewport, from a
+   320px phone to a 4K TV, portrait or landscape. Loaded LAST in the
+   bundle (scripts/build-css.js) so these guards win over older sheets.
+   Audited with a headless sweep of every route + overlay at
+   320×568 … 2560×1440 (see the PR notes).
+   ============================================================ */
+
+:root {
+  --fit-guard: 1; /* build marker (scripts/build-css.js) */
+  /* Mobile bottom tab bar: fixed height so the dock, toasts and page
+     padding can stack above it exactly. */
+  --bottom-nav-h: 60px;
+  --bottom-nav-gap: max(10px, env(safe-area-inset-bottom));
+  --bottom-nav-space: 0px; /* > 0 only while the tab bar is shown */
+}
+
+/* ---------- 1. Nothing may widen the page --------------------------------
+   Flex/grid children default to `min-width: auto` ("never narrower than my
+   widest unbreakable content"). .main is a flex child of .app, so a single
+   wide row — a tab strip, the header's icon buttons, a long URL — made the
+   whole column wider than the phone and html{overflow-x:hidden} silently
+   cut off the right edge of every page (Stats lost 90px at 320px). */
+.main,
+.content,
+#view-container {
+  min-width: 0;
+  max-width: 100%;
+}
+.content { max-width: min(var(--content-max), 100%); }
+
+/* Media never exceeds its column; long words/URLs wrap instead of pushing. */
+#view-container :is(img, video, canvas, svg:not(.icon), iframe) { max-width: 100%; }
+#view-container :is(p, li, dd, td, h1, h2, h3, .page-subtitle, .row-meta, .setting-help) {
+  overflow-wrap: anywhere;
+}
+#view-container :is(pre, code) { white-space: pre-wrap; overflow-wrap: anywhere; }
+#view-container table { display: block; max-width: 100%; overflow-x: auto; }
+
+/* Buttons keep their label intact (they were being squeezed a few px, cutting
+   "Join with code" / "Clear History" on 320px phones); the rows they sit in
+   wrap instead, and text columns beside them do the shrinking. */
+#view-container .btn { flex-shrink: 0; max-width: 100%; }
+.page-actions, .page-header.row { flex-wrap: wrap; }
+.page-header.row > :first-child { min-width: min(100%, 200px); flex: 1 1 200px; }
+
+/* Flex children that hold text must be allowed to shrink. */
+.header-left { flex: 1 1 auto; }
+.breadcrumb { min-width: 0; }
+.search-input { min-width: 0; }
+
+/* Tab strips scroll sideways (they already did) — the edge fades come from
+   utils/scrollHints.js so a cut-off last tab reads as "more this way". */
+/* Season picker on show pages had no styles at all (bare inline buttons). */
+.season-tabs { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 4px; margin-bottom: var(--space-md); }
+.settings-tabs, .season-tabs, [data-scroll-strip] {
+  scrollbar-width: none;
+  overscroll-behavior-x: contain;
+  scroll-snap-type: x proximity;
+}
+.settings-tabs::-webkit-scrollbar, .season-tabs::-webkit-scrollbar, [data-scroll-strip]::-webkit-scrollbar { display: none; }
+.settings-tabs > *, .season-tabs > *, [data-scroll-strip] > * { scroll-snap-align: start; flex-shrink: 0; }
+[data-scroll-hint="end"] { -webkit-mask-image: linear-gradient(90deg, #000 calc(100% - 40px), transparent); mask-image: linear-gradient(90deg, #000 calc(100% - 40px), transparent); }
+[data-scroll-hint="start"] { -webkit-mask-image: linear-gradient(90deg, transparent, #000 40px); mask-image: linear-gradient(90deg, transparent, #000 40px); }
+[data-scroll-hint="both"] { -webkit-mask-image: linear-gradient(90deg, transparent, #000 40px, #000 calc(100% - 40px), transparent); mask-image: linear-gradient(90deg, transparent, #000 40px, #000 calc(100% - 40px), transparent); }
+
+/* Toasts: a 300px minimum was wider than a 320px phone minus its margins. */
+.toast { min-width: min(300px, 100%); max-width: min(400px, 100%); }
+
+/* ---------- 2. Phones: bottom tab bar + player dock ----------------------
+   The tab bar (z-index 900) sat exactly on top of the mini player — the
+   now-playing dock was invisible on every phone — and above the video
+   player, Now Playing, search and dialogs. It now sits under all overlays
+   and the dock floats just above it. */
+.bottom-nav {
+  z-index: calc(var(--z-sidebar) - 2); /* under the drawer's dimmer and every overlay */
+  height: var(--bottom-nav-h);
+  bottom: var(--bottom-nav-gap);
+  align-items: stretch;
+  max-width: calc(100vw - 2 * var(--shell-gap));
+}
+.bottom-nav a { padding: 0 clamp(8px, 3.4vw, 14px); align-content: center; min-width: 0; }
+.bottom-nav a span { white-space: nowrap; }
+
+/* Off-canvas sidebar (≤1024px): the dock was flush with the left edge but
+   12px off the right one. */
+@media (max-width: 1024px) {
+  .mini-player { --sidebar-track: var(--shell-gap); }
+}
+
+@media (max-width: 760px) {
+  :root { --bottom-nav-space: calc(var(--bottom-nav-h) + var(--bottom-nav-gap)); }
+
+  .mini-player {
+    --sidebar-track: var(--shell-gap);
+    left: var(--shell-gap);
+    right: var(--shell-gap);
+    bottom: calc(var(--bottom-nav-space) + 8px);
+    padding: 0 var(--space-sm) 0 var(--space-sm);
+    gap: var(--space-sm);
+  }
+
+  .content {
+    padding-bottom: calc(var(--bottom-nav-space) + var(--space-lg));
+  }
+  .has-mini-player .content {
+    padding-bottom: calc(var(--bottom-nav-space) + var(--dock-height) + 8px + var(--space-lg));
+  }
+
+  .toast-container {
+    left: var(--shell-gap);
+    right: var(--shell-gap);
+    bottom: calc(var(--bottom-nav-space) + var(--space-md));
+    align-items: stretch;
+  }
+  .has-mini-player .toast-container {
+    bottom: calc(var(--bottom-nav-space) + var(--dock-height) + 8px + var(--space-md));
+  }
+
+  .back-to-top { bottom: calc(var(--bottom-nav-space) + var(--dock-height) + 24px); right: var(--shell-gap); }
+}
+
+/* The dock keeps play/next/expand on small phones; prev and download live
+   in Now Playing (one tap away) — five 44px touch targets + art don't fit. */
+@media (max-width: 480px) {
+  #mini-download { display: none; }
+  .mini-player-controls { gap: 2px; }
+}
+@media (max-width: 380px) {
+  #mini-prev { display: none; }
+  /* Keyboard-shortcuts button is meaningless on a small touch screen and
+     its slot is what pushes the header past 320px. */
+  #shortcuts-btn { display: none; }
+}
+
+/* ---------- 3. Now Playing -----------------------------------------------
+   The artwork took the full column width, so on phones it was taller than
+   the screen and pushed title/seek/controls out of view; in landscape it
+   covered everything. Size it by the space that is actually left. */
+.now-playing-header { padding-top: env(safe-area-inset-top); height: calc(var(--header-height) + env(safe-area-inset-top)); }
+.now-playing-content {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  padding-bottom: calc(var(--space-2xl) + env(safe-area-inset-bottom));
+}
+.now-playing-art {
+  width: min(100%, 600px, calc(100dvh - var(--header-height) - 2 * var(--space-2xl)));
+  justify-self: center;
+}
+.now-playing-info { min-width: 0; }
+.now-playing-title { font-size: clamp(24px, 3vw + 12px, 40px); overflow-wrap: anywhere; }
+.now-playing-artist { font-size: clamp(15px, 0.6vw + 13px, 20px); overflow-wrap: anywhere; }
+.now-playing-controls { flex-wrap: wrap; }
+
+@media (max-width: 420px) {
+  .now-playing-controls { gap: var(--space-sm); }
+}
+
+@media (max-width: 1024px) {
+  .now-playing-content {
+    grid-template-columns: minmax(0, 1fr);
+    align-content: start;
+    justify-items: center;
+    gap: var(--space-lg);
+    padding: var(--space-lg) var(--space-md) calc(var(--space-lg) + env(safe-area-inset-bottom));
+  }
+  /* Leave ~360px under the art for title, seek bar and controls. */
+  .now-playing-art { width: min(100%, 480px, max(160px, 100dvh - var(--header-height) - 380px)); }
+  .now-playing-info { width: min(100%, 560px); gap: var(--space-md); }
+  .now-playing-controls { justify-content: center; }
+}
+
+/* Landscape phones / short windows: art left, info right, both fit. */
+@media (orientation: landscape) and (max-height: 560px) {
+  .now-playing-content {
+    grid-template-columns: auto minmax(0, 1fr);
+    align-items: center;
+    align-content: center;
+    justify-items: stretch;
+    gap: var(--space-lg);
+    padding: var(--space-sm) max(var(--space-lg), env(safe-area-inset-right)) var(--space-sm) max(var(--space-lg), env(safe-area-inset-left));
+  }
+  .now-playing-art { width: min(40vw, calc(100dvh - var(--header-height) - 2 * var(--space-sm) - env(safe-area-inset-bottom))); }
+  .now-playing-info { width: auto; gap: var(--space-sm); }
+  .now-playing-title { font-size: clamp(20px, 5vh + 4px, 32px); }
+  .now-playing-controls { justify-content: flex-start; }
+}
+
+/* ---------- 4. Video player ----------------------------------------------
+   With 44px touch targets the right-hand group (download, captions, EQ,
+   speed, theatre, PiP, fullscreen, close — plus anything videoExtras adds)
+   is ~440px: on phones six of them were off-screen and unreachable. */
+.video-controls-row { flex-wrap: wrap; row-gap: var(--space-sm); }
+.video-controls-left { min-width: 0; }
+.video-controls-right { flex-wrap: wrap; justify-content: flex-end; min-width: 0; }
+.video-time { white-space: nowrap; }
+.video-player-controls {
+  padding-bottom: calc(var(--space-md) + env(safe-area-inset-bottom));
+  padding-left: max(var(--space-md), env(safe-area-inset-left));
+  padding-right: max(var(--space-md), env(safe-area-inset-right));
+}
+
+@media (max-width: 640px) {
+  .video-controls-left { flex: 1 1 auto; gap: 6px; }
+  .video-controls-right { flex: 1 1 100%; gap: 6px; }
+  /* Theatre mode is the same as the phone's full screen; phones use the
+     hardware volume buttons (mute stays). */
+  #video-theatre,
+  .video-volume-slider { display: none; }
+  .video-time { min-width: 0; font-size: 12px; margin-right: auto; }
+
+  /* Two tidy rows instead of a lone × on a third: the groups dissolve
+     (display: contents) so play · next · mute · time · × share row one and
+     a zero-height break pushes the tools onto row two. */
+  .video-controls-row { gap: 8px 6px; justify-content: flex-start; }
+  .video-controls-left,
+  .video-controls-right { display: contents; }
+  .video-controls-row::after { content: ''; order: 1; flex-basis: 100%; height: 0; }
+  .video-controls-right > * { order: 2; }
+  .video-controls-right > #video-close { order: 0; }
+}
+
+/* ---------- 5. Very large screens -----------------------------------------
+   Keep line lengths readable on 1440p/4K: the content stage already caps at
+   --content-max; centre the dock over it. */
+@media (min-width: 2200px) {
+  :root { --content-max: 2000px; }
+}
+
+/* ---------- 6. Short landscape windows (phones on their side) ------------ */
+@media (orientation: landscape) and (max-height: 500px) {
+  .modal, .search-modal { max-height: calc(100dvh - 2 * var(--space-md)); }
+  .search-modal-backdrop { padding-top: var(--space-md); }
+}
+
+/* ---------- 7. Hidden menus must not catch taps ---------------------------
+   The video quality menu is built once and left in the DOM at opacity 0 with
+   no position, i.e. wherever the end of <body> falls — an invisible
+   232×233px box swallowing clicks/taps on short pages. */
+.context-menu:not(.active) { pointer-events: none; visibility: hidden; }
+
+/* Long menus on short screens (landscape phones): never taller or wider than
+   the viewport — scroll inside instead of spilling off the top. */
+.context-menu {
+  max-height: calc(100dvh - 24px);
+  max-width: calc(100vw - 24px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}

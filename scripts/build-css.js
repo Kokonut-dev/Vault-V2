@@ -46,6 +46,7 @@ const SHEETS = [
   'accessibility.css',
   'v3.css',
   'settings.css',
+  'responsive.css', // last: fit-to-screen guards override earlier sheets
 ];
 
 // One marker string per sheet (verified unique across sources) — proves the
@@ -65,6 +66,7 @@ const MARKERS = {
   'accessibility.css': 'skip-link',
   'v3.css': 'queue-panel',
   'settings.css': 'settings-rail',
+  'responsive.css': 'fit-guard',
 };
 
 function loadCleanCss() {
