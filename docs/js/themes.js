@@ -29,7 +29,11 @@ export class ThemeManager {
   }
 
   init() {
-    const saved = store.get('theme') || 'dark';
+    // localStorage first: it can be newer than the store's copy, which was
+    // read when the page loaded (e.g. a theme picked in the setup wizard).
+    let stored = null;
+    try { stored = localStorage.getItem('vault_theme'); } catch { /* storage blocked */ }
+    const saved = [stored, store.get('theme')].find(t => this.themes.includes(t)) || 'dark';
     // No fade on load — it's not a switch the user made.
     this.setTheme(saved, { animate: false });
     

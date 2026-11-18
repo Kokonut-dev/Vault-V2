@@ -62,6 +62,7 @@ At least one output file must be specified`,
 const spawned = [];
 let probeFor = () => PROBES.h264Aac;
 let failSpawn = null;
+let crashSignal = null; // e.g. 'SIGSEGV' — static ffmpeg dying on the host's gconv modules
 
 function fakeSpawn(bin, args) {
   const proc = new EventEmitter();
@@ -72,6 +73,11 @@ function fakeSpawn(bin, args) {
   if (failSpawn) {
     const err = Object.assign(new Error(`spawn ${bin} ENOENT`), { code: failSpawn });
     setImmediate(() => proc.emit('error', err));
+    return proc;
+  }
+  if (crashSignal) {
+    // A segfault prints nothing and closes with (null, signal).
+    setImmediate(() => proc.emit('close', null, crashSignal));
     return proc;
   }
   const isProbe = !args.includes('-f');
@@ -142,6 +148,12 @@ test('classifyFailure maps ffmpeg output to codes the player can explain', () =>
   };
   for (const [code, stderr] of Object.entries(cases)) assert.equal(restream.classifyFailure(stderr), code, code);
   assert.equal(restream.classifyFailure('', { code: 'ENOENT' }), 'NO_FFMPEG');
+  // Crashes (Linux static ffmpeg vs. host iconv modules) are not "couldn't convert".
+  assert.equal(restream.classifyFailure('', null, { code: null, signal: 'SIGSEGV' }), 'CRASHED');
+  assert.equal(restream.classifyFailure('', null, { code: 139, signal: null }), 'CRASHED');
+  // …but our own stop (SIGKILL/SIGTERM) and ordinary errors are not crashes.
+  assert.equal(restream.classifyFailure('', null, { code: null, signal: 'SIGKILL' }), 'FAILED');
+  assert.equal(restream.classifyFailure(PROBES.forbidden, null, { code: 1, signal: null }), 'AUTH');
 });
 
 test('assertPlayableUrl allows LAN tuners but refuses files, metadata and rebinding hosts', async () => {
@@ -345,6 +357,16 @@ test('failures come back as explained codes, not a generic media error', async (
     assert.match(noFfmpeg.body.error, /ffmpeg isn't installed/);
   } finally {
     failSpawn = null;
+  }
+
+  crashSignal = 'SIGSEGV';
+  try {
+    const crashed = await call(ctx.port, 'POST', `/api/livetv/channels/${id('Harbour News')}/play`, {});
+    assert.equal(crashed.status, 502);
+    assert.equal(crashed.body.code, 'CRASHED');
+    assert.match(crashed.body.error, /ffmpeg crashed/);
+  } finally {
+    crashSignal = null;
   }
 });
 
