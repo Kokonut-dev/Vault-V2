@@ -870,6 +870,7 @@
         '/home': 'Home',
         '/movies': 'Movies & Series',
         '/music': 'Music',
+        '/artists': 'Artists',
         '/videos': 'Videos',
         '/playlists': 'Playlists',
         '/favourites': 'Favourites',
@@ -914,6 +915,22 @@
           } else {
             el.textContent = 'Details';
           }
+        } else if (path.startsWith('/artist/')) {
+          let name = path.slice('/artist/'.length);
+          try { name = decodeURIComponent(name); } catch { /* already decoded */ }
+          const link = document.createElement('a');
+          link.className = 'breadcrumb-link';
+          link.setAttribute('data-route', '/artists');
+          link.href = '/artists';
+          link.textContent = 'Artists';
+          const sep = document.createElement('span');
+          sep.className = 'breadcrumb-sep';
+          sep.textContent = '›';
+          const current = document.createElement('span');
+          current.className = 'breadcrumb-current';
+          current.textContent = name;
+          current.title = name;
+          el.replaceChildren(link, sep, current);
         } else {
           el.textContent = 'Vault';
         }

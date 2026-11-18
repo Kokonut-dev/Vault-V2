@@ -1,0 +1,376 @@
+/* ============================================================
+   Music pages — section rhythm, artist page, track tables, list
+   columns, seek preview. (Loaded after v3.css.)
+   ============================================================ */
+
+/* ---------- Section headings ----------
+   .section / .section-title are used by the artist, stats, system, SyncPlay
+   and podcast pages but had no rules at all: titles sat flush against the
+   card below them. */
+.section { margin-top: var(--space-2xl); }
+.section:first-child { margin-top: 0; }
+/* Side-by-side sections (Stats) are spaced by their grid's gap; a top margin
+   on only the non-first one knocked them out of line. */
+.two-col > .section { margin-top: 0; }
+.section-title {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 4px var(--space-sm);
+  margin: 0 0 var(--space-md);
+  font-family: var(--font-display);
+  font-variation-settings: var(--display-soft);
+  font-weight: var(--fw-display);
+  font-size: var(--text-lg);
+  line-height: 1.25;
+  color: var(--text-primary);
+}
+.section-title .row-meta {
+  font-family: var(--font-sans);
+  font-variation-settings: normal;
+  font-weight: var(--fw-regular);
+  font-size: var(--text-sm);
+}
+
+/* ---------- Artist hero ---------- */
+.artist-hero {
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: end;
+  column-gap: var(--space-xl);
+  min-height: clamp(240px, 32vh, 360px);
+  /* Shown when there's no artwork: a warm glow instead of a flat slab. The
+     text colours are the hero's fixed cream pair, so it stays readable. */
+  background:
+    radial-gradient(110% 140% at 100% 0%, color-mix(in oklch, var(--accent-solid) 32%, #1A1410) 0%, transparent 62%),
+    #1A1410;
+}
+.artist-hero-avatar {
+  position: relative;
+  width: clamp(120px, 13vw, 196px);
+  aspect-ratio: 1;
+  border-radius: 50%;
+  overflow: hidden;
+  display: grid;
+  place-items: center;
+  background: rgba(246, 238, 228, 0.08);
+  color: rgba(246, 238, 228, 0.6);
+  box-shadow: 0 24px 50px -16px rgba(0, 0, 0, 0.7), 0 0 0 1px rgba(255, 255, 255, 0.1);
+}
+.artist-hero-avatar img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; z-index: 1; }
+.artist-hero .hero-body { gap: 10px; }
+.artist-hero .hero-overline { margin-bottom: -2px; }
+
+/* ---------- Albums on the artist page ---------- */
+.artist-albums { display: grid; gap: var(--space-2xl); }
+.artist-album-head {
+  display: flex;
+  align-items: flex-end;
+  gap: var(--space-lg);
+  margin-bottom: var(--space-md);
+}
+.artist-album-cover {
+  position: relative;
+  flex: 0 0 auto;
+  width: 136px;
+  aspect-ratio: 1;
+  border-radius: var(--radius-art);
+  overflow: hidden;
+  background: var(--bg-tertiary);
+  box-shadow: 0 14px 30px -18px var(--shadow-color), 0 0 0 1px rgba(var(--glass-tint), 0.08);
+}
+/* Music-note placeholder behind the cover (same art as the player). */
+.artist-album-cover::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  margin: auto;
+  width: 38%;
+  height: 38%;
+  background: var(--text-tertiary);
+  opacity: 0.55;
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='8' cy='18' r='4'/%3E%3Cpath d='M12 18V2l7 4'/%3E%3C/svg%3E") center / contain no-repeat;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='8' cy='18' r='4'/%3E%3Cpath d='M12 18V2l7 4'/%3E%3C/svg%3E") center / contain no-repeat;
+}
+.artist-album-cover img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; z-index: 1; }
+a.artist-album-cover { transition: transform var(--dur-2) var(--ease-standard); }
+a.artist-album-cover:hover { transform: translateY(-2px); }
+
+.artist-album-info { min-width: 0; display: grid; gap: 6px; padding-bottom: 2px; }
+.artist-album-title {
+  margin: 0;
+  font-family: var(--font-display);
+  font-variation-settings: var(--display-soft);
+  font-weight: var(--fw-display);
+  font-size: var(--text-xl);
+  line-height: 1.15;
+  color: var(--text-primary);
+  overflow-wrap: anywhere;
+}
+.artist-album-title a { color: inherit; text-decoration: none; }
+.artist-album-title a:hover { text-decoration: underline; text-underline-offset: 3px; text-decoration-thickness: 1px; }
+.artist-album-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px 10px;
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+}
+.artist-album-meta span { display: inline-flex; align-items: center; }
+.artist-album-meta span + span::before {
+  content: '';
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  background: currentColor;
+  opacity: 0.7;
+  margin-right: 10px;
+}
+.artist-album-actions { display: flex; flex-wrap: wrap; gap: var(--space-sm); margin-top: 6px; }
+
+/* ---------- Track table (artist page) ---------- */
+.track-table {
+  list-style: none;
+  margin: 0;
+  padding: 4px;
+  border: 1px solid rgba(var(--glass-tint), var(--glass-hairline));
+  border-radius: var(--radius-lg);
+  background: rgba(var(--glass-tint), calc(var(--glass-fill) * 0.7));
+  box-shadow: inset 0 1px 0 var(--glass-highlight-soft);
+}
+.track-row {
+  display: grid;
+  grid-template-columns: 40px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--space-md);
+  min-height: 52px;
+  padding: 6px var(--space-md) 6px var(--space-sm);
+  border-radius: calc(var(--radius-lg) - 4px);
+  cursor: pointer;
+  transition: background-color var(--duration-fast) var(--ease-out);
+}
+.track-row + .track-row { margin-top: 1px; }
+.track-row:hover,
+.track-row:focus-visible { background: rgba(var(--glass-tint), 0.07); }
+.track-row.is-current { background: color-mix(in srgb, var(--accent-solid) 10%, transparent); }
+
+.track-num {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  justify-self: center;
+  color: var(--text-tertiary);
+  font-size: var(--text-sm);
+  font-variant-numeric: tabular-nums;
+}
+.track-num > * { grid-area: 1 / 1; }
+.track-play {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: var(--accent-solid);
+  color: var(--on-accent);
+  box-shadow: 0 4px 12px var(--accent-muted);
+  opacity: 0;
+  transform: scale(0.85);
+  transition: opacity var(--duration-fast), transform var(--duration-fast);
+}
+.track-row:hover .track-play,
+.track-row:focus-within .track-play { opacity: 1; transform: none; }
+.track-row:hover .track-num-n,
+.track-row:focus-within .track-num-n,
+.track-row.is-current .track-num-n,
+.track-row:hover .track-eq,
+.track-row:focus-within .track-eq { visibility: hidden; }
+
+/* Playing indicator: three bars that bounce while the track plays. */
+.track-eq { display: none; align-items: flex-end; gap: 2px; height: 14px; }
+.track-row.is-current .track-eq { display: flex; }
+.track-eq i { width: 3px; height: 45%; border-radius: 1px; background: var(--accent); }
+.track-row.is-playing .track-eq i { animation: trackEq 0.9s ease-in-out infinite alternate; }
+.track-row.is-playing .track-eq i:nth-child(2) { animation-delay: -0.3s; }
+.track-row.is-playing .track-eq i:nth-child(3) { animation-delay: -0.6s; }
+@keyframes trackEq { from { height: 25%; } to { height: 100%; } }
+@media (prefers-reduced-motion: reduce) {
+  .track-row.is-playing .track-eq i { animation: none; height: 70%; }
+}
+
+.track-main { min-width: 0; display: grid; gap: 2px; }
+.track-title {
+  font-size: var(--text-base);
+  font-weight: 500;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.track-row.is-current .track-title { color: var(--accent-text); }
+.track-sub {
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.track-dur {
+  min-width: 4ch;
+  text-align: right;
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+@media (max-width: 640px) {
+  .artist-hero { grid-template-columns: minmax(0, 1fr); row-gap: var(--space-md); }
+  .artist-hero-avatar { width: 104px; }
+  .artist-albums { gap: var(--space-xl); }
+  .artist-album-head { gap: var(--space-md); }
+  .artist-album-cover { width: 92px; }
+  .artist-album-title { font-size: var(--text-lg); }
+  .track-row { grid-template-columns: 32px minmax(0, 1fr) auto; gap: var(--space-sm); padding: 6px var(--space-sm) 6px 4px; }
+}
+
+/* ---------- Library / album list columns ----------
+   Title | Artist (or Genre) | Duration | Year, with numbers right-aligned so
+   durations line up digit for digit. */
+.media-list-header,
+.media-list-item { grid-template-columns: minmax(0, 1fr) minmax(96px, 200px) 72px 56px; }
+.media-list-item-text { min-width: 0; display: grid; gap: 2px; }
+.media-list-cell {
+  min-width: 0;
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.media-list-cell--duration,
+.media-list-cell--year,
+.media-list-col--duration,
+.media-list-col--year { text-align: right; justify-content: flex-end; font-variant-numeric: tabular-nums; }
+.media-list-none { color: var(--text-tertiary); }
+@media (max-width: 640px) {
+  .media-list--library .media-list-header,
+  .media-list--library .media-list-item { grid-template-columns: minmax(0, 1fr) minmax(72px, 110px); }
+}
+
+/* ---------- Seek preview (music timelines) ----------
+   A bubble with the time under the pointer, and a marker on the bar. */
+/* Only the Now Playing block needs this; the mini player's bar is already
+   absolutely positioned (overriding that collapsed it to zero width). */
+.now-playing-progress.seek-host { position: relative; }
+.seek-tip {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 0;
+  transform: translateX(-50%);
+  padding: 3px 8px;
+  border-radius: var(--radius-full);
+  background: var(--text-primary);
+  color: var(--bg-primary);
+  font-size: 12px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.4;
+  white-space: nowrap;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity var(--duration-fast);
+  z-index: 5;
+  box-shadow: 0 6px 16px -6px var(--shadow-color);
+}
+.seek-tip::after {
+  content: '';
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  border: 5px solid transparent;
+  border-top-color: var(--text-primary);
+}
+.seek-marker {
+  position: absolute;
+  top: 50%;
+  left: 0;
+  width: 2px;
+  height: 14px;
+  margin-left: -1px;
+  transform: translateY(-50%);
+  border-radius: 1px;
+  background: var(--text-primary);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--duration-fast);
+  z-index: 4;
+}
+.seek-host.is-seeking .seek-tip,
+.seek-host.is-seeking .seek-marker { opacity: 1; }
+
+/* Now Playing slider: the marker sits on the track line. */
+.now-playing-progress.seek-host .seek-marker { top: 8px; }
+
+/* Mini player: the 3px line gets a taller, invisible hit area so it can be
+   clicked and dragged; it thickens while hovered. */
+.mini-player-progress { cursor: pointer; touch-action: none; }
+.mini-player-progress::before { content: ''; position: absolute; left: 0; right: 0; top: -7px; height: 17px; }
+.mini-player-progress { transition: height var(--duration-fast); }
+.mini-player-progress.is-seeking { height: 5px; }
+/* The player clips to its rounded corners, so the bubble hangs below the
+   line (pointing up) instead of above it. */
+.mini-player-progress .seek-tip { bottom: auto; top: calc(100% + 9px); }
+.mini-player-progress .seek-tip::after { top: auto; bottom: 100%; border-top-color: transparent; border-bottom-color: var(--text-primary); }
+.mini-player-progress .seek-marker { height: 11px; }
+.mini-player-progress-ghost {
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 100%;
+  width: 0;
+  background: rgba(var(--glass-tint), 0.22);
+  pointer-events: none;
+  opacity: 0;
+}
+.mini-player-progress.is-seeking .mini-player-progress-ghost { opacity: 1; }
+
+/* ---------- Album page header ----------
+   The badge is a grid item, so it stretched into a full-width bar; the
+   "artist · year · tracks · time" line had no separators. */
+.album-header-meta > .quality-badge { justify-self: start; }
+.album-header-sub { gap: 2px 10px; align-items: center; }
+.album-header-sub span { display: inline-flex; align-items: center; }
+.album-header-sub span + span::before {
+  content: '';
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  background: currentColor;
+  opacity: 0.7;
+  margin-right: 10px;
+}
+
+/* ---------- Phones: album track list + artist album header ---------- */
+@media (max-width: 640px) {
+  .artist-album-head { align-items: center; }
+
+  /* On an album every row has the same artist, so the narrow second column
+     shows the duration instead; the reorder controls slim down (touch uses
+     the arrows, not drag) so titles get the room. */
+  .media-list--album .media-list-header,
+  .media-list--album .media-list-item { grid-template-columns: minmax(0, 1fr) auto; }
+  .media-list--album .media-list-header > :nth-child(2),
+  .media-list--album .media-list-item > div:nth-child(2),
+  .media-list--album .media-list-header > :nth-child(4),
+  .media-list--album .media-list-item > div:nth-child(4) { display: none; }
+  .media-list--album .media-list-header > :nth-child(3),
+  .media-list--album .media-list-item > div:nth-child(3) { display: block; }
+  .media-list--album .drag-handle { display: none; }
+  .media-list--album .media-list-item-cover { width: 36px; height: 36px; }
+}
+/* Touch screens have no hover, so the hover-only play button just took space
+   (tapping the row plays). */
+@media (hover: none) {
+  .media-list-item .media-list-play { display: none; }
+}

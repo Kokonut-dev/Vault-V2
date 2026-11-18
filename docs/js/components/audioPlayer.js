@@ -291,6 +291,109 @@ function videoPlayerOpen() {
   return Boolean(document.getElementById('video-modal')?.classList.contains('active'));
 }
 
+// ---------------------------------------------------------------------------
+// Soft starts and stops. Pausing cut the sound mid-waveform (an audible click
+// and an abrupt silence); now pause/stop/skip ramp the volume down over a
+// moment and resume ramps it back up. Volume lives on the element (see the
+// header), so the ramp is on element.volume. Skipped where it can't work or
+// isn't heard: hidden tabs (timers are throttled to 1 s there) and iOS (the
+// element's volume is read-only), and while a crossfade owns the volume.
+// ---------------------------------------------------------------------------
+const FADE_OUT_MS = 260;
+const FADE_IN_MS = 220;
+const SKIP_FADE_MS = 140;
+let fade = null; // { audio, dir: 'in' | 'out', timer, settle }
+
+function targetVolume() {
+  return Math.min(1, Math.max(0, Number(store.get('volume') ?? 0.8) || 0));
+}
+
+function fadesWanted() {
+  return !isIOS() && document.visibilityState === 'visible' && store.get('fadePlayPause') !== false;
+}
+
+/** True while a fade-out is running — for the UI that already reads "paused". */
+function isFadingOut() {
+  return Boolean(fade && fade.dir === 'out' && fade.audio === currentAudio);
+}
+
+function cancelFade() {
+  if (!fade) return;
+  clearInterval(fade.timer);
+  const settle = fade.settle;
+  fade = null;
+  settle(false);
+}
+
+/** Ramp `audio.volume` to `to` (number or () => number) on an equal-power curve. */
+function rampVolume(audio, dir, to, ms) {
+  cancelFade();
+  return new Promise((resolve) => {
+    const from = audio.volume;
+    const started = performance.now();
+    const entry = { audio, dir, settle: resolve, timer: 0 };
+    entry.timer = setInterval(() => {
+      if (fade !== entry) return;
+      const t = Math.min(1, (performance.now() - started) / ms);
+      const goal = typeof to === 'function' ? to() : to;
+      // sin/cos curves keep perceived loudness smooth (no dip mid-fade).
+      const k = dir === 'in' ? Math.sin(t * Math.PI / 2) : Math.cos(t * Math.PI / 2);
+      try {
+        audio.volume = dir === 'in' ? from + (goal - from) * k : goal + (from - goal) * k;
+      } catch { /* detached element */ }
+      if (t >= 1) {
+        clearInterval(entry.timer);
+        fade = null;
+        resolve(true);
+      }
+    }, 16);
+    fade = entry;
+  });
+}
+
+/** Pause with a short fade-out. The play button flips immediately. */
+function softPause(audio = currentAudio) {
+  if (!audio || audio.paused) return;
+  if (isFadingOut()) return;
+  if (!fadesWanted() || isCrossfading) {
+    cancelFade();
+    audio.pause();
+    audio.volume = targetVolume();
+    return;
+  }
+  store.set('isPlaying', false);
+  rampVolume(audio, 'out', 0, FADE_OUT_MS).then((done) => {
+    if (!done) return; // resumed mid-fade
+    audio.pause();
+    audio.volume = targetVolume();
+  });
+}
+
+/** Play (or resume) with a short fade-in, from wherever the volume is now. */
+function softPlay(audio = currentAudio) {
+  if (!audio) return Promise.resolve();
+  const wasFadingOut = isFadingOut();
+  cancelFade();
+  if (!fadesWanted() || isCrossfading) {
+    audio.volume = targetVolume();
+    return audio.paused ? audio.play() : Promise.resolve();
+  }
+  if (audio.paused) audio.volume = 0;
+  const started = audio.paused ? audio.play() : Promise.resolve();
+  if (wasFadingOut) store.set('isPlaying', true); // no 'play' event: it never paused
+  return started.then(() => { rampVolume(audio, 'in', targetVolume, FADE_IN_MS); }, (err) => {
+    audio.volume = targetVolume();
+    throw err;
+  });
+}
+
+/** Before switching tracks by hand: a quick dip instead of a hard cut. */
+async function fadeBeforeSwitch() {
+  const audio = currentAudio;
+  if (!audio || audio.paused || !fadesWanted() || isCrossfading) return;
+  await rampVolume(audio, 'out', 0, SKIP_FADE_MS);
+}
+
 export function initAudioPlayer() {
   window.addEventListener('pagehide', () => saveProgress());
   currentAudio = createAudioElement();
@@ -306,7 +409,8 @@ export function initAudioPlayer() {
 
   store.subscribe('volume', (vol) => {
     const v = Math.min(1, Math.max(0, Number(vol) || 0));
-    if (currentAudio && !isCrossfading) currentAudio.volume = v;
+    // During a fade the ramp reads the new target itself.
+    if (currentAudio && !isCrossfading && !fade) currentAudio.volume = v;
   });
   store.subscribe('isMuted', (muted) => {
     if (currentAudio) currentAudio.muted = Boolean(muted);
@@ -350,7 +454,7 @@ export function initAudioPlayer() {
 
   // Opening a film pauses the music instead of playing both at once.
   window.addEventListener('vault:video-opened', () => {
-    if (currentAudio && !currentAudio.paused) currentAudio.pause();
+    if (currentAudio && !currentAudio.paused) softPause();
   });
 
   window.addEventListener('vault:audio-prefs', (event) => {
@@ -458,13 +562,13 @@ function handleAction(action, percent) {
         if (queue[idx]) playItem(queue[idx]);
         break;
       }
-      if (currentAudio.paused) {
+      if (currentAudio.paused || isFadingOut()) {
         unlockAudio().finally(() => {
-          currentAudio.play().catch((err) => {
+          softPlay().catch((err) => {
             if (err?.name !== 'AbortError') toast.error(err.message || 'Playback failed');
           });
         });
-      } else currentAudio.pause();
+      } else softPause();
       break;
     case 'seekBack':
       seekTo(mediaTime() - 10);
@@ -527,9 +631,9 @@ function setMediaSession(item) {
       artwork: art ? [{ src: art, sizes: '512x512', type: 'image/jpeg' }] : [],
     });
     const handlers = {
-      play: () => currentAudio.play().catch(() => {}),
-      pause: () => currentAudio.pause(),
-      stop: () => currentAudio.pause(),
+      play: () => softPlay().catch(() => {}),
+      pause: () => softPause(),
+      stop: () => softPause(),
       nexttrack: playNext,
       previoustrack: playPrev,
       seekbackward: (d) => seekTo(mediaTime() - (d?.seekOffset || 10)),
@@ -584,6 +688,9 @@ export async function playItem(item, { forceTranscode = false, startAt = null } 
   explicitRate = null;
   // "Resume where you stopped" for podcasts and audiobooks.
   if (startAt == null) startAt = resumePosition(item);
+  await fadeBeforeSwitch();
+  if (seq !== playSeq) return; // another track was picked during the dip
+  cancelFade();
   stopCrossfade();
   if (nextAudio) { try { nextAudio.pause(); } catch {} }
   currentPlay = { seq, item, attempt: 0, handled: 0, transcoded: false, offset: 0 };
@@ -776,7 +883,7 @@ function onTimeUpdate() {
   }
 
   const crossfade = store.get('crossfade');
-  if (crossfade > 0 && duration && duration - time <= crossfade && !isCrossfading && !currentAudio.paused) {
+  if (crossfade > 0 && duration && duration - time <= crossfade && !isCrossfading && !currentAudio.paused && !fade) {
     const queue = store.get('queue') || [];
     if (nextIndex(queue, store.get('queueIndex')) >= 0) crossfadeToNext();
   }
@@ -835,6 +942,7 @@ function attachAudioListeners(audio) {
 }
 
 function crossfadeToNext() {
+  cancelFade();
   const queue = store.get('queue') || [];
   const idx = store.get('queueIndex');
   const nextIdx = nextIndex(queue, idx);

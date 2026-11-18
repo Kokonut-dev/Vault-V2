@@ -97,3 +97,25 @@ export function escapeAttr(str) {
   if (!str) return '';
   return escapeHtml(str).replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 }
+
+/** "1 track", "11 tracks" — instead of "track(s)". */
+export function plural(count, singular, pluralForm = `${singular}s`) {
+  const n = Number(count) || 0;
+  return `${n.toLocaleString()} ${n === 1 ? singular : pluralForm}`;
+}
+
+/**
+ * Total running time in words, for album/artist/playlist summaries:
+ * "45 sec", "3 min 29 sec", "52 min", "1 hr 12 min". Empty when unknown, so
+ * callers can drop the piece instead of printing "0:00".
+ */
+export function formatTotalDuration(seconds) {
+  const total = Math.round(durationSeconds(seconds));
+  if (!total) return '';
+  const h = Math.floor(total / 3600);
+  const m = Math.floor((total % 3600) / 60);
+  const s = total % 60;
+  if (h) return m ? `${h} hr ${m} min` : `${h} hr`;
+  if (m) return m < 10 && s ? `${m} min ${s} sec` : `${m} min`;
+  return `${s} sec`;
+}

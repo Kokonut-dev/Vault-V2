@@ -8,7 +8,8 @@ import { api } from '../api.js';
 import { renderSkeletonGrid } from '../components/mediaGrid.js';
 import { subscribeView } from '../utils/lifecycle.js';
 import { icon } from '../utils/icons.js';
-import { escapeHtml, formatTime, formatDuration, durationSeconds, truncate } from '../utils/format.js';
+import { escapeHtml, formatDuration, durationSeconds, truncate, plural, formatTotalDuration } from '../utils/format.js';
+import { attachContextMenu } from '../components/contextMenu.js';
 import { toast } from '../components/toast.js';
 
 function musicItems() {
@@ -52,7 +53,7 @@ export function renderArtists(container) {
     [...grouped.entries()]
       .sort((a, b) => a[0].localeCompare(b[0]))
       .forEach(([artist, tracks]) => {
-        const albums = new Set(tracks.map(t => t.album).filter(Boolean));
+        const albums = new Set(tracks.map(t => t.album).filter(a => a && a !== 'Unknown Album'));
         const card = document.createElement('a');
         card.className = 'media-card';
         card.dataset.type = 'music';
@@ -75,7 +76,7 @@ export function renderArtists(container) {
           </div>
           <div class="media-card-info">
             <div class="media-card-title">${escapeHtml(truncate(artist, 40))}</div>
-            <div class="media-card-meta">${albums.size || '—'} album(s) · ${tracks.length} track(s)</div>
+            <div class="media-card-meta">${[albums.size ? plural(albums.size, 'album') : null, plural(tracks.length, 'track')].filter(Boolean).join(' · ')}</div>
           </div>
         `;
         grid.appendChild(card);
@@ -87,94 +88,222 @@ export function renderArtists(container) {
   subscribeView(store, 'library', paint);
 }
 
+const NO_ALBUM = '\u0000other';
+
+function coverUrlFor(track, version) {
+  return (typeof api.getCoverUrlVersioned === 'function' && version)
+    ? api.getCoverUrlVersioned(track.id, version)
+    : api.getCoverUrl(track.id);
+}
+
+function newest(tracks) {
+  return Math.max(0, ...tracks.map(t => new Date(t.updatedAt || 0).getTime() || 0));
+}
+
+function sortTracks(list) {
+  return [...list].sort((a, b) => (a.disc || 1) - (b.disc || 1)
+    || (a.track || 9999) - (b.track || 9999)
+    || String(a.title).localeCompare(String(b.title)));
+}
+
+/** Albums newest first (unknown years last), loose tracks at the very end. */
+function groupAlbums(tracks) {
+  const map = new Map();
+  for (const t of tracks) {
+    const key = t.album && t.album !== 'Unknown Album' ? t.album : NO_ALBUM;
+    if (!map.has(key)) map.set(key, []);
+    map.get(key).push(t);
+  }
+  return [...map.entries()]
+    .map(([name, list]) => {
+      const sorted = sortTracks(list);
+      const years = sorted.map(t => Number(t.year)).filter(Boolean);
+      const genres = [...new Set(sorted.map(t => t.genre).filter(Boolean))];
+      return {
+        name,
+        tracks: sorted,
+        year: years.length ? Math.max(...years) : null,
+        genres,
+        seconds: sorted.reduce((sum, t) => sum + durationSeconds(t.duration), 0),
+        coverTrack: sorted.find(t => t.coverArtPath || t.posterPath) || sorted[0],
+      };
+    })
+    .sort((a, b) => (a.name === NO_ALBUM) - (b.name === NO_ALBUM)
+      || (b.year || 0) - (a.year || 0)
+      || a.name.localeCompare(b.name));
+}
+
+function albumBlock(album, artist, index) {
+  const loose = album.name === NO_ALBUM;
+  const title = loose ? 'Other tracks' : album.name;
+  const albumHref = `/album/${encodeURIComponent(album.tracks[0].id)}`;
+  const meta = [
+    loose ? null : (album.tracks.length === 1 ? 'Single' : 'Album'),
+    album.year,
+    plural(album.tracks.length, 'track'),
+    formatTotalDuration(album.seconds),
+    album.genres.slice(0, 2).join(', '),
+  ].filter(Boolean);
+  const cover = `
+    <img src="${coverUrlFor(album.coverTrack, newest(album.tracks))}" alt="" loading="lazy"
+      onload="this.parentElement.classList.add('has-art')" onerror="this.remove()">`;
+  return `
+    <section class="artist-album" data-album="${index}" aria-labelledby="artist-album-${index}">
+      <header class="artist-album-head">
+        ${loose
+          ? `<div class="artist-album-cover" aria-hidden="true">${cover}</div>`
+          : `<a class="artist-album-cover" href="${albumHref}" data-route="${albumHref}" tabindex="-1" aria-hidden="true">${cover}</a>`}
+        <div class="artist-album-info">
+          <h2 class="artist-album-title" id="artist-album-${index}">
+            ${loose ? escapeHtml(title) : `<a href="${albumHref}" data-route="${albumHref}">${escapeHtml(title)}</a>`}
+          </h2>
+          <div class="artist-album-meta">${meta.map(m => `<span>${escapeHtml(String(m))}</span>`).join('')}</div>
+          <div class="artist-album-actions">
+            <button type="button" class="btn btn-primary btn-sm" data-album-play>${icon('play', { size: 14 })}<span>Play</span></button>
+            <button type="button" class="btn btn-secondary btn-sm" data-album-shuffle aria-label="Shuffle ${escapeHtml(title)}">${icon('shuffle', { size: 14 })}<span>Shuffle</span></button>
+          </div>
+        </div>
+      </header>
+      <ol class="track-table" aria-label="${escapeHtml(title)} tracks">
+        ${album.tracks.map((track, i) => {
+          const sub = [
+            track.artist && track.artist !== artist ? track.artist : null,
+            loose && track.album && track.album !== 'Unknown Album' ? track.album : null,
+          ].filter(Boolean).join(' · ');
+          return `
+          <li class="track-row" data-track="${track.id}" tabindex="0" aria-label="${escapeHtml(track.title)}${track.duration ? `, ${formatDuration(track.duration)}` : ''}">
+            <span class="track-num">
+              <span class="track-num-n" aria-hidden="true">${track.track || i + 1}</span>
+              <span class="track-eq" aria-hidden="true"><i></i><i></i><i></i></span>
+              <button type="button" class="track-play" aria-label="Play ${escapeHtml(track.title)}">${icon('play', { size: 13 })}</button>
+            </span>
+            <span class="track-main">
+              <span class="track-title">${escapeHtml(track.title)}</span>
+              ${sub ? `<span class="track-sub">${escapeHtml(sub)}</span>` : ''}
+            </span>
+            <span class="track-dur">${formatDuration(track.duration)}</span>
+          </li>`;
+        }).join('')}
+      </ol>
+    </section>`;
+}
+
 export async function renderArtist(container, name) {
   // The router already URL-decodes dynamic segments; decoding again throws
   // on names containing a literal "%". Decode only if it still looks encoded.
   let artist = name || '';
   try { artist = decodeURIComponent(artist); } catch { /* already decoded */ }
   container.className = 'page';
-  const tracks = musicItems().filter(item => (item.artist || item.albumArtist || 'Unknown artist') === artist);
 
-  if (!tracks.length) {
-    container.innerHTML = `<div class="empty-state">
-      <div class="empty-state-title">Nothing found for “${escapeHtml(artist)}”</div>
-      <div class="empty-state-message">The library may still be scanning, or the artist name differs.</div>
-      <a class="btn btn-primary" href="#/artists">Back to artists</a></div>`;
-    return;
-  }
+  const paint = () => {
+    const tracks = musicItems().filter(item => (item.artist || item.albumArtist || 'Unknown artist') === artist);
+    if (!tracks.length) {
+      container.innerHTML = `<div class="empty-state">
+        <div class="empty-state-title">Nothing found for “${escapeHtml(artist)}”</div>
+        <div class="empty-state-message">The library may still be scanning, or the artist name differs.</div>
+        <a class="btn btn-primary" href="/artists" data-route="/artists">Back to artists</a></div>`;
+      return;
+    }
 
-  const albums = [...new Set(tracks.map(t => t.album).filter(Boolean))];
-  const seconds = tracks.reduce((sum, track) => sum + durationSeconds(track.duration), 0);
-  const coverTrack = tracks.find(t => t.coverArtPath || t.posterPath) || tracks[0];
-  const coverId = coverTrack.id;
-  const coverVersion = Math.max(0, ...tracks.map(t => new Date(t.updatedAt || 0).getTime() || 0));
-  const coverUrl = (typeof api.getCoverUrlVersioned === 'function' && coverVersion)
-    ? api.getCoverUrlVersioned(coverId, coverVersion)
-    : api.getCoverUrl(coverId);
+    const albums = groupAlbums(tracks);
+    const realAlbums = albums.filter(a => a.name !== NO_ALBUM);
+    const seconds = tracks.reduce((sum, track) => sum + durationSeconds(track.duration), 0);
+    const coverTrack = tracks.find(t => t.coverArtPath || t.posterPath) || tracks[0];
+    const coverUrl = coverUrlFor(coverTrack, newest(tracks));
+    const years = tracks.map(t => Number(t.year)).filter(Boolean);
+    const span = years.length ? (Math.min(...years) === Math.max(...years) ? `${years[0]}` : `${Math.min(...years)}–${Math.max(...years)}`) : '';
+    const genres = [...new Set(tracks.map(t => t.genre).filter(Boolean))].slice(0, 3).join(', ');
+    const metaBits = [
+      realAlbums.length ? plural(realAlbums.length, 'album') : null,
+      plural(tracks.length, 'track'),
+      formatTotalDuration(seconds),
+      span,
+      genres,
+    ].filter(Boolean);
 
-  container.innerHTML = `
-    <div class="hero artist-hero">
-      <img class="hero-backdrop" src="${coverUrl}" alt="" onerror="this.style.display='none'">
-      <div class="hero-meta">
-        <span class="quality-badge">Artist</span>
-        <span>${albums.length} album(s)</span>
-        <span>${tracks.length} track(s)</span>
-        <span>${formatTime(seconds)}</span>
-      </div>
-      <h1 class="hero-title">${escapeHtml(artist)}</h1>
-      <div class="hero-actions">
-        <button class="btn btn-primary" id="artist-play">${icon('play', { size: 16 })}<span>Play all</span></button>
-        <button class="btn btn-secondary" id="artist-shuffle">${icon('shuffle', { size: 16 })}<span>Shuffle</span></button>
-        <button class="btn btn-ghost" id="artist-queue">${icon('list', { size: 16 })}<span>Add to queue</span></button>
-      </div>
-    </div>
-    ${albums.map(album => {
-      const albumTracks = tracks.filter(t => t.album === album);
-      return `
-        <section class="section">
-          <h2 class="section-title">${escapeHtml(album)} <span class="row-meta">· ${albumTracks.length} track(s) · ${formatDuration(albumTracks.reduce((s, t) => s + durationSeconds(t.duration), 0))}</span></h2>
-          <div class="media-list">
-            ${albumTracks.sort((a, b) => (a.track || 0) - (b.track || 0)).map(track => `
-              <div class="media-list-item" data-track="${track.id}" role="group" tabindex="0" aria-label="${escapeHtml(track.title)}">
-                <div class="media-list-item-main">
-                  <button class="media-list-play" type="button" aria-label="Play ${escapeHtml(track.title)}">${icon('play', { size: 13 })}</button>
-                  <div style="min-width:0">
-                    <div class="media-list-item-title">${escapeHtml(track.title)}</div>
-                    <div class="media-list-item-artist">${track.track ? `Track ${track.track}` : ''}</div>
-                  </div>
-                </div>
-                <div class="row-meta">${formatDuration(track.duration)}</div>
-              </div>`).join('')}
+    // Play order = the page order (albums newest first, tracks by number).
+    const queue = albums.flatMap(a => a.tracks);
+
+    container.innerHTML = `
+      <div class="hero artist-hero">
+        <img class="hero-backdrop is-cover" src="${coverUrl}" alt="" onerror="this.remove()">
+        <div class="artist-hero-avatar" aria-hidden="true">
+          <img src="${coverUrl}" alt="" onload="this.parentElement.classList.add('has-art')" onerror="this.remove()">
+          ${icon('mic', { size: 40 })}
+        </div>
+        <div class="hero-body">
+          <p class="hero-overline">Artist</p>
+          <h1 class="hero-title">${escapeHtml(artist)}</h1>
+          <div class="hero-meta">${metaBits.map(b => `<span>${escapeHtml(String(b))}</span>`).join('')}</div>
+          <div class="hero-actions">
+            <button class="btn btn-primary" id="artist-play">${icon('play', { size: 16 })}<span>Play all</span></button>
+            <button class="btn btn-secondary hero-btn" id="artist-shuffle">${icon('shuffle', { size: 16 })}<span>Shuffle</span></button>
+            <button class="btn btn-ghost hero-btn hero-btn-quiet" id="artist-queue">${icon('list', { size: 16 })}<span>Add to queue</span></button>
           </div>
-        </section>`;
-    }).join('')}
-  `;
+        </div>
+      </div>
+      <div class="artist-albums">
+        ${albums.map((album, i) => albumBlock(album, artist, i)).join('')}
+      </div>
+    `;
 
-  const queue = [...tracks];
-  const playTrack = (track) => {
-    window.dispatchEvent(new CustomEvent('vault:play', {
-      detail: { item: track, queue, index: queue.findIndex(t => t.id === track.id) },
-    }));
+    const play = (list, track) => {
+      window.dispatchEvent(new CustomEvent('vault:play', {
+        detail: { item: track, queue: list, index: Math.max(0, list.findIndex(t => t.id === track.id)) },
+      }));
+    };
+    const shuffle = (list) => {
+      const shuffled = [...list];
+      for (let i = shuffled.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+      }
+      play(shuffled, shuffled[0]);
+    };
+
+    container.querySelector('#artist-play').addEventListener('click', () => play(queue, queue[0]));
+    container.querySelector('#artist-shuffle').addEventListener('click', () => shuffle(queue));
+    container.querySelector('#artist-queue').addEventListener('click', () => {
+      queue.forEach(item => store.addToQueue(item));
+      toast.success(`Added ${plural(queue.length, 'track')} to the queue`);
+      window.dispatchEvent(new CustomEvent('vault:queue-refresh'));
+    });
+
+    container.querySelectorAll('.artist-album').forEach((section) => {
+      const album = albums[Number(section.dataset.album)];
+      section.querySelector('[data-album-play]').addEventListener('click', () => play(album.tracks, album.tracks[0]));
+      section.querySelector('[data-album-shuffle]').addEventListener('click', () => shuffle(album.tracks));
+      section.querySelectorAll('[data-track]').forEach((row) => {
+        const track = album.tracks.find(t => t.id === row.dataset.track);
+        // Clicking a track plays on through the rest of the artist's music.
+        row.addEventListener('click', () => play(queue, track));
+        row.addEventListener('keydown', (e) => {
+          if (e.target !== row || (e.key !== 'Enter' && e.key !== ' ')) return;
+          e.preventDefault();
+          play(queue, track);
+        });
+        attachContextMenu(row, track);
+      });
+    });
+    markPlaying();
   };
 
-  container.querySelector('#artist-play').addEventListener('click', () => playTrack(queue[0]));
-  container.querySelector('#artist-shuffle').addEventListener('click', () => {
-    const shuffled = [...queue].sort(() => Math.random() - 0.5);
-    window.dispatchEvent(new CustomEvent('vault:play', { detail: { item: shuffled[0], queue: shuffled, index: 0 } }));
-  });
-  container.querySelector('#artist-queue').addEventListener('click', () => {
-    queue.forEach(item => store.addToQueue(item));
-    toast.success(`Queued ${queue.length} track(s)`);
-    window.dispatchEvent(new CustomEvent('vault:queue-refresh'));
-  });
-  container.querySelectorAll('[data-track]').forEach(row => {
-    const track = tracks.find(t => t.id === row.dataset.track);
-    row.querySelector('.media-list-play').addEventListener('click', (event) => {
-      event.stopPropagation();
-      playTrack(track);
+  // Highlight the playing track (accent title + animated bars instead of its number).
+  const markPlaying = () => {
+    const current = store.get('currentTrack');
+    const playing = Boolean(store.get('isPlaying'));
+    container.querySelectorAll('.track-row').forEach((row) => {
+      const on = Boolean(current && row.dataset.track === String(current.id));
+      row.classList.toggle('is-current', on);
+      row.classList.toggle('is-playing', on && playing);
+      if (on) row.setAttribute('aria-current', 'true'); else row.removeAttribute('aria-current');
     });
-    row.addEventListener('click', () => playTrack(track));
-  });
+  };
+
+  paint();
+  subscribeView(store, 'library', paint);
+  subscribeView(store, 'currentTrack', markPlaying);
+  subscribeView(store, 'isPlaying', markPlaying);
 }
 
 export default { renderArtists, renderArtist };

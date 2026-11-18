@@ -62,6 +62,7 @@ class Store {
       shuffle: localStorage.getItem('vault_shuffle') === 'true',
       repeat: localStorage.getItem('vault_repeat') || 'off',
       crossfade: safeInt('vault_crossfade', 0),
+      fadePlayPause: localStorage.getItem('vault_fade_play_pause') !== 'false',
       playbackRate: 1,
 
       // Video
@@ -129,6 +130,7 @@ class Store {
       shuffle: 'vault_shuffle',
       repeat: 'vault_repeat',
       crossfade: 'vault_crossfade',
+      fadePlayPause: 'vault_fade_play_pause',
       queue: 'vault_queue',
       queueIndex: 'vault_queue_index',
       favourites: 'vault_favourites',

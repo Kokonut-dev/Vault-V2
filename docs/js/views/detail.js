@@ -2,7 +2,7 @@
  * Detail view — movie, music, video detail pages — optimized
  */
 import { store } from '../store.js';
-import { formatTime, formatDuration, durationSeconds, formatBytes, escapeHtml } from '../utils/format.js';
+import { formatTime, durationSeconds, formatBytes, escapeHtml, plural, formatTotalDuration } from '../utils/format.js';
 import { api } from '../api.js';
 import { toast } from '../components/toast.js';
 import { confirmDialog, alertDialog } from '../components/confirmDialog.js';
@@ -247,8 +247,8 @@ function renderMusicDetail(container, item) {
         <div class="album-header-sub">
           ${byline ? `<span>${escapeHtml(byline)}</span>` : ''}
           ${item.year ? `<span>${item.year}</span>` : ''}
-          <span>${albumTracks.length} track(s)</span>
-          <span>${formatDuration(totalSeconds)} total</span>
+          <span>${plural(albumTracks.length, 'track')}</span>
+          ${formatTotalDuration(totalSeconds) ? `<span>${formatTotalDuration(totalSeconds)}</span>` : ''}
         </div>
         <div style="display:flex; gap:8px; flex-wrap:wrap;">
           <button class="btn btn-primary" id="play-btn">${icon('play', { size: 18 })}<span>Play ${isAlbumView ? 'Album' : ''}</span></button>
@@ -282,6 +282,7 @@ function renderMusicDetail(container, item) {
 
   const renderTracks = () => {
     renderMediaList(trackListEl, tracks, {
+      hideAlbum: isAlbumView,
       onClick: (track) => {
         window.dispatchEvent(new CustomEvent('vault:play', { detail: { item: track, queue: tracks, index: tracks.findIndex(t => t.id === track.id) } }));
       }
