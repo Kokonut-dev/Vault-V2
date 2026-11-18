@@ -1,0 +1,20 @@
+{
+  "name": "vault",
+  "version": "3.0.0",
+  "private": true,
+  "description": "Vault - self-hosted personal media server. The server lives in server/; these scripts let you run it from the repository root too.",
+  "license": "MIT",
+  "scripts": {
+    "postinstall": "npm --prefix server install --no-audit --no-fund",
+    "start": "npm --prefix server start",
+    "server": "npm --prefix server run server",
+    "dev": "npm --prefix server run dev",
+    "setup": "npm --prefix server run setup",
+    "test": "npm --prefix server test",
+    "build:css": "node scripts/build-css.js",
+    "generate-cert": "npm --prefix server run generate-cert"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

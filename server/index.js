@@ -1,3 +1,13 @@
+// Before anything from node_modules: explain a missing `npm install` (or a too
+// old Node) in one line instead of a "Cannot find module 'dotenv'" stack trace.
+// Exit 78 tells the launcher not to retry; it installs the packages instead.
+{
+  const deps = require('./utils/deps');
+  if (deps.nodeTooOld()) { console.error(deps.explainNodeTooOld()); process.exit(78); }
+  const missing = deps.missingDependencies();
+  if (missing.length) { console.error(deps.explainMissing(missing)); process.exit(78); }
+}
+
 require('dotenv').config();
 const express = require('express');
 const helmet = require('helmet');

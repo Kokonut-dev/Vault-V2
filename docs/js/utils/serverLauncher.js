@@ -83,7 +83,8 @@ export async function serverIsUp({ timeoutMs = 2500 } = {}) {
  */
 export async function waitForServer({ timeoutMs = 120000, onTick, signal } = {}) {
   const started = Date.now();
-  while (Date.now() - started < timeoutMs) {
+  let limit = timeoutMs;
+  while (Date.now() - started < limit) {
     if (signal?.aborted) return false;
     // eslint-disable-next-line no-await-in-loop
     if (await serverIsUp()) return true;
@@ -91,6 +92,8 @@ export async function waitForServer({ timeoutMs = 120000, onTick, signal } = {})
     const status = await probeLauncher();
     onTick?.(status);
     if (status?.status === 'crashed' || status?.status === 'stopped') return false;
+    // A first-run `npm install` on a slow connection can outlast the usual wait.
+    if (status?.installing) limit = Math.max(limit, Date.now() - started + 10 * 60 * 1000);
     // eslint-disable-next-line no-await-in-loop
     await new Promise(r => setTimeout(r, 1000));
   }

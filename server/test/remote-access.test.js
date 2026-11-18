@@ -244,6 +244,8 @@ test('launcher: guards, start, stop, restart and config errors', { skip: !posix 
   const dir = path.join(tmp, 'launcher');
   fs.mkdirSync(dir, { recursive: true });
   fs.copyFileSync(path.join(__dirname, '..', 'launcher.js'), path.join(dir, 'launcher.js'));
+  fs.mkdirSync(path.join(dir, 'utils'), { recursive: true });
+  fs.copyFileSync(path.join(__dirname, '..', 'utils', 'deps.js'), path.join(dir, 'utils', 'deps.js'));
   fs.writeFileSync(path.join(dir, 'index.js'), `
     const http = require('http');
     if (process.env.FAKE_MODE === 'config') { console.error('EADDRINUSE: port taken'); process.exit(78); }

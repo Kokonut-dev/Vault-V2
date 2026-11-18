@@ -57,3 +57,51 @@ jobs:
         run: |
           node scripts/build-css.js
           git diff --exit-code docs/css/vault.css || (echo "vault.css is stale — run npm run build:css" && exit 1)
+
+  # What a new user does on a fresh clone — on the oldest supported Node, the
+  # current LTS and the newest release (npm 12+ blocks install scripts unless
+  # approved, which once left ffmpeg missing).
+  install:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node: ["20", "lts/*", "node"]
+    name: Fresh install (Node ${{ matrix.node }})
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+
+      - name: npm install from the repository root
+        run: |
+          node -v && npm -v
+          npm install --no-audit --no-fund
+          test -d server/node_modules/express || (echo "::error::root npm install did not install the server's packages" && exit 1)
+          git diff --exit-code || (echo "::error::npm install changed tracked files (lockfiles?) — a later git pull would fail" && exit 1)
+
+      - name: ffmpeg was downloaded (install script allowed)
+        run: |
+          cd server
+          node -e "const p = require('ffmpeg-static'); require('fs').accessSync(p); console.log('ffmpeg:', p)" \
+            || (echo "::error::ffmpeg-static has no binary — its install script was blocked or failed" && exit 1)
+
+      - name: npm start from the repository root serves the API and the app
+        run: |
+          VAULT_PORT=4100 VAULT_LAUNCHER_PORT=4101 npm start > start.log 2>&1 &
+          for i in $(seq 1 60); do curl -fs http://127.0.0.1:4100/api/health && break; sleep 1; done
+          curl -fs http://127.0.0.1:4100/api/health > /dev/null || (cat start.log; echo "::error::server did not come up after npm start" && exit 1)
+          curl -fs -o /dev/null http://127.0.0.1:4100/ || (echo "::error::the app page is not served" && exit 1)
+          kill %1; sleep 2
+
+      - name: npm start without npm install installs the packages itself
+        run: |
+          rm -rf server/node_modules
+          cd server
+          VAULT_PORT=4102 VAULT_LAUNCHER_PORT=4103 npm start > start.log 2>&1 &
+          for i in $(seq 1 180); do curl -fs http://127.0.0.1:4102/api/health && break; sleep 1; done
+          curl -fs http://127.0.0.1:4102/api/health > /dev/null || (cat start.log; echo "::error::launcher did not install and start the server" && exit 1)
+          grep -q "packages installed" start.log
+          kill %1
