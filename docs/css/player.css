@@ -183,7 +183,6 @@
   height: 100%;
   background: var(--accent);
   border-radius: var(--radius-full);
-  box-shadow: 0 0 12px var(--accent-muted);
 }
 
 .video-progress-thumb {
@@ -535,7 +534,7 @@
   border-color: transparent;
   color: var(--on-accent);
   font-size: 14px;
-  box-shadow: 0 6px 18px var(--accent-muted), inset 0 1px 0 rgba(255, 255, 255, 0.25);
+  box-shadow: var(--shadow-lift);
 }
 
 .mini-player-controls #mini-play:hover {
@@ -579,8 +578,7 @@
 
 .mini-player-progress-bar {
   height: 100%;
-  background: linear-gradient(90deg in oklch, var(--accent), var(--accent-strong));
-  box-shadow: 0 0 12px var(--accent-muted);
+  background: var(--accent);
   transition: width 0.1s linear;
 }
 
@@ -703,7 +701,6 @@
   border-radius: var(--radius-full);
   transition: height 0.1s ease;
   min-height: 4px;
-  box-shadow: 0 0 8px var(--accent-muted);
 }
 
 .now-playing-info {

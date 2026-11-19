@@ -276,7 +276,7 @@ Vault-V2/
     ├── config-example.js           # Regenerates server/config.example.json
     ├── syntax-check.js             # Parses every JS file (zero-dep)
     ├── import-check.js             # Import-graph check on docs/js (zero-dep)
-    ├── contrast-check.js           # WCAG AAA check on the theme tokens
+    ├── contrast-check.js           # WCAG check of every theme: AAA text on all surfaces, 3:1 UI parts (npm run check:contrast)
     ├── keyboard-check.js           # Global key layer regression suite
     └── music-view-check.js         # Music groupings regression suite (jsdom)
 ```

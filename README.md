@@ -6,8 +6,22 @@ You run a small server on your own computer and open the app in your browser. Yo
 
 - **App:** https://kokonut-dev.github.io/Vault-V2/ — or `http://localhost:4000`, served by your own server
 - **Runs on:** Linux, macOS and Windows (or Docker)
+- **Needs:** Node.js 20+, git, and ffmpeg + ffprobe (bundled automatically on most systems) — full list in [Requirements and dependencies](#requirements-and-dependencies)
 
-**Contents:** [Install](#install) · [First run](#first-run--the-setup-wizard) · [Keep it running](#keep-it-running) · [Updating](#updating) · [Adding media](#adding-your-media) · [Daily use](#daily-use) · [Remote access](#use-vault-on-your-phone-tablet-or-tv) · [Troubleshooting](#troubleshooting) · [Features](#features) · [Developers](#for-developers)
+**Contents:**
+[Install](#install) ·
+[Requirements and dependencies](#requirements-and-dependencies) ·
+[First run](#first-run--the-setup-wizard) ·
+[Keep it running](#keep-it-running) ·
+[Moving to a new computer](#moving-to-a-new-computer) ·
+[Updating](#updating) ·
+[Adding media](#adding-your-media) ·
+[Daily use](#daily-use) ·
+[Remote access](#use-vault-on-your-phone-tablet-or-tv) ·
+[Configuration](#configuration) ·
+[Troubleshooting](#troubleshooting) ·
+[Features](#features) ·
+[Developers](#for-developers)
 
 ---
 
@@ -17,11 +31,12 @@ You run a small server on your own computer and open the app in your browser. Yo
 
 | | |
 |---|---|
-| **Node.js 20 or newer** | The current LTS (24 or 26) is recommended. Check with `node -v`. |
+| **Node.js 20 or newer** | The current LTS (24) is recommended. Check with `node -v`. |
 | **git** | To download Vault and update it later. Check with `git --version`. |
-| **About 300 MB of disk** | For Vault and its packages, plus room for your media. |
+| **ffmpeg and ffprobe** | Downloaded automatically by `npm install` on Windows, macOS and most Linux PCs. You only install them yourself if that download fails — see [ffmpeg and ffprobe](#ffmpeg-and-ffprobe). |
+| **About 300 MB of disk** | For Vault and its packages (ffmpeg is most of that), plus room for your media. |
 
-ffmpeg (used for thumbnails, converting formats and Live TV) is downloaded automatically during install, so you don't need to install it yourself.
+Everything else is either installed by `npm install` or optional. The complete list, with what each piece is for and what stops working without it, is in [Requirements and dependencies](#requirements-and-dependencies).
 
 <details>
 <summary><b>Installing Node.js and git on Linux</b></summary>
@@ -79,7 +94,97 @@ Both commands work in either the `Vault-V2` folder or `Vault-V2/server`. If you 
 
 Go to **http://localhost:4000** in Chrome, Firefox, Edge or Safari on the same computer. The [GitHub Pages app](https://kokonut-dev.github.io/Vault-V2/) works too and connects to `http://localhost:4000`.
 
-> **Prefer Docker?** `docker compose up -d --build` in the `Vault-V2` folder runs Vault with ffmpeg included. Edit the media volumes in `docker-compose.yml` first. See [deploy/README.md](deploy/README.md).
+> **Prefer Docker?** `docker compose up -d --build` in the `Vault-V2` folder runs Vault on Node 22 with ffmpeg and ffprobe included. Edit the media volumes in `docker-compose.yml` first. See [deploy/README.md](deploy/README.md).
+
+---
+
+## Requirements and dependencies
+
+### At a glance
+
+| What | Needed? | Installed by | Used for |
+|---|---|---|---|
+| **Node.js ≥ 20** (+ npm) | Required | You | Runs the server and the launcher. Node 22.13+ also unlocks the optional SQLite library index. |
+| **git** | Recommended | You | Downloading and updating Vault (`git pull`). A ZIP download from GitHub also works, but then updates are manual. |
+| **ffmpeg** | Strongly recommended | `npm install` (ffmpeg-static), or you | Converting video/audio the browser can't play, HLS streaming, thumbnails, timeline previews (trickplay), Live TV / IPTV, silence detection for gapless music. |
+| **ffprobe** | Strongly recommended | `npm install` (ffprobe-static), or you | Reading video details: duration, resolution, codecs, HDR, audio tracks, subtitles, chapters. |
+| **A modern browser** | Required | You | Chrome, Edge, Firefox or Safari (current versions). The app is a plain web page — nothing to install on phones or TVs. |
+| `unrar` | Optional | You | Reading `.cbr` comics. `.cbz` works without it. |
+| `cloudflared` | Optional | Vault, on demand | **Remote access → Anywhere**. Downloaded (checksum-verified, ~40 MB) the first time you switch it on. |
+| `mkcert` or `openssl` | Optional | You | `npm run generate-cert` for local HTTPS. mkcert makes a certificate your browsers trust; openssl makes a self-signed one. |
+| `caffeinate` / `systemd-inhibit` / PowerShell | Optional | Your OS | Keeping the computer awake while Vault runs (macOS / Linux / Windows). Built in on all three. |
+| GPU drivers (NVIDIA, Intel, AMD) | Optional | You | Hardware video encoding (NVENC, QuickSync, VAAPI, AMF). Only used if a test encode succeeds; otherwise Vault uses the CPU. |
+| Docker | Optional | You | The alternative install: `docker compose up -d --build`. The image includes ffmpeg and ffprobe. |
+
+### ffmpeg and ffprobe
+
+Vault looks for each program in this order and uses the first one that exists:
+
+1. `FFMPEG_PATH` / `FFPROBE_PATH`, if you set them;
+2. the copy `npm install` downloaded (the `ffmpeg-static` and `ffprobe-static` packages, in `server/node_modules`);
+3. `ffmpeg` / `ffprobe` on your `PATH` (a system install).
+
+**What still works without them:** browsing, uploading, music and video in formats the browser plays natively (MP4/H.264, WebM, MP3, AAC, FLAC, Opus…), cover art and tags from music files. **What doesn't:** converting other formats (MKV with unusual codecs, AVI, WMA…), thumbnails and timeline previews, video details such as resolution and duration for non-native formats, HLS, Live TV and IPTV movies. **Settings → Live TV** and the **Server** page tell you when ffmpeg is missing.
+
+**Check what Vault will use:**
+
+```bash
+cd Vault-V2/server
+node -e "const b=require('./utils/ffmpegBinaries'); console.log(b.ffmpegBinary(), b.ffprobeBinary())"
+```
+
+**Install them yourself** (only if the automatic download failed — offline, behind a proxy, an unusual CPU, or npm blocked the install script):
+
+| System | Command | Gives you |
+|---|---|---|
+| Debian / Ubuntu / Mint / Raspberry Pi OS | `sudo apt install ffmpeg` | ffmpeg + ffprobe |
+| Fedora | `sudo dnf install ffmpeg-free` (or `ffmpeg` from RPM Fusion for every codec) | ffmpeg + ffprobe |
+| Arch / Manjaro | `sudo pacman -S ffmpeg` | ffmpeg + ffprobe |
+| macOS (Homebrew) | `brew install ffmpeg` | ffmpeg + ffprobe |
+| Windows | `winget install Gyan.FFmpeg` (or download from https://www.gyan.dev/ffmpeg/builds/ and add its `bin` folder to `PATH`) | ffmpeg + ffprobe |
+
+Check with `ffmpeg -version` and `ffprobe -version` in a **new** terminal, then restart Vault. To pin a particular build, start Vault with `FFMPEG_PATH=/path/to/ffmpeg FFPROBE_PATH=/path/to/ffprobe npm start`.
+
+> **Linux and Live TV:** the bundled Linux ffmpeg is a static build. Vault works around the glibc/iconv crash those builds have on MPEG-TS channels, but if a channel still fails, a distribution ffmpeg (`sudo apt install ffmpeg` and `FFMPEG_PATH=$(which ffmpeg)`) is the most reliable choice.
+
+### Node.js versions
+
+| Node | Status |
+|---|---|
+| 18 and older | Not supported — Vault refuses to start and says so. |
+| 20 | Supported (the oldest version CI tests). |
+| 22 / 24 (LTS) | Recommended. From 22.13 the built-in `node:sqlite` module is available without flags, so you can set `"media": { "storage": "sqlite" }` for a faster index on very large libraries. The default JSON index needs nothing extra. |
+| Newest release | Tested in CI on every pull request. |
+
+### npm packages
+
+`npm install` (from the repository root or `server/`) installs these into `server/node_modules`. You never install them by hand.
+
+| Package | Why |
+|---|---|
+| express, helmet, cors, express-rate-limit, morgan | The web server, security headers/CSP, CORS, rate limits, request log |
+| jsonwebtoken, bcryptjs, validator | Sign-in tokens, password hashing, input checks |
+| multer, mime-types, fs-extra | Uploads (including whole folders), content types, file moves |
+| chokidar | Watching your media folders for new files |
+| music-metadata | Tags and cover art from audio files |
+| fluent-ffmpeg | Driving ffmpeg/ffprobe |
+| dotenv | Reading an optional `server/.env` file |
+| *optional:* ffmpeg-static, ffprobe-static | The bundled ffmpeg and ffprobe binaries (see above) |
+| *optional:* webtorrent 2.8.5 | The Torrents page. Pinned, because 3.x needs Node 22+ |
+| *dev only:* clean-css, jsdom, nodemon | Building `vault.css`, DOM tests, auto-reload in `npm run dev` |
+
+npm 12+ only runs install scripts you've approved. Vault approves the one it needs (ffmpeg-static's download) in `server/package.json`, so a normal `npm install` just works.
+
+The app itself (`docs/`) has **no build step and no npm dependencies**: it's plain JavaScript modules, with `hls.js` and `qrcode-generator` vendored under `docs/vendor/` (licences included) and the Figtree and Fraunces fonts self-hosted under `docs/fonts/`.
+
+### Optional online services
+
+All off until you configure them, all in **Settings**:
+
+- **Metadata:** TMDB (needs your own free API key), MusicBrainz, and local `.nfo` files.
+- **Notifications and scrobbling:** webhook, ntfy, Discord, Telegram; Last.fm and ListenBrainz.
+- **Google Drive import:** public links need nothing; private files need an API key or OAuth client ID.
+- **Live TV:** your own M3U/IPTV lists, HDHomeRun tuners and XMLTV guides.
 
 ---
 
@@ -201,6 +306,7 @@ For private files, add an API key or OAuth client ID in **Settings → Links & i
 - **My List, Playlists, Favourites, History** — your collections and where you left off
 - **SyncPlay** — watch together in sync
 - **Your Stats** — what you've watched and listened to
+- **Server** (admins) — health, background jobs, logs, disk usage, backups, library index
 - **Settings** — appearance (6 themes), playback, EQ, subtitles, security, devices, connection
 
 **Keyboard shortcuts** — press `?` in the app for the full list.
@@ -235,6 +341,30 @@ Prefer your own setup? `cloudflared tunnel --url http://localhost:4000`, Tailsca
 
 ---
 
+## Configuration
+
+Most settings live in the app (**Settings**), which writes them to `server/config.json` (created by the setup wizard, never committed). `server/config.example.json` lists every option with its default. A few things can also be set from the environment — in the terminal, in `server/.env`, or in `docker-compose.yml`.
+
+Variables marked \* are **first-run defaults**: once the setup wizard has saved `server/config.json`, the value in that file wins (`server.port`, `server.host`, `auth.jwtSecret`, `auth.sessionTimeout`). Edit the file and restart to change them later.
+
+| Variable | Default | What it does |
+|---|---|---|
+| `VAULT_PORT` \* | `4000` | Port the server listens on |
+| `VAULT_HOST` \* | `0.0.0.0` | Address to listen on (`127.0.0.1` = this computer only) |
+| `VAULT_LAUNCHER_PORT` | `4001` | Port of the start/stop helper (always `127.0.0.1`) |
+| `FFMPEG_PATH` / `FFPROBE_PATH` | auto | Use a specific ffmpeg / ffprobe |
+| `VAAPI_DEVICE` | `/dev/dri/renderD128` | GPU device for VAAPI encoding on Linux |
+| `VAULT_KEEP_AWAKE` | `1` | `0` lets the computer sleep while Vault runs |
+| `VAULT_MDNS` | off | `1` announces `vault.local` on your network |
+| `CLOUDFLARED_PATH` | auto | Use your own `cloudflared` for remote access |
+| `VAULT_JWT_SECRET` \* | random | Signing secret for sign-in tokens |
+| `VAULT_SESSION_TIMEOUT` \* | `24h` | How long a sign-in lasts |
+| `LOG_LEVEL` | `info` | `debug`, `info`, `warn` or `error` |
+| `VAULT_DEBUG` | off | `1` includes error details in API responses (never on a public server) |
+| `ALLOW_SETUP_RESET` | off | `true` allows resetting setup through the API |
+
+---
+
 ## Troubleshooting
 
 ### Install problems
@@ -252,10 +382,10 @@ Your Node is too old (`node -v`). Install the current LTS (see [What you need](#
 Don't use `sudo npm install`. If you did once, fix ownership with `sudo chown -R "$USER" Vault-V2 ~/.npm` and run `npm install` again. Using nvm avoids this entirely.
 
 **`install scripts blocked … ffmpeg-static` (npm 12+)**
-npm 12 only runs install scripts you've approved. Vault approves ffmpeg-static in `server/package.json`, so update (`git pull`) and run `npm install` again. If ffmpeg still can't be downloaded (offline, proxy or firewall), the install continues without it. In that case install ffmpeg system-wide: `sudo apt install ffmpeg`, `sudo dnf install ffmpeg`, `sudo pacman -S ffmpeg` or `brew install ffmpeg`.
+npm 12 only runs install scripts you've approved. Vault approves ffmpeg-static in `server/package.json`, so update (`git pull`) and run `npm install` again. If ffmpeg still can't be downloaded (offline, proxy or firewall), the install continues without it. In that case install ffmpeg (which includes ffprobe) system-wide — commands per system are in [ffmpeg and ffprobe](#ffmpeg-and-ffprobe).
 
 **`Port 4000 is already in use`**
-Another Vault (or another app) is running on it. Close it, or start on another port: `VAULT_PORT=4005 npm start` (Windows PowerShell: `$env:VAULT_PORT=4005; npm start`). Then use `http://localhost:4005` in the app.
+Another Vault (or another app) is running on it. Close it, or move Vault to another port: set `"server": { "port": 4005 }` in `server/config.json` and restart. (Before the setup wizard has run there's no config file yet, so use `VAULT_PORT=4005 npm start`, or in Windows PowerShell `$env:VAULT_PORT=4005; npm start`.) Then use `http://localhost:4005` in the app.
 
 ### Using Vault
 
@@ -280,8 +410,10 @@ Another Vault (or another app) is running on it. Close it, or start on another p
   3. Use remote access (Cloudflare tunnel, which gives you free HTTPS).
 - Vault warns about a blocked address on the sign-in screen instead of failing silently.
 
-**No thumbnails / a video won't convert**
-ffmpeg is missing; see the ffmpeg item under [Install problems](#install-problems). To use a specific build, set `FFMPEG_PATH` and `FFPROBE_PATH` before starting. Hardware encoders (NVENC, QuickSync, VAAPI, AMF) are only used after a test encode succeeds, so a GPU-less machine falls back to the CPU.
+**No thumbnails / a video won't convert / duration shows 0:00**
+ffmpeg or ffprobe is missing or can't run. Check which ones Vault picked (see [ffmpeg and ffprobe](#ffmpeg-and-ffprobe)), install them if needed, and restart. To use a specific build, set `FFMPEG_PATH` and `FFPROBE_PATH` before starting. Hardware encoders (NVENC, QuickSync, VAAPI, AMF) are only used after a test encode succeeds, so a GPU-less machine falls back to the CPU.
+
+**A `.cbr` comic won't open** — install `unrar` (`sudo apt install unrar` on Debian/Ubuntu, the RAR command-line tools from rarlab.com on macOS, or WinRAR on Windows — make sure `unrar` is on your `PATH`), or convert the file to `.cbz`.
 
 **Upload fails: "File too large"** — the default limit is 10 GB. Change `media.maxUploadSizeMB` in `server/config.json`.
 
@@ -293,7 +425,7 @@ ffmpeg is missing; see the ffmpeg item under [Install problems](#install-problem
 
 **Vault stops answering when my Mac locks** — it's going to sleep. Check that **Settings → Connection → Keep running when the computer is locked** is on, keep the lid open and the charger in. See [When your computer locks or goes idle](#when-your-computer-locks-or-goes-idle).
 
-**Something looks broken right after an update** — hard-reload the page (`Ctrl + Shift + R`, Mac `Cmd + Shift + R`) and restart the server.
+**Something looks broken right after an update** — restart the server. Open tabs notice the new version and offer a **Reload**; if one doesn't, hard-reload it (`Ctrl + Shift + R`, Mac `Cmd + Shift + R`).
 
 **Start over** — delete `server/config.json` and restart; the wizard appears again. Your media files are not touched.
 
@@ -309,7 +441,9 @@ ffmpeg is missing; see the ffmpeg item under [Install problems](#install-problem
 
 **More** — Live TV & DVR (several M3U/IPTV lists), folder upload, torrents (optional), audiobooks, podcasts, comics, SyncPlay, profiles, listening/watching stats, Google Drive import, and an installable PWA.
 
-**Look and feel** — six themes (Hearth, Linen, Parchment, Dusk, Ember, Daylight), smooth animations that respect *reduced motion*, and a layout that adapts from phone to desktop. Accessible: keyboard navigation, focus rings, ARIA labels, and contrast-checked colours.
+**Look and feel** — six themes: **Graphite** (dark, default), **Dusk** (blue-slate), **Ember** (true-black for OLED), **Daylight** (white), **Stone** (warm grey) and **Sepia** (e-reader sepia). Neutral chrome so your artwork keeps its own colours, one flat accent per theme, animations that respect *reduced motion*, and a layout that adapts from phone to desktop.
+
+**Accessibility** — keyboard navigation throughout, visible focus rings, ARIA labels, and **WCAG AAA** colour contrast in every theme: all text is at least 7:1 on every surface it sits on, and controls and focus rings at least 3:1. `npm run check:contrast` verifies this, and it runs with the test suite on every pull request.
 
 **Security**
 - Two factors: a password (bcrypt-hashed), then the 8-of-16 grid (12,870 combinations, or about 518 million with *order matters*).
@@ -342,11 +476,14 @@ npm start              # launcher + server (http://localhost:4000)
 npm run dev            # server only, auto-reload (nodemon)
 npm test               # server tests (node --test)
 npm run build:css      # rebuild docs/css/vault.css — after editing any docs/css/*.css
+npm run check:contrast # WCAG check of every theme (also part of npm test)
 ```
 
 From `server/`: `npm run lint` (syntax check), `npm run check:imports`, `npm run test:keyboard`, `npm run test:music`, `npm run setup` (terminal setup wizard), `npm run generate-cert`.
 
-**CI** — `.github/workflows/test.yml` runs on every pull request: lint, server tests, the `vault.css` freshness check, and a fresh-install test (Node 20, current LTS and newest) that starts the server the way a new user does. `.github/workflows/deploy.yml` re-runs the checks on `main` and publishes `docs/` to GitHub Pages.
+**CI** — `.github/workflows/test.yml` runs on every pull request: lint (syntax + import graph), server tests (including the theme contrast check), the `vault.css` freshness check, and a fresh-install test on Node 20, the current LTS and the newest release. That test checks that ffmpeg was downloaded and starts the server the way a new user does. `.github/workflows/deploy.yml` re-runs the checks on `main` and publishes `docs/` to GitHub Pages.
+
+**Colours** — every colour comes from the tokens in `docs/css/variables.css` (one block per theme). Don't hard-code colours in component sheets; use the tokens (`--accent-solid`/`--on-accent` for filled buttons, `--accent-text` for accent-coloured text, `--success`/`--warning`/`--error` for status). Change a token, run `npm run build:css` and `npm run check:contrast`.
 
 **Project structure**
 ```
@@ -362,7 +499,7 @@ server/             → Node.js + Express API
   media/            → default library folders
   data/ cache/      → library index, history, thumbnails, conversions (gitignored)
   test/             → node --test suites
-scripts/            → CSS build and check scripts
+scripts/            → CSS build, contrast check, setup, transfer and check scripts
 deploy/             → Docker, systemd and launchd notes and files
 ```
 
@@ -381,6 +518,10 @@ GET  /api/livetv/channels            channels + per-list status
 POST /api/livetv/sources             add a channel list (admin)
 GET  /api/torrents                   status + downloads (admin)
 POST /api/torrents                   { magnet, type } or multipart "torrent"
+GET  /api/system/health              library health report (admin)
+GET  /api/system/capabilities        ffmpeg / ffprobe versions, hardware encoders (admin)
+GET  /api/events                     live updates (Server-Sent Events)
+GET  /rest/*                         Subsonic-compatible API for music apps
 ```
 
 ---

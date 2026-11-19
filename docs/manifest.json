@@ -4,8 +4,8 @@
   "description": "A premium self-hosted personal media server for movies, music, and videos",
   "start_url": "/Vault-V2/",
   "display": "standalone",
-  "background_color": "#15110E",
-  "theme_color": "#15110E",
+  "background_color": "#161719",
+  "theme_color": "#161719",
   "orientation": "any",
   "icons": [
     {

@@ -1,5 +1,19 @@
-/* Design tokens — Vault "Hearth" system (see UI_REVAMP_PLAN.md)
-   Warm tinted neutrals, one desaturated accent per theme, tonal elevation,
+/* Design tokens — Vault "Screening room" palette (3.0)
+   The interface is the darkened room; posters, album art and video are the
+   picture. So the chrome stays out of the way:
+
+   - Neutrals are near-achromatic (OKLCH chroma <= 0.02) with one consistent
+     temperature per theme, so artwork keeps its own colours.
+   - One accent per theme, flat (no gradients, no glows), used for actions,
+     selection and progress only. Hue picked to sit with the neutrals.
+   - Text steps are defined by contrast, not by eye (Radix-style): primary
+     ~15:1, secondary ~11:1, tertiary ~7.6:1 on --bg-primary. Accent text,
+     status colours and labels on accent fills all clear WCAG AAA 7:1;
+     --border-control and --focus-ring clear 3:1 (non-text, 1.4.11).
+     Enforced by scripts/contrast-check.js (npm run check:contrast).
+   - Status colours are low-chroma and lightness-matched per theme, so a red
+     error reads as "error", not as a neon sign.
+
    Fraunces display + Figtree UI, and a small motion vocabulary. */
 
 :root {
@@ -53,21 +67,14 @@
   --icon-stroke-semibold: 2;
   --icon-stroke-bold: 2.25;
 
-  /* OKLCH Palettes — equal lightness across hues ensures equal perceptual prominence */
-  --palette-success-light: oklch(0.42 0.15 142);
-  --palette-success-dark: oklch(0.77 0.20 142);
-  --palette-warning-light: oklch(0.42 0.15 55);
-  --palette-warning-dark: oklch(0.77 0.17 68);
-  --palette-error-light: oklch(0.42 0.22 28);
-  --palette-error-dark: oklch(0.77 0.22 28);
-  --palette-info-light: oklch(0.42 0.18 250);
-  --palette-info-dark: oklch(0.77 0.18 250);
-
   /* Shadows — deep but diffuse, for floating glass surfaces */
   --shadow-sm: 0 1px 2px rgba(0,0,0,0.06);
   --shadow-md: 0 6px 20px rgba(0,0,0,0.12);
   --shadow-lg: 0 18px 48px rgba(0,0,0,0.22);
   --shadow-xl: 0 32px 80px rgba(0,0,0,0.34);
+  /* Small neutral lift for accent controls (play buttons, slider thumbs).
+     Neutral on purpose: coloured "glow" shadows read as neon. */
+  --shadow-lift: 0 2px 6px rgba(0,0,0,0.22);
 
   /* Motion — research-backed vocabulary (NN/g, Material motion):
      micro 100–150ms, show/hide 200–300ms, screens 300–400ms; ease-out to
@@ -128,390 +135,396 @@
 }
 
 /* ============================================================
-   Hearth (dark, default) — warm tinted near-black, cream text,
-   soft ember accent. Elevation is tonal: each step is a lighter surface.
+   Graphite (dark, default) — neutral charcoal with the faintest cool cast,
+   off-white text, soft cornflower accent. The most "out of the way" theme:
+   nothing in the chrome competes with the artwork.
+   Elevation is tonal: each step is a lighter surface (~1.2:1 by --bg-elevated).
    ============================================================ */
 [data-theme="dark"] {
-  --bg-primary: #15110E;
-  --bg-secondary: #1B1613;
-  --bg-tertiary: #221C18;
-  --bg-elevated: #2C2520;
-  --bg-hover: #342C26;
-  --bg-active: #3E352E;
+  --bg-primary: #161719;
+  --bg-secondary: #1A1C1E;
+  --bg-tertiary: #1F2123;
+  --bg-elevated: #26282A;
+  --bg-hover: #2C2E30;
+  --bg-active: #353739;
 
-  /* Tonal elevation (Material: lighter = higher) */
-  --surface-sunken: #110E0B;
-  --surface-base: #1B1613;
-  --surface-raised: #221C18;
-  --surface-elevated: #2C2520;
-  --surface-overlay: #332B25;
-  --surface-hover: #342C26;
-  --surface-active: #3E352E;
+  --surface-sunken: #101214;
+  --surface-base: #1A1C1E;
+  --surface-raised: #1F2123;
+  --surface-elevated: #26282A;
+  --surface-overlay: #2A2B2E;
+  --surface-hover: #2C2E30;
+  --surface-active: #353739;
 
-  /* Cream, never pure white (halation); all ≥ 7:1 on --bg-primary */
-  --text-primary: #F6EEE4;
-  --text-secondary: #D9CCBD;
-  --text-tertiary: #B6A796;
-  --text-inverse: #15110E;
-  --border: rgb(246 238 228 / 0.09);
-  --border-strong: rgb(246 238 228 / 0.16);
-  --border-subtle: rgb(246 238 228 / 0.07);
-  --border-control: #7A6A5C;
-  --border-focus: rgba(245, 177, 132, 0.6);
-  --focus-ring: #F5B184;
+  /* Off-white, never pure white (halation) */
+  --text-primary: #E9EBEE;
+  --text-secondary: #C9CBCD;
+  --text-tertiary: #B7B9BB;
+  --text-inverse: #161719;
+  --border: rgb(233 235 238 / 0.09);
+  --border-strong: rgb(233 235 238 / 0.16);
+  --border-subtle: rgb(233 235 238 / 0.07);
+  --border-control: #73777C;
+  --border-focus: rgba(147, 191, 240, 0.6);
+  --focus-ring: #93BFF0;
 
-  /* Ember — orange desaturated ~30% for dark mode; label on fills is dark */
-  --accent: #F2A877;
-  --accent-hover: #E9955F;
-  --accent-muted: rgba(242, 168, 119, 0.14);
-  --accent-strong: #F7C39E;
-  --accent-text: #F5B184;
-  --accent-solid: #F2A877;
-  --btn-accent-end: #E9955F;
-  --on-accent: #1C0F07;
-  --success: oklch(0.77 0.20 142);
-  --warning: oklch(0.80 0.15 75);
-  --error: oklch(0.77 0.19 30);
-  --danger: oklch(0.77 0.19 30);
-  --info: oklch(0.78 0.12 235);
-  --shadow-color: rgba(8, 4, 2, 0.5);
-  --shadow: 0 6px 24px rgba(8, 4, 2, 0.42);
-  --shadow-strong: 0 14px 48px rgba(8, 4, 2, 0.58);
-
-  /* Glass — only for layers that float over content */
-  --glass-tint: 246, 238, 228;
-  --glass-border: rgba(246, 238, 228, 0.09);
-  --glass-highlight: rgba(255, 244, 230, 0.10);
-  --glass-highlight-soft: rgba(255, 244, 230, 0.04);
-  --glass-shadow: 0 20px 50px rgba(8, 4, 2, 0.5);
-  --glass-ring: inset 0 0 0 1px rgba(246, 238, 228, 0.03);
-  --glass-blur: 24px;
-  --glass-saturate: 140%;
-  --card-bg: transparent;
-  --card-hover: rgba(246, 238, 228, 0.04);
-  --card-border: transparent;
-  --art-placeholder: #2A231E;
-  --scrim: rgba(17, 12, 9, 0.88);
-
-  /* One warm lamp glow instead of a neon aurora */
-  --ambient-1: rgba(242, 150, 90, 0.13);
-  --ambient-2: rgba(190, 110, 80, 0.07);
-  --ambient-3: rgba(230, 180, 110, 0.06);
-  --ambient-base: radial-gradient(120% 90% at 30% 0% in oklch, #1D1713 0%, #15110E 62%);
-  --overlay: rgba(12, 8, 6, 0.7);
-}
-
-/* ============================================================
-   Linen (light) — warm off-white paper, ink-brown text, terracotta accent
-   ============================================================ */
-[data-theme="light"] {
-  --bg-primary: #F5EFE6;
-  --bg-secondary: #FFFBF5;
-  --bg-tertiary: #ECE4D8;
-  --bg-elevated: #FFFBF5;
-  --bg-hover: #EFE7DB;
-  --bg-active: #E5DACB;
-  --surface-sunken: #ECE4D8;
-  --surface-base: #FFFBF5;
-  --surface-raised: #FFFBF5;
-  --surface-elevated: #FFFBF5;
-  --surface-overlay: #FFFBF5;
-  --surface-hover: #EFE7DB;
-  --surface-active: #E5DACB;
-  --text-primary: #211A15;
-  --text-secondary: #3D332C;
-  --text-tertiary: #51463D;
-  --text-inverse: #FFFBF5;
-  --border: rgb(33 26 21 / 0.10);
-  --border-strong: rgb(33 26 21 / 0.18);
-  --border-subtle: rgb(33 26 21 / 0.08);
-  --border-control: #8C7B6C;
-  --border-focus: rgba(135, 52, 19, 0.5);
-  --focus-ring: #873413;
-  --accent: #A8461C;
-  --accent-hover: #8F3815;
-  --accent-muted: rgba(168, 70, 28, 0.11);
-  --accent-strong: #76290C;
-  --accent-text: #873413;
-  --accent-solid: #8F3815;
-  --btn-accent-end: #76290C;
-  --on-accent: #FFFFFF;
-  --success: oklch(0.42 0.12 145);
-  --warning: oklch(0.44 0.12 60);
-  --error: oklch(0.45 0.18 30);
-  --danger: oklch(0.45 0.18 30);
-  --info: oklch(0.42 0.13 245);
-  --shadow-color: rgba(60, 40, 25, 0.10);
-  --shadow: 0 8px 28px rgba(60, 40, 25, 0.08);
-  --shadow-strong: 0 16px 48px rgba(60, 40, 25, 0.14);
-  --glass-tint: 255, 251, 245;
-  --glass-border: rgba(33, 26, 21, 0.09);
-  --glass-highlight: rgba(255, 255, 255, 0.85);
-  --glass-highlight-soft: rgba(255, 255, 255, 0.45);
-  --glass-shadow: 0 20px 50px rgba(60, 40, 25, 0.13);
-  --glass-ring: inset 0 0 0 1px rgba(255, 255, 255, 0.5);
-  --glass-blur: 26px;
-  --glass-saturate: 140%;
-  --card-bg: transparent;
-  --card-hover: rgba(33, 26, 21, 0.035);
-  --card-border: transparent;
-  --art-placeholder: #E5DACB;
-  --scrim: rgba(24, 17, 12, 0.86);
-  --ambient-1: rgba(232, 150, 100, 0.16);
-  --ambient-2: rgba(214, 170, 120, 0.12);
-  --ambient-3: rgba(190, 140, 110, 0.08);
-  --ambient-base: radial-gradient(120% 90% at 30% 0% in oklch, #FBF6EF 0%, #F5EFE6 70%);
-  --overlay: rgba(60, 45, 35, 0.38);
-}
-
-/* ============================================================
-   Parchment (warm) — deeper sepia paper with burnt-umber accent
-   ============================================================ */
-[data-theme="warm"] {
-  --bg-primary: #F3E6CF;
-  --bg-secondary: #FCF5E8;
-  --bg-tertiary: #EADBC0;
-  --bg-elevated: #FCF5E8;
-  --bg-hover: #EEDFC5;
-  --bg-active: #E3D0AF;
-  --surface-sunken: #EADBC0;
-  --surface-base: #FCF5E8;
-  --surface-raised: #FCF5E8;
-  --surface-elevated: #FCF5E8;
-  --surface-overlay: #FCF5E8;
-  --surface-hover: #EEDFC5;
-  --surface-active: #E3D0AF;
-  --text-primary: #33231A;
-  --text-secondary: #46342A;
-  --text-tertiary: #54412F;
-  --text-inverse: #FCF5E8;
-  --border: rgb(51 35 26 / 0.12);
-  --border-strong: rgb(51 35 26 / 0.20);
-  --border-subtle: rgb(51 35 26 / 0.09);
-  --border-control: #8E7556;
-  --border-focus: rgba(122, 50, 9, 0.5);
-  --focus-ring: #7A3209;
-  --accent: #9A4410;
-  --accent-hover: #7E340B;
-  --accent-muted: rgba(154, 68, 16, 0.12);
-  --accent-strong: #652707;
-  --accent-text: #7A3209;
-  --accent-solid: #7E340B;
-  --btn-accent-end: #652707;
-  --on-accent: #FFFFFF;
-  --success: oklch(0.40 0.12 145);
-  --warning: oklch(0.415 0.12 60);
-  --error: oklch(0.43 0.18 30);
-  --danger: oklch(0.43 0.18 30);
-  --info: oklch(0.42 0.13 245);
-  --shadow-color: rgba(70, 45, 25, 0.12);
-  --shadow: 0 8px 28px rgba(70, 45, 25, 0.10);
-  --shadow-strong: 0 16px 48px rgba(70, 45, 25, 0.16);
-  --glass-tint: 252, 245, 232;
-  --glass-border: rgba(51, 35, 26, 0.10);
-  --glass-highlight: rgba(255, 255, 255, 0.8);
-  --glass-highlight-soft: rgba(255, 255, 255, 0.4);
-  --glass-shadow: 0 20px 50px rgba(70, 45, 25, 0.15);
-  --glass-ring: inset 0 0 0 1px rgba(255, 255, 255, 0.45);
-  --glass-blur: 26px;
-  --glass-saturate: 140%;
-  --card-bg: transparent;
-  --card-hover: rgba(51, 35, 26, 0.04);
-  --card-border: transparent;
-  --art-placeholder: #E3D0AF;
-  --scrim: rgba(30, 19, 11, 0.86);
-  --ambient-1: rgba(214, 140, 60, 0.18);
-  --ambient-2: rgba(190, 120, 80, 0.10);
-  --ambient-3: rgba(160, 130, 60, 0.08);
-  --ambient-base: radial-gradient(120% 90% at 30% 0% in oklch, #F9EEDC 0%, #F3E6CF 70%);
-  --overlay: rgba(70, 50, 30, 0.38);
-}
-
-/* ============================================================
-   Dusk (cold) — muted slate evening, sea-glass accent (calm, not neon)
-   ============================================================ */
-[data-theme="cold"] {
-  --bg-primary: #10151C;
-  --bg-secondary: #151B24;
-  --bg-tertiary: #1A222D;
-  --bg-elevated: #222C39;
-  --bg-hover: #283342;
-  --bg-active: #303D4E;
-  --surface-sunken: #0D1117;
-  --surface-base: #151B24;
-  --surface-raised: #1A222D;
-  --surface-elevated: #222C39;
-  --surface-overlay: #283342;
-  --surface-hover: #283342;
-  --surface-active: #303D4E;
-  --text-primary: #EAF0F5;
-  --text-secondary: #C3CED9;
-  --text-tertiary: #A2B0BE;
-  --text-inverse: #10151C;
-  --border: rgb(195 206 217 / 0.10);
-  --border-strong: rgb(195 206 217 / 0.18);
-  --border-subtle: rgb(195 206 217 / 0.08);
-  --border-control: #5D6E80;
-  --border-focus: rgba(143, 211, 201, 0.55);
-  --focus-ring: #8FD3C9;
-  --accent: #8FD3C9;
-  --accent-hover: #76C4B9;
-  --accent-muted: rgba(143, 211, 201, 0.13);
-  --accent-strong: #B5E3DC;
-  --accent-text: #8FD3C9;
-  --accent-solid: #8FD3C9;
-  --btn-accent-end: #76C4B9;
-  --on-accent: #0B1A18;
-  --success: oklch(0.77 0.20 142);
-  --warning: oklch(0.80 0.15 75);
-  --error: oklch(0.77 0.19 30);
-  --danger: oklch(0.77 0.19 30);
-  --info: oklch(0.78 0.12 235);
+  /* Cornflower: a calm blue at Material's "200 tone" lightness for dark UI */
+  --accent: #93BFF0;
+  --accent-hover: #81AFE2;
+  --accent-muted: rgba(147, 191, 240, 0.14);
+  --accent-strong: #B5D4F8;
+  --accent-text: #93BFF0;
+  --accent-solid: #93BFF0;
+  --btn-accent-end: #81AFE2;
+  --on-accent: #101B28;
+  --success: #86C794;
+  --warning: #DBB272;
+  --error: #FF9E96;
+  --danger: #FF9E96;
+  --info: #8FBDE5;
   --shadow-color: rgba(0, 0, 0, 0.5);
   --shadow: 0 6px 24px rgba(0, 0, 0, 0.42);
   --shadow-strong: 0 14px 48px rgba(0, 0, 0, 0.58);
-  --glass-tint: 195, 206, 217;
-  --glass-border: rgba(195, 206, 217, 0.12);
-  --glass-highlight: rgba(226, 232, 240, 0.12);
-  --glass-highlight-soft: rgba(226, 232, 240, 0.04);
+
+  /* Glass — only for layers that float over content */
+  --glass-tint: 233, 235, 238;
+  --glass-border: rgba(233, 235, 238, 0.09);
+  --glass-highlight: rgba(255, 255, 255, 0.08);
+  --glass-highlight-soft: rgba(255, 255, 255, 0.03);
   --glass-shadow: 0 20px 50px rgba(0, 0, 0, 0.5);
-  --glass-ring: inset 0 0 0 1px rgba(226, 232, 240, 0.04);
+  --glass-ring: inset 0 0 0 1px rgba(233, 235, 238, 0.03);
   --glass-blur: 24px;
-  --glass-saturate: 140%;
+  --glass-saturate: 120%;
   --card-bg: transparent;
-  --card-hover: rgba(195, 206, 217, 0.05);
+  --card-hover: rgba(233, 235, 238, 0.04);
   --card-border: transparent;
-  --art-placeholder: #222C39;
-  --scrim: rgba(9, 13, 18, 0.88);
-  --ambient-1: rgba(120, 190, 200, 0.10);
-  --ambient-2: rgba(110, 130, 190, 0.08);
-  --ambient-3: rgba(200, 160, 130, 0.05);
-  --ambient-base: radial-gradient(120% 90% at 30% 0% in oklch, #161D27 0%, #10151C 62%);
-  --overlay: rgba(6, 9, 13, 0.72);
+  --art-placeholder: #232527;
+  --scrim: rgba(10, 11, 12, 0.88);
+
+  /* Barely-there room light: enough for the glass to frost, not a wash */
+  --ambient-1: rgba(147, 191, 240, 0.05);
+  --ambient-2: rgba(147, 191, 240, 0.025);
+  --ambient-3: rgba(233, 235, 238, 0.025);
+  --ambient-base: radial-gradient(120% 90% at 30% 0% in oklch, #1B1D1F 0%, #161719 62%);
+  --overlay: rgba(6, 7, 8, 0.7);
 }
 
 /* ============================================================
-   Ember (midnight) — OLED-friendly warm black, candle-gold accent
+   Stone (light) — warm-grey stone (not cream), graphite ink, petrol accent.
+   Petrol (a deep blue-green) is quieter than a primary blue on a warm grey.
+   ============================================================ */
+[data-theme="light"] {
+  --bg-primary: #F4F2EF;
+  --bg-secondary: #FDFBF9;
+  --bg-tertiary: #EBE9E7;
+  --bg-elevated: #FDFBF9;
+  --bg-hover: #EEECEA;
+  --bg-active: #E3E1DE;
+  --surface-sunken: #EBE9E7;
+  --surface-base: #FDFBF9;
+  --surface-raised: #FDFBF9;
+  --surface-elevated: #FDFBF9;
+  --surface-overlay: #FDFBF9;
+  --surface-hover: #EEECEA;
+  --surface-active: #E3E1DE;
+  --text-primary: #1F1D1A;
+  --text-secondary: #373431;
+  --text-tertiary: #4E4C49;
+  --text-inverse: #FDFBF9;
+  --border: rgb(31 29 26 / 0.10);
+  --border-strong: rgb(31 29 26 / 0.18);
+  --border-subtle: rgb(31 29 26 / 0.08);
+  --border-control: #85827D;
+  --border-focus: rgba(0, 83, 96, 0.5);
+  --focus-ring: #005360;
+  --accent: #005360;
+  --accent-hover: #004551;
+  --accent-muted: rgba(0, 83, 96, 0.10);
+  --accent-strong: #004551;
+  --accent-text: #005360;
+  --accent-solid: #005360;
+  --btn-accent-end: #004551;
+  --on-accent: #FFFFFF;
+  --success: #14572B;
+  --warning: #674400;
+  --error: #852E2C;
+  --danger: #852E2C;
+  --info: #234E71;
+  --shadow-color: rgba(30, 28, 25, 0.10);
+  --shadow: 0 8px 28px rgba(30, 28, 25, 0.08);
+  --shadow-strong: 0 16px 48px rgba(30, 28, 25, 0.14);
+  --glass-tint: 253, 251, 249;
+  --glass-border: rgba(31, 29, 26, 0.09);
+  --glass-highlight: rgba(255, 255, 255, 0.85);
+  --glass-highlight-soft: rgba(255, 255, 255, 0.45);
+  --glass-shadow: 0 20px 50px rgba(30, 28, 25, 0.12);
+  --glass-ring: inset 0 0 0 1px rgba(255, 255, 255, 0.5);
+  --glass-blur: 26px;
+  --glass-saturate: 120%;
+  --card-bg: transparent;
+  --card-hover: rgba(31, 29, 26, 0.035);
+  --card-border: transparent;
+  --art-placeholder: #E3E1DE;
+  --scrim: rgba(20, 19, 17, 0.86);
+  --ambient-1: rgba(0, 83, 96, 0.04);
+  --ambient-2: rgba(31, 29, 26, 0.025);
+  --ambient-3: rgba(255, 255, 255, 0.5);
+  --ambient-base: radial-gradient(120% 90% at 30% 0% in oklch, #F8F7F5 0%, #F4F2EF 70%);
+  --overlay: rgba(30, 28, 25, 0.36);
+}
+
+/* ============================================================
+   Sepia (warm) — the e-reader sepia people already pick for evening
+   reading (Apple Books / Kindle), brown-black ink, blue-black ink accent.
+   ============================================================ */
+[data-theme="warm"] {
+  --bg-primary: #F6EBDA;
+  --bg-secondary: #FCF3E4;
+  --bg-tertiary: #ECE1D0;
+  --bg-elevated: #FCF3E4;
+  --bg-hover: #F0E5D3;
+  --bg-active: #E4D9C8;
+  --surface-sunken: #ECE1D0;
+  --surface-base: #FCF3E4;
+  --surface-raised: #FCF3E4;
+  --surface-elevated: #FCF3E4;
+  --surface-overlay: #FCF3E4;
+  --surface-hover: #F0E5D3;
+  --surface-active: #E4D9C8;
+  --text-primary: #23150A;
+  --text-secondary: #3D2E22;
+  --text-tertiary: #544437;
+  --text-inverse: #FCF3E4;
+  --border: rgb(35 21 10 / 0.12);
+  --border-strong: rgb(35 21 10 / 0.20);
+  --border-subtle: rgb(35 21 10 / 0.09);
+  --border-control: #907C5C;
+  --border-focus: rgba(41, 72, 117, 0.5);
+  --focus-ring: #294875;
+  --accent: #294875;
+  --accent-hover: #1F3B65;
+  --accent-muted: rgba(41, 72, 117, 0.11);
+  --accent-strong: #1F3B65;
+  --accent-text: #294875;
+  --accent-solid: #294875;
+  --btn-accent-end: #1F3B65;
+  --on-accent: #FFFFFF;
+  --success: #0C5326;
+  --warning: #634000;
+  --error: #802928;
+  --danger: #802928;
+  --info: #1F4A6C;
+  --shadow-color: rgba(60, 40, 20, 0.12);
+  --shadow: 0 8px 28px rgba(60, 40, 20, 0.10);
+  --shadow-strong: 0 16px 48px rgba(60, 40, 20, 0.16);
+  --glass-tint: 252, 243, 228;
+  --glass-border: rgba(35, 21, 10, 0.10);
+  --glass-highlight: rgba(255, 255, 255, 0.7);
+  --glass-highlight-soft: rgba(255, 255, 255, 0.35);
+  --glass-shadow: 0 20px 50px rgba(60, 40, 20, 0.14);
+  --glass-ring: inset 0 0 0 1px rgba(255, 255, 255, 0.4);
+  --glass-blur: 26px;
+  --glass-saturate: 110%;
+  --card-bg: transparent;
+  --card-hover: rgba(35, 21, 10, 0.04);
+  --card-border: transparent;
+  --art-placeholder: #E7DDCB;
+  --scrim: rgba(28, 19, 11, 0.86);
+  --ambient-1: rgba(255, 248, 236, 0.5);
+  --ambient-2: rgba(35, 21, 10, 0.03);
+  --ambient-3: rgba(41, 72, 117, 0.03);
+  --ambient-base: radial-gradient(120% 90% at 30% 0% in oklch, #F9F0E2 0%, #F6EBDA 70%);
+  --overlay: rgba(50, 35, 20, 0.36);
+}
+
+/* ============================================================
+   Dusk (cold) — blue-hour slate (a visible cool tint, like most chat and
+   developer apps), sea-glass accent kept soft so it never reads as neon.
+   ============================================================ */
+[data-theme="cold"] {
+  --bg-primary: #11181F;
+  --bg-secondary: #151D24;
+  --bg-tertiary: #1A2129;
+  --bg-elevated: #222A31;
+  --bg-hover: #283038;
+  --bg-active: #313941;
+  --surface-sunken: #0B1219;
+  --surface-base: #151D24;
+  --surface-raised: #1A2129;
+  --surface-elevated: #222A31;
+  --surface-overlay: #262E35;
+  --surface-hover: #283038;
+  --surface-active: #313941;
+  --text-primary: #E5ECF3;
+  --text-secondary: #C5CCD3;
+  --text-tertiary: #B6BCC3;
+  --text-inverse: #11181F;
+  --border: rgb(229 236 243 / 0.10);
+  --border-strong: rgb(229 236 243 / 0.18);
+  --border-subtle: rgb(229 236 243 / 0.08);
+  --border-control: #687A8D;
+  --border-focus: rgba(142, 206, 209, 0.55);
+  --focus-ring: #8ECED1;
+  --accent: #8ECED1;
+  --accent-hover: #7ABFC3;
+  --accent-muted: rgba(142, 206, 209, 0.13);
+  --accent-strong: #B5E1E3;
+  --accent-text: #8ECED1;
+  --accent-solid: #8ECED1;
+  --btn-accent-end: #7ABFC3;
+  --on-accent: #0D1E1F;
+  --success: #89CA96;
+  --warning: #DEB575;
+  --error: #FFA299;
+  --danger: #FFA299;
+  --info: #92C0E8;
+  --shadow-color: rgba(0, 0, 0, 0.5);
+  --shadow: 0 6px 24px rgba(0, 0, 0, 0.42);
+  --shadow-strong: 0 14px 48px rgba(0, 0, 0, 0.58);
+  --glass-tint: 229, 236, 243;
+  --glass-border: rgba(229, 236, 243, 0.11);
+  --glass-highlight: rgba(229, 236, 243, 0.10);
+  --glass-highlight-soft: rgba(229, 236, 243, 0.04);
+  --glass-shadow: 0 20px 50px rgba(0, 0, 0, 0.5);
+  --glass-ring: inset 0 0 0 1px rgba(229, 236, 243, 0.04);
+  --glass-blur: 24px;
+  --glass-saturate: 120%;
+  --card-bg: transparent;
+  --card-hover: rgba(229, 236, 243, 0.05);
+  --card-border: transparent;
+  --art-placeholder: #20282F;
+  --scrim: rgba(8, 12, 16, 0.88);
+  --ambient-1: rgba(142, 206, 209, 0.05);
+  --ambient-2: rgba(128, 174, 213, 0.04);
+  --ambient-3: rgba(229, 236, 243, 0.02);
+  --ambient-base: radial-gradient(120% 90% at 30% 0% in oklch, #161E26 0%, #11181F 62%);
+  --overlay: rgba(5, 8, 12, 0.72);
+}
+
+/* ============================================================
+   Ember (midnight, OLED) — true black on purpose (pixels off on OLED),
+   so surfaces step up harder (~1.2:1). Warm white text, soft amber accent.
    ============================================================ */
 [data-theme="midnight"] {
-  --bg-primary: #0B0908;
-  --bg-secondary: #110E0C;
-  --bg-tertiary: #171310;
-  --bg-elevated: #201B17;
-  --bg-hover: #28221D;
-  --bg-active: #312A24;
-  --surface-sunken: #070605;
-  --surface-base: #110E0C;
-  --surface-raised: #171310;
-  --surface-elevated: #201B17;
-  --surface-overlay: #28221D;
-  --surface-hover: #28221D;
-  --surface-active: #312A24;
-  --text-primary: #F3EBDF;
-  --text-secondary: #D1C4B4;
-  --text-tertiary: #AA9C8B;
-  --text-inverse: #0B0908;
-  --border: rgb(243 235 223 / 0.09);
-  --border-strong: rgb(243 235 223 / 0.16);
-  --border-subtle: rgb(243 235 223 / 0.07);
-  --border-control: #6E6253;
-  --border-focus: rgba(239, 199, 122, 0.55);
-  --focus-ring: #EFC77A;
-  --accent: #EFC77A;
-  --accent-hover: #E2B35C;
-  --accent-muted: rgba(239, 199, 122, 0.13);
-  --accent-strong: #F6DCA6;
-  --accent-text: #EFC77A;
-  --accent-solid: #EFC77A;
-  --btn-accent-end: #E2B35C;
-  --on-accent: #1A1204;
-  --success: oklch(0.77 0.20 142);
-  --warning: oklch(0.80 0.15 75);
-  --error: oklch(0.77 0.19 30);
-  --danger: oklch(0.77 0.19 30);
-  --info: oklch(0.78 0.12 235);
+  --bg-primary: #000000;
+  --bg-secondary: #0C0B09;
+  --bg-tertiary: #131110;
+  --bg-elevated: #1B1917;
+  --bg-hover: #22201E;
+  --bg-active: #2A2927;
+  --surface-sunken: #000000;
+  --surface-base: #0C0B09;
+  --surface-raised: #131110;
+  --surface-elevated: #1B1917;
+  --surface-overlay: #1F1E1C;
+  --surface-hover: #22201E;
+  --surface-active: #2A2927;
+  --text-primary: #E8E4DF;
+  --text-secondary: #BFBBB7;
+  --text-tertiary: #ADA9A4;
+  --text-inverse: #000000;
+  --border: rgb(232 228 223 / 0.10);
+  --border-strong: rgb(232 228 223 / 0.17);
+  --border-subtle: rgb(232 228 223 / 0.08);
+  --border-control: #6F6B67;
+  --border-focus: rgba(234, 192, 127, 0.55);
+  --focus-ring: #EAC07F;
+  --accent: #EAC07F;
+  --accent-hover: #DBB06B;
+  --accent-muted: rgba(234, 192, 127, 0.13);
+  --accent-strong: #F7D9AD;
+  --accent-text: #EAC07F;
+  --accent-solid: #EAC07F;
+  --btn-accent-end: #DBB06B;
+  --on-accent: #231907;
+  --success: #78B985;
+  --warning: #CCA363;
+  --error: #F18F88;
+  --danger: #F18F88;
+  --info: #82AFD6;
   --shadow-color: rgba(0, 0, 0, 0.7);
   --shadow: 0 6px 24px rgba(0, 0, 0, 0.6);
   --shadow-strong: 0 16px 52px rgba(0, 0, 0, 0.78);
-  --glass-tint: 243, 235, 223;
-  --glass-border: rgba(243, 235, 223, 0.08);
-  --glass-highlight: rgba(255, 244, 225, 0.08);
-  --glass-highlight-soft: rgba(255, 244, 225, 0.03);
+  --glass-tint: 232, 228, 223;
+  --glass-border: rgba(232, 228, 223, 0.09);
+  --glass-highlight: rgba(255, 255, 255, 0.07);
+  --glass-highlight-soft: rgba(255, 255, 255, 0.03);
   --glass-shadow: 0 20px 50px rgba(0, 0, 0, 0.7);
-  --glass-ring: inset 0 0 0 1px rgba(243, 235, 223, 0.03);
+  --glass-ring: inset 0 0 0 1px rgba(232, 228, 223, 0.03);
   --glass-blur: 24px;
-  --glass-saturate: 130%;
+  --glass-saturate: 110%;
   --card-bg: transparent;
-  --card-hover: rgba(243, 235, 223, 0.04);
+  --card-hover: rgba(232, 228, 223, 0.05);
   --card-border: transparent;
-  --art-placeholder: #1E1915;
-  --scrim: rgba(7, 5, 4, 0.9);
-  --ambient-1: rgba(239, 170, 90, 0.08);
-  --ambient-2: rgba(200, 120, 70, 0.04);
-  --ambient-3: rgba(239, 199, 122, 0.04);
-  --ambient-base: radial-gradient(120% 90% at 30% 0% in oklch, #120F0C 0%, #0B0908 60%);
-  --overlay: rgba(4, 3, 2, 0.76);
+  --art-placeholder: #1B1917;
+  --scrim: rgba(0, 0, 0, 0.9);
+  --ambient-1: rgba(234, 192, 127, 0.03);
+  --ambient-2: rgba(0, 0, 0, 0);
+  --ambient-3: rgba(232, 228, 223, 0.015);
+  --ambient-base: #000000;
+  --overlay: rgba(0, 0, 0, 0.78);
 }
 
 /* ============================================================
-   Daylight (white) — crisp gallery white, warm-grey ink, deep ink-blue accent
+   Daylight (white) — plain white with cool-grey ink and a classic link blue
+   (the light partner of Graphite).
    ============================================================ */
 [data-theme="white"] {
   --bg-primary: #FFFFFF;
-  --bg-secondary: #FAF8F5;
-  --bg-tertiary: #F2EFEA;
+  --bg-secondary: #F8F9FA;
+  --bg-tertiary: #F1F3F5;
   --bg-elevated: #FFFFFF;
-  --bg-hover: #F2EFEA;
-  --bg-active: #E8E4DD;
-  --surface-sunken: #F2EFEA;
+  --bg-hover: #F1F3F5;
+  --bg-active: #E6E8EA;
+  --surface-sunken: #F1F3F5;
   --surface-base: #FFFFFF;
   --surface-raised: #FFFFFF;
   --surface-elevated: #FFFFFF;
   --surface-overlay: #FFFFFF;
-  --surface-hover: #F5F2EE;
-  --surface-active: #E8E4DD;
-  --text-primary: #1A1714;
-  --text-secondary: #3A3530;
-  --text-tertiary: #544D46;
+  --surface-hover: #F4F5F7;
+  --surface-active: #E6E8EA;
+  --text-primary: #23262A;
+  --text-secondary: #393C40;
+  --text-tertiary: #4E5156;
   --text-inverse: #FFFFFF;
-  --border: rgb(26 23 20 / 0.09);
-  --border-strong: rgb(26 23 20 / 0.16);
-  --border-subtle: rgb(26 23 20 / 0.07);
-  --border-control: #8A847D;
-  --border-focus: rgba(31, 74, 168, 0.5);
-  --focus-ring: #1F4AA8;
-  --accent: #2A5BC8;
-  --accent-hover: #1F4AA8;
-  --accent-muted: rgba(42, 91, 200, 0.10);
-  --accent-strong: #183B88;
-  --accent-text: #1F4AA8;
-  --accent-solid: #1F4AA8;
-  --btn-accent-end: #183B88;
+  --border: rgb(35 38 42 / 0.10);
+  --border-strong: rgb(35 38 42 / 0.17);
+  --border-subtle: rgb(35 38 42 / 0.07);
+  --border-control: #878B90;
+  --border-focus: rgba(23, 80, 152, 0.5);
+  --focus-ring: #175098;
+  --accent: #175098;
+  --accent-hover: #094384;
+  --accent-muted: rgba(23, 80, 152, 0.09);
+  --accent-strong: #094384;
+  --accent-text: #175098;
+  --accent-solid: #175098;
+  --btn-accent-end: #094384;
   --on-accent: #FFFFFF;
-  --success: oklch(0.42 0.12 145);
-  --warning: oklch(0.44 0.12 60);
-  --error: oklch(0.45 0.18 30);
-  --danger: oklch(0.45 0.18 30);
-  --info: oklch(0.42 0.13 245);
-  --shadow-color: rgba(30, 25, 20, 0.08);
-  --shadow: 0 8px 30px rgba(30, 25, 20, 0.07);
-  --shadow-strong: 0 18px 50px rgba(30, 25, 20, 0.12);
+  --success: #1A5C2E;
+  --warning: #6E4A00;
+  --error: #8B3431;
+  --danger: #8B3431;
+  --info: #285476;
+  --shadow-color: rgba(20, 24, 30, 0.08);
+  --shadow: 0 8px 30px rgba(20, 24, 30, 0.07);
+  --shadow-strong: 0 18px 50px rgba(20, 24, 30, 0.12);
   --glass-tint: 255, 255, 255;
-  --glass-border: rgba(26, 23, 20, 0.08);
+  --glass-border: rgba(35, 38, 42, 0.08);
   --glass-highlight: rgba(255, 255, 255, 0.9);
   --glass-highlight-soft: rgba(255, 255, 255, 0.5);
-  --glass-shadow: 0 20px 50px rgba(30, 25, 20, 0.10);
+  --glass-shadow: 0 20px 50px rgba(20, 24, 30, 0.10);
   --glass-ring: inset 0 0 0 1px rgba(255, 255, 255, 0.7);
   --glass-blur: 26px;
-  --glass-saturate: 140%;
+  --glass-saturate: 120%;
   --card-bg: transparent;
-  --card-hover: rgba(26, 23, 20, 0.03);
+  --card-hover: rgba(35, 38, 42, 0.03);
   --card-border: transparent;
-  --art-placeholder: #ECE8E2;
-  --scrim: rgba(20, 17, 14, 0.86);
-  --ambient-1: rgba(240, 190, 150, 0.12);
-  --ambient-2: rgba(160, 180, 220, 0.08);
-  --ambient-3: rgba(220, 200, 170, 0.06);
-  --ambient-base: radial-gradient(120% 90% at 30% 0% in oklch, #FFFFFF 0%, #FBF9F6 70%);
-  --overlay: rgba(40, 34, 28, 0.36);
+  --art-placeholder: #ECEEF0;
+  --scrim: rgba(18, 20, 24, 0.86);
+  --ambient-1: rgba(23, 80, 152, 0.035);
+  --ambient-2: rgba(35, 38, 42, 0.02);
+  --ambient-3: rgba(23, 80, 152, 0.02);
+  --ambient-base: radial-gradient(120% 90% at 30% 0% in oklch, #FFFFFF 0%, #FAFBFC 70%);
+  --overlay: rgba(25, 28, 34, 0.34);
 }

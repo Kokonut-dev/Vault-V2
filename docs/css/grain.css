@@ -1,6 +1,6 @@
 /* Film Grain / Noise Texture
-   "Hearth" (UI_REVAMP_PLAN.md C-4): grain is a faint, STATIC paper/film
-   tooth — tactile warmth, not motion. The old perpetual shake is kept only
+   (UI_REVAMP_PLAN.md C-4): grain is a faint, STATIC film tooth — texture,
+   not motion. The old perpetual shake is kept only
    as an opt-in (.grain-overlay.is-animated) and never runs under reduced
    motion. */
 

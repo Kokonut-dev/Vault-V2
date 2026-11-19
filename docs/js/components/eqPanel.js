@@ -307,7 +307,7 @@ function drawEQCurve(gains) {
 
   // One style lookup per draw (it used to be one per point).
   const styles = getComputedStyle(canvas);
-  const accent = styles.getPropertyValue('--accent').trim() || '#F2A877';
+  const accent = styles.getPropertyValue('--accent').trim() || '#93BFF0';
   const grid = styles.getPropertyValue('--border').trim() || 'rgba(128,128,128,0.2)';
   const surface = styles.getPropertyValue('--bg-elevated').trim() || '#fff';
   const on = Boolean(store.get('eqEnabled'));

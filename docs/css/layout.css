@@ -62,7 +62,6 @@
   justify-content: center;
   flex-shrink: 0;
   cursor: pointer;
-  filter: drop-shadow(0 4px 10px var(--accent-muted));
 }
 
 /* Brand mark (docs/js/utils/brand.js): tile = accent fill, arch = the
@@ -170,7 +169,7 @@
 
 .sidebar.collapsed .nav-item.active,
 .app.sidebar-collapsed .nav-item.active {
-  box-shadow: 0 0 16px var(--accent-muted), inset 0 1px 0 rgba(255, 255, 255, 0.12);
+  box-shadow: inset 0 0 0 1px var(--accent-muted);
 }
 
 .sidebar.collapsed .nav-item.active::before,

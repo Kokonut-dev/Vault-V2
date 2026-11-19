@@ -5,16 +5,17 @@ import { store } from './store.js';
 
 /**
  * Display metadata for the six themes. IDs are stable (they are persisted in
- * localStorage as `vault_theme`); names/swatches belong to the "Hearth" system
- * (UI_REVAMP_PLAN.md C-1). Swatches = [background, raised surface, accent].
+ * localStorage as `vault_theme`), so the 3.0 palette refresh renamed only the
+ * display names. Swatches = [background, raised surface, accent] and must
+ * match docs/css/variables.css.
  */
 export const THEME_META = [
-  { id: 'dark', name: 'Hearth', mode: 'Dark', colors: ['#15110E', '#2C2520', '#F2A877'] },
-  { id: 'light', name: 'Linen', mode: 'Light', colors: ['#F5EFE6', '#FFFBF5', '#8F3815'] },
-  { id: 'warm', name: 'Parchment', mode: 'Light', colors: ['#F3E6CF', '#FCF5E8', '#7E340B'] },
-  { id: 'cold', name: 'Dusk', mode: 'Dark', colors: ['#10151C', '#222C39', '#8FD3C9'] },
-  { id: 'midnight', name: 'Ember', mode: 'OLED', colors: ['#0B0908', '#201B17', '#EFC77A'] },
-  { id: 'white', name: 'Daylight', mode: 'Light', colors: ['#FFFFFF', '#F2EFEA', '#1F4AA8'] },
+  { id: 'dark', name: 'Graphite', mode: 'Dark', colors: ['#161719', '#26282A', '#93BFF0'] },
+  { id: 'light', name: 'Stone', mode: 'Light', colors: ['#F4F2EF', '#FDFBF9', '#005360'] },
+  { id: 'warm', name: 'Sepia', mode: 'Light', colors: ['#F6EBDA', '#FCF3E4', '#294875'] },
+  { id: 'cold', name: 'Dusk', mode: 'Dark', colors: ['#11181F', '#222A31', '#8ECED1'] },
+  { id: 'midnight', name: 'Ember', mode: 'OLED', colors: ['#000000', '#1B1917', '#EAC07F'] },
+  { id: 'white', name: 'Daylight', mode: 'Light', colors: ['#FFFFFF', '#F1F3F5', '#175098'] },
 ];
 
 /** Markup for one theme swatch strip (decorative — the button carries the name). */

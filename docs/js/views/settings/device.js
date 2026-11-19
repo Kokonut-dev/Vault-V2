@@ -33,7 +33,7 @@ export function appearanceSection() {
   theme.append(el(`
     <div class="setting-row is-stacked" data-keywords="theme colour color dark light palette hearth linen parchment dusk ember daylight">
       <div class="setting-text"><span class="setting-label" id="theme-picker-label">Colour theme</span>
-        <p class="setting-help">Six warm palettes; each meets AAA contrast for text.</p></div>
+        <p class="setting-help">Six palettes, three dark and three light. All text meets WCAG AAA contrast.</p></div>
       <div class="setting-control">
         <div class="theme-picker" role="group" aria-labelledby="theme-picker-label">
           ${THEME_META.map(meta => `
