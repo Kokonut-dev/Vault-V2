@@ -1050,6 +1050,26 @@
 .share-points { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
 .share-points li { display: flex; gap: 8px; align-items: flex-start; font-size: 13px; color: var(--text-secondary); line-height: 1.45; }
 .share-points .icon { flex: none; margin-top: 2px; color: var(--accent-text); }
+
+/* "How this is protected" — security details next to anything that shares access */
+.security-notes { margin-top: 14px; border: 1px solid var(--border-subtle, rgba(var(--glass-tint), 0.12)); border-radius: var(--radius-md, 10px); background: rgba(var(--glass-tint), 0.04); font-size: 13px; color: var(--text-secondary); }
+.security-notes > summary { display: flex; align-items: center; gap: 8px; padding: 10px 12px; cursor: pointer; font-weight: 600; color: var(--text-primary); list-style: none; }
+.security-notes > summary::-webkit-details-marker { display: none; }
+.security-notes > summary::after { content: '+'; margin-left: auto; color: var(--text-secondary); font-weight: 400; }
+.security-notes[open] > summary::after { content: '\2212'; }
+.security-notes > summary .icon { color: var(--accent-text); flex: none; }
+.security-notes > summary:focus-visible { outline: 2px solid var(--accent-text); outline-offset: 2px; border-radius: inherit; }
+.security-points { list-style: none; margin: 0; padding: 0 12px 12px; display: grid; gap: 8px; }
+.security-points li { display: flex; gap: 8px; align-items: flex-start; line-height: 1.45; }
+.security-points li > .icon { flex: none; margin-top: 2px; color: var(--accent-text); }
+.security-points li.is-warn > .icon { color: var(--warning); }
+.security-points li.is-warn { color: var(--text-primary); }
+.security-points a { color: var(--accent-text); }
+.security-points code { font-size: 12px; }
+.share-autostop { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 10px; font-size: 13px; color: var(--text-secondary); }
+.share-autostop .form-input { width: auto; min-width: 9rem; padding-block: 4px; }
+.pair-requester { margin: 8px 0 0; font-size: 13px; color: var(--text-secondary); }
+.pair-requester strong { color: var(--text-primary); }
 .status-dot.is-on { background: var(--success); box-shadow: 0 0 0 4px color-mix(in srgb, var(--success) 20%, transparent); }
 @media (max-width: 520px) {
   .share-qr-wrap { grid-template-columns: 1fr; justify-items: center; }

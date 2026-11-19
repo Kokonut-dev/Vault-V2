@@ -366,10 +366,55 @@ router.post('/totp/recovery-codes', authMiddleware, (req, res) => {
 // A signed-in device creating a code pre-approves it for its own account, so
 // the QR it shows signs the other device straight in (scan → done). Without
 // a token this stays the TV flow: the TV shows the code, a phone approves it.
+// Codes made WITHOUT signing in (a TV asking to be approved) are capped:
+// otherwise anyone could fill the 6-digit space with waiting codes, so that
+// a signed-in person approving a mistyped code would let a stranger in.
+const PENDING_PER_IP = 3;
+const PENDING_TOTAL = 20;
+const PAIR_TTL_MS = 5 * 60 * 1000;
+
+function prunePairing() {
+  const now = Date.now();
+  for (const [key, value] of pairingCodes) {
+    if (value.expiresAt < now) pairingCodes.delete(key);
+  }
+}
+
+/** 'this computer' | 'your network' | 'internet' for an IP address. */
+function networkOf(ip) {
+  const a = String(ip || '').replace(/^::ffff:/, '');
+  if (!a) return 'unknown';
+  if (a === '::1' || a.startsWith('127.')) return 'this computer';
+  if (/^(10\.|192\.168\.|169\.254\.)/.test(a) || /^172\.(1[6-9]|2\d|3[01])\./.test(a) || /^f[cd]/i.test(a) || /^fe80:/i.test(a)) return 'your network';
+  return 'internet';
+}
+
+/** Only an http(s) address of this server goes into the QR — never javascript: etc. */
+function safeBaseUrl(raw) {
+  if (typeof raw !== 'string' || !raw.trim() || raw.length > 300) return '';
+  try {
+    const url = new URL(raw.trim());
+    if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password) return '';
+    return `${url.origin}${url.pathname}`.replace(/\/+$/, '');
+  } catch {
+    return '';
+  }
+}
+
 router.post('/pair', (req, res, next) => (req.headers.authorization ? authMiddleware(req, res, next) : next()), (req, res) => {
-  const code = String(crypto.randomInt(100000, 1000000));
+  prunePairing();
+  if (!req.user) {
+    const waiting = [...pairingCodes.values()].filter(v => !v.approved && !v.used);
+    const fromIp = waiting.filter(v => v.ip === req.ip).length;
+    if (fromIp >= PENDING_PER_IP || waiting.length >= PENDING_TOTAL) {
+      res.setHeader('Retry-After', '60');
+      return res.status(429).json({ error: 'Too many devices are waiting to be approved — try again in a few minutes', code: 'RATE_LIMITED' });
+    }
+  }
+  let code;
+  do { code = String(crypto.randomInt(100000, 1000000)); } while (pairingCodes.has(code));
   const token = crypto.randomBytes(18).toString('base64url');
-  const entry = { token, expiresAt: Date.now() + 5 * 60 * 1000, used: false, approved: false };
+  const entry = { token, expiresAt: Date.now() + PAIR_TTL_MS, used: false, approved: false, ip: req.ip };
   if (req.user) {
     // The session is created when the code is redeemed (by the new device's
     // request), so unused QR codes never leave stray sessions behind.
@@ -382,17 +427,12 @@ router.post('/pair', (req, res, next) => (req.headers.authorization ? authMiddle
   }
   pairingCodes.set(code, entry);
 
-  // Clean up expired codes
-  for (const [key, value] of pairingCodes) {
-    if (value.expiresAt < Date.now()) pairingCodes.delete(key);
-  }
-
-  const base = (req.body?.baseUrl || '').replace(/\/$/, '');
+  const base = safeBaseUrl(req.body?.baseUrl);
   res.json({
     code,
     token,
     approved: entry.approved,
-    expiresIn: 300,
+    expiresIn: PAIR_TTL_MS / 1000,
     url: base ? `${base}/?pair=${token}` : null,
     loginUrl: base ? `${base}/login` : null,
   });
@@ -466,7 +506,12 @@ router.get('/pair/:code/state', authMiddleware, (req, res) => {
   if (!entry) return res.json({ status: 'expired' });
   if (entry.used) return res.json({ status: 'used' });
   if (entry.expiresAt < Date.now()) return res.json({ status: 'expired' });
-  res.json({ status: entry.approved ? 'waiting' : 'pending', expiresIn: Math.round((entry.expiresAt - Date.now()) / 1000) });
+  res.json({
+    status: entry.approved ? 'waiting' : 'pending',
+    expiresIn: Math.round((entry.expiresAt - Date.now()) / 1000),
+    // Shown before approving, so a code someone else sent you stands out.
+    requester: entry.approved ? null : { ip: entry.ip || null, network: networkOf(entry.ip) },
+  });
 });
 
 // Approved from a phone that is already signed in.
@@ -491,6 +536,7 @@ router.post('/pair/approve', authMiddleware, (req, res) => {
   });
   entry.approved = true;
   entry.sessionId = session.id;
+  logger.info(`[Auth] Pairing code approved by ${req.user.username} for a device at ${entry.ip || 'an unknown address'}`);
   res.json({ message: 'Device paired', sessionId: session.id });
 });
 

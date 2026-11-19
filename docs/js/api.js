@@ -71,7 +71,23 @@ class ApiClient {
       const token = this.getToken();
       if (token) headers['Authorization'] = `Bearer ${token}`;
     }
+    const setupCode = this.getSetupCode();
+    if (setupCode) headers['X-Vault-Setup-Code'] = setupCode;
     return headers;
+  }
+
+  // First-run "setup code": a brand-new server only lets another device set
+  // it up (or import a package) with the code printed in the server window.
+  // Kept for this tab only and dropped once setup is done.
+  getSetupCode() {
+    try { return sessionStorage.getItem('vault_setup_code') || ''; } catch { return ''; }
+  }
+
+  setSetupCode(code) {
+    try {
+      if (code) sessionStorage.setItem('vault_setup_code', String(code).trim());
+      else sessionStorage.removeItem('vault_setup_code');
+    } catch { /* storage blocked */ }
   }
 
   _getCacheKey(path) {
@@ -759,13 +775,24 @@ class ApiClient {
   }
 
   // Health
+  // Signed-in devices also get uptime and library counts; strangers only
+  // learn that a Vault answers.
   health() {
-    return this.request('/api/health', { auth: false });
+    return this.request('/api/health', { auth: Boolean(this.getToken()) });
   }
 
   // Setup / Onboarding
   getSetupStatus() {
     return this.request('/api/setup/status', { auth: false });
+  }
+
+  checkSetupCode(code) {
+    return this.request('/api/setup/check-code', {
+      method: 'POST',
+      auth: false,
+      body: { setupCode: code },
+      retry: false,
+    });
   }
 
   getSetupDefaults() {
@@ -1549,6 +1576,8 @@ class ApiClient {
       xhr.open('POST', `${this.baseUrl}/api/transfer/import/upload?mediaDir=${encodeURIComponent(mediaDir || '')}`);
       const token = this.getToken();
       if (token) xhr.setRequestHeader('Authorization', `Bearer ${token}`);
+      const setupCode = this.getSetupCode();
+      if (setupCode) xhr.setRequestHeader('X-Vault-Setup-Code', setupCode);
       xhr.setRequestHeader('Content-Type', 'application/zip');
       xhr.upload.onprogress = (e) => onProgress?.(e.loaded, e.lengthComputable ? e.total : file.size);
       xhr.onload = () => {

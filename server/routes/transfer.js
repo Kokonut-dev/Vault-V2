@@ -55,6 +55,9 @@ const access = { needsSetup };
 
 function adminOrSetup(req, res, next) {
   if (access.needsSetup()) {
+    // Importing a package onto a brand-new server sets its account, so the
+    // same rule as the setup wizard applies: this computer, or the setup code.
+    if (!require('../services/setupGuard').allow(req, res)) return;
     req.setupMode = true;
     return next();
   }
@@ -186,9 +189,15 @@ function contentDisposition(name) {
 
 router.get('/download/:ticket', async (req, res) => {
   const t = tickets.get(req.params.ticket);
-  if (!t || t.expires < Date.now()) {
-    res.status(410).type('text/plain').send('This download link has expired. Create a new one in Vault: Settings → Move to another server.');
+  if (!t || t.expires < Date.now() || t.used) {
+    res.status(410).type('text/plain').send('This download link has expired or was already used. Create a new one in Vault: Settings → Move to another server.');
     return;
+  }
+  // The package holds your library and settings, so a link works for one
+  // download only (HEAD checks from download managers don't use it up).
+  if (req.method !== 'HEAD') {
+    t.used = true;
+    logger.info(`[Transfer] Download link used from ${req.ip}`);
   }
   let plan;
   try {
@@ -196,6 +205,7 @@ router.get('/download/:ticket', async (req, res) => {
     const { entries } = await transfer.planExport({ includeMedia: t.media });
     plan = zip.layout(entries);
   } catch (err) {
+    t.used = false; // nothing was sent — the link can be tried again
     logger.error(`[Transfer] Couldn't prepare the download: ${err.message}`);
     res.status(500).type('text/plain').send(`Couldn't prepare the download: ${err.message}`);
     return;

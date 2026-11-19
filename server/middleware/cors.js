@@ -30,14 +30,18 @@ function createCorsMiddleware() {
       if (isAllowed || isLocalhost || isGitHubPages) {
         callback(null, true);
       } else {
-        console.warn(`[CORS] Blocked origin: ${origin}`);
-        callback(null, true); // For self-hosted personal use, be permissive but log
+        // Allowed on purpose: Vault signs requests with an Authorization
+        // header (never cookies), so another website can't borrow a visitor's
+        // session — CORS isn't what protects the API. Users point the app at
+        // their own tunnel/custom domains, which a fixed list would break.
+        console.warn(`[CORS] Unlisted origin: ${origin}`);
+        callback(null, true);
         // To be strict, use: callback(new Error('Not allowed by CORS'));
       }
     },
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH', 'HEAD'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Range', 'X-Google-Token', 'X-SyncPlay-Member'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Range', 'X-Google-Token', 'X-SyncPlay-Member', 'X-Vault-Setup-Code'],
     exposedHeaders: ['Content-Range', 'Accept-Ranges', 'Content-Length', 'Content-Type', 'Content-Disposition', 'X-Vault-Build'],
     maxAge: 86400,
   };

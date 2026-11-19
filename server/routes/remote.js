@@ -6,7 +6,7 @@
  *                      first if needed); returns at once, progress over SSE
  *                      `remote:changed` and GET /
  *   DELETE /tunnel     stop it
- *   PUT    /settings   { tunnelOnStartup }
+ *   PUT    /settings   { tunnelOnStartup?, autoStopHours? (0|1|4|8|24, 0 = never) }
  */
 const express = require('express');
 const router = express.Router();
@@ -35,8 +35,21 @@ router.put('/settings', (req, res) => {
   const config = getConfig();
   config.remoteAccess = { ...(config.remoteAccess || {}) };
   if (typeof req.body?.tunnelOnStartup === 'boolean') config.remoteAccess.tunnelOnStartup = req.body.tunnelOnStartup;
+  if (req.body?.autoStopHours !== undefined) {
+    const hours = Number(req.body.autoStopHours);
+    if (!remoteAccess.AUTO_STOP_CHOICES.includes(hours)) {
+      return res.status(400).json({ error: `autoStopHours must be one of ${remoteAccess.AUTO_STOP_CHOICES.join(', ')}`, code: 'INVALID' });
+    }
+    config.remoteAccess.autoStopHours = hours;
+  }
   saveConfig(config);
-  res.json({ tunnelOnStartup: Boolean(config.remoteAccess.tunnelOnStartup) });
+  // A running tunnel follows the new choice (counted from when it started).
+  remoteAccess.scheduleAutoStop();
+  res.json({
+    tunnelOnStartup: Boolean(config.remoteAccess.tunnelOnStartup),
+    autoStopHours: remoteAccess.autoStopHours(config),
+    tunnel: remoteAccess.publicState(),
+  });
 });
 
 module.exports = router;

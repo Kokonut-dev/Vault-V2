@@ -405,7 +405,7 @@ async function loadSessions(host, s) {
     const meta = [session.ip, session.lastSeen ? `active ${formatRelativeTime(session.lastSeen)}` : session.createdAt ? `signed in ${formatRelativeTime(session.createdAt)}` : ''].filter(Boolean).join(' · ');
     return `<li class="session-item${current ? ' is-current' : ''}">
       <span class="session-icon" aria-hidden="true">${icon(current ? 'monitor' : 'globe', { size: 18 })}</span>
-      <div class="session-text"><p class="session-name">${escapeHtml(name)}${current ? ' <span class="chip">This device</span>' : ''}</p>
+      <div class="session-text"><p class="session-name">${escapeHtml(name)}${current ? ' <span class="chip">This device</span>' : ''}${session.remote ? ` <span class="chip" title="Signed in through remote access (the Cloudflare address)">${icon('globe', { size: 12 })} Remote access</span>` : ''}</p>
         ${meta ? `<p class="setting-help">${escapeHtml(meta)}</p>` : ''}</div>
       ${current ? '' : `<button type="button" class="btn btn-ghost btn-sm" data-revoke="${escapeHtml(session.id)}" aria-label="Sign out ${escapeHtml(name)}">Sign out</button>`}
     </li>`;

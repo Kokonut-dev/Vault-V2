@@ -18,6 +18,28 @@ const { getConfig, saveConfig, CONFIG_PATH, DEFAULT_CONFIG } = require('../confi
 const { isValidGridPattern, isValidUsername, isValidPassword, sanitizeString } = require('../utils/validators');
 const logger = require('../utils/logger');
 const authService = require('../services/authService');
+const setupGuard = require('../services/setupGuard');
+const { authMiddleware, optionalAuthMiddleware } = require('../middleware/auth');
+const { requireAdmin, isAdminProfile } = require('../middleware/requireAdmin');
+
+/** Run Express middleware inline and report whether it called next(). */
+function passes(middleware, req, res) {
+  return new Promise((resolve) => {
+    let done = false;
+    const finish = (ok) => { if (!done) { done = true; resolve(ok); } };
+    res.once('finish', () => finish(false));
+    try {
+      middleware(req, res, () => finish(true));
+    } catch {
+      finish(false);
+    }
+  });
+}
+
+/** Signed in as an admin profile (full token, live session)? Sends 401/403 otherwise. */
+async function asAdmin(req, res) {
+  return (await passes(authMiddleware, req, res)) && passes(requireAdmin, req, res);
+}
 
 // Helper: does config file exist on disk?
 function hasConfigFile() {
@@ -47,20 +69,21 @@ function isUsingDefaults() {
  * GET /api/setup/status
  * Public — tells frontend whether onboarding wizard should be shown
  */
-router.get('/status', (req, res) => {
+router.get('/status', optionalAuthMiddleware, (req, res) => {
   try {
     const hasConfig = hasConfigFile();
     const needsSetup = !hasConfig || isUsingDefaults();
 
+    // Account details only for a signed-in admin: the username is half of
+    // the sign-in, and media paths reveal the server's folders.
     let currentConfig = null;
-    if (hasConfig) {
+    if (hasConfig && !needsSetup && req.user && isAdminProfile(req.profileId)) {
       try {
         const cfg = getConfig();
         currentConfig = {
           username: cfg.auth.username,
           mediaPaths: cfg.media.paths,
           port: cfg.server.port,
-          hasCustomGrid: JSON.stringify(cfg.auth.gridPattern) !== JSON.stringify([0, 1, 4, 5, 8, 9, 12, 13]),
         };
       } catch {}
     }
@@ -68,7 +91,10 @@ router.get('/status', (req, res) => {
     res.json({
       needsSetup,
       hasConfig,
-      version: '2.0.0',
+      // A device other than the server itself must type the code shown in
+      // the server window before it can set Vault up.
+      setupCodeRequired: needsSetup ? setupGuard.required(req) : false,
+      version: require('../package.json').version || '3.0.0',
       timestamp: new Date().toISOString(),
       current: currentConfig,
       message: needsSetup
@@ -79,6 +105,18 @@ router.get('/status', (req, res) => {
     logger.error('Setup status error:', err.message);
     res.status(500).json({ error: 'Failed to check setup status', code: 'SETUP_STATUS_ERROR' });
   }
+});
+
+/**
+ * POST /api/setup/check-code
+ * Lets the wizard confirm the setup code right away (instead of failing at
+ * the last step). Wrong codes count towards the setup lockout.
+ */
+router.post('/check-code', (req, res) => {
+  const needsSetup = !hasConfigFile() || isUsingDefaults();
+  if (!needsSetup) return res.status(409).json({ error: 'Vault is already set up — sign in instead.', code: 'SETUP_ALREADY_DONE' });
+  if (!setupGuard.allow(req, res)) return;
+  res.json({ ok: true, required: setupGuard.required(req) });
 });
 
 /**
@@ -112,6 +150,10 @@ router.get('/defaults', (req, res) => {
  * Body: { apiUrl?: string, mediaPaths?: object }
  */
 router.post('/test', async (req, res) => {
+  // Reports whether folders exist on the server, so: only while setting up
+  // (with the setup code from other devices) or for a signed-in admin.
+  const needsSetup = !hasConfigFile() || isUsingDefaults();
+  if (needsSetup ? !setupGuard.allow(req, res) : !(await asAdmin(req, res))) return;
   try {
     const { mediaPaths } = req.body || {};
     const results = {
@@ -194,24 +236,12 @@ router.post('/complete', async (req, res) => {
     const hasConfig = hasConfigFile();
     const needsSetup = !hasConfig || isUsingDefaults();
 
-    // If setup already done, require auth token
-    if (!needsSetup) {
-      const authHeader = req.headers.authorization;
-      let token = null;
-      if (authHeader && authHeader.startsWith('Bearer ')) {
-        token = authHeader.substring(7);
-      }
-      if (!token) {
-        return res.status(403).json({
-          error: 'Setup already completed. Authentication required to re-configure.',
-          code: 'SETUP_ALREADY_DONE',
-          needsSetup: false,
-        });
-      }
-      const decoded = authService.verifyToken(token);
-      if (!decoded || decoded.step === 'grid') {
-        return res.status(401).json({ error: 'Invalid token', code: 'INVALID_TOKEN' });
-      }
+    // A brand-new server: only this computer, or a device that knows the
+    // setup code. Already set up: only a signed-in admin may re-configure.
+    if (needsSetup) {
+      if (!setupGuard.allow(req, res)) return;
+    } else if (!(await asAdmin(req, res))) {
+      return;
     }
 
     const {
@@ -396,6 +426,8 @@ router.post('/complete', async (req, res) => {
 
     // Reset bruteforce attempts for this IP on success
     authService.resetAttempts(ip);
+    // The setup code is spent: from now on only the account can change things.
+    setupGuard.clear();
 
     // Generate access token for immediate login
     // A real device session, like any other sign-in (tokens without one are
@@ -433,14 +465,9 @@ router.post('/complete', async (req, res) => {
  * POST /api/setup/reset (dev only, requires auth)
  * Allows resetting setup for testing
  */
-router.post('/reset', (req, res) => {
-  const authHeader = req.headers.authorization;
-  let token = null;
-  if (authHeader && authHeader.startsWith('Bearer ')) token = authHeader.substring(7);
-  if (!token) return res.status(401).json({ error: 'Auth required' });
-
-  const decoded = authService.verifyToken(token);
-  if (!decoded || decoded.step === 'grid') return res.status(401).json({ error: 'Invalid token' });
+router.post('/reset', async (req, res) => {
+  if (!(await asAdmin(req, res))) return;
+  const decoded = req.user;
 
   // Only allow if explicitly enabled via env
   if (process.env.ALLOW_SETUP_RESET !== 'true') {

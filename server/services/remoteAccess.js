@@ -284,6 +284,42 @@ async function installCloudflared({ onProgress, platform = process.platform, arc
 // Tunnel lifecycle
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// Auto-off: a public address that nobody remembers to close is the biggest
+// risk remote access adds, so the tunnel switches itself off after a while.
+// ---------------------------------------------------------------------------
+const AUTO_STOP_CHOICES = [0, 1, 4, 8, 24]; // hours; 0 = keep it on
+const DEFAULT_AUTO_STOP_HOURS = 8;
+let autoStopTimer = null;
+
+/** Hours until the tunnel turns itself off (0 = never). */
+function autoStopHours(config = getConfig()) {
+  const saved = config.remoteAccess?.autoStopHours;
+  if (AUTO_STOP_CHOICES.includes(saved)) return saved;
+  // Not chosen yet: people who asked for "on whenever the server runs" keep
+  // that; everyone else gets the safer default.
+  return config.remoteAccess?.tunnelOnStartup ? 0 : DEFAULT_AUTO_STOP_HOURS;
+}
+
+function stopsAt() {
+  const hours = autoStopHours();
+  if (!hours || state.status !== 'on' || !state.startedAt) return null;
+  return new Date(Date.parse(state.startedAt) + hours * 3600 * 1000).toISOString();
+}
+
+function scheduleAutoStop() {
+  clearTimeout(autoStopTimer);
+  autoStopTimer = null;
+  const at = stopsAt();
+  if (!at) return;
+  const delay = Math.max(0, Date.parse(at) - Date.now());
+  autoStopTimer = setTimeout(() => {
+    logger.info(`[Remote] Turning remote access off after ${autoStopHours()} hour(s), as set`);
+    stopTunnel();
+  }, Math.min(delay, 2 ** 31 - 1));
+  autoStopTimer.unref?.();
+}
+
 function publicState() {
   return {
     status: state.status,
@@ -291,6 +327,25 @@ function publicState() {
     error: state.error,
     startedAt: state.startedAt,
     install: state.install,
+    stopsAt: stopsAt(),
+  };
+}
+
+/** What protects the server while it is reachable — shown next to the address. */
+function securitySummary() {
+  const config = getConfig();
+  const authService = require('./authService');
+  const sessions = require('./sessions');
+  const all = sessions.list();
+  return {
+    totpEnabled: authService.isTotpEnabled(),
+    // Password + grid is always required; TOTP replaces the grid when on.
+    secondFactor: authService.isTotpEnabled() ? 'authenticator' : 'grid',
+    httpsServer: Boolean(config.server?.https?.enabled),
+    lockout: { maxAttempts: config.auth?.maxAttempts || 5, minutes: config.auth?.lockoutDurationMinutes || 15 },
+    signedInDevices: all.length,
+    remoteDevices: all.filter(x => x.remote).length,
+    subsonicEnabled: Boolean(config.auth?.subsonic?.enabled),
   };
 }
 
@@ -305,7 +360,10 @@ async function status() {
     tunnel: publicState(),
     cloudflared: binary ? { installed: true, version: binary.version, bundled: binary.path.startsWith(BIN_DIR) } : { installed: false, installable: Boolean(assetName()) },
     tunnelOnStartup: Boolean(getConfig().remoteAccess?.tunnelOnStartup),
+    autoStopHours: autoStopHours(),
+    autoStopChoices: AUTO_STOP_CHOICES,
     lan: lanInfo(),
+    security: securitySummary(),
   };
 }
 
@@ -368,8 +426,11 @@ async function startTunnel({ install = true, timeoutMs = 60000 } = {}) {
         // cloudflared prints the URL before the edge connection is ready;
         // that's still the moment a person can copy it.
         if (m && !state.url) {
-          setState({ status: 'on', url: m[0], startedAt: new Date().toISOString() });
-          logger.info(`[Remote] Tunnel up: ${m[0]}`);
+          state.status = 'on';
+          state.startedAt = new Date().toISOString();
+          scheduleAutoStop();
+          setState({ url: m[0] });
+          logger.info(`[Remote] Tunnel up: ${m[0]}${autoStopHours() ? ` — turns off by itself after ${autoStopHours()} hour(s)` : ''}`);
           settle(resolve, publicState());
         }
       }
@@ -382,7 +443,7 @@ async function startTunnel({ install = true, timeoutMs = 60000 } = {}) {
       settle(reject, err);
     });
     proc.on('exit', (code) => {
-      if (child === proc) child = null;
+      if (child === proc) { child = null; clearTimeout(autoStopTimer); autoStopTimer = null; }
       if (stopping) {
         setState({ status: 'off', url: null, startedAt: null, error: null });
       } else {
@@ -396,6 +457,8 @@ async function startTunnel({ install = true, timeoutMs = 60000 } = {}) {
 }
 
 function stopTunnel() {
+  clearTimeout(autoStopTimer);
+  autoStopTimer = null;
   if (!child) {
     setState({ status: 'off', url: null, error: null, startedAt: null });
     return publicState();
@@ -428,5 +491,9 @@ module.exports = {
   stopTunnel,
   autoStart,
   publicState,
-  _resetForTests() { cachedBinary = undefined; if (child) { stopping = true; try { child.kill('SIGKILL'); } catch { /* gone */ } } child = null; Object.assign(state, { status: 'off', url: null, error: null, startedAt: null, install: null }); },
+  securitySummary,
+  autoStopHours,
+  scheduleAutoStop,
+  AUTO_STOP_CHOICES,
+  _resetForTests() { clearTimeout(autoStopTimer); autoStopTimer = null; cachedBinary = undefined; if (child) { stopping = true; try { child.kill('SIGKILL'); } catch { /* gone */ } } child = null; Object.assign(state, { status: 'off', url: null, error: null, startedAt: null, install: null }); },
 };

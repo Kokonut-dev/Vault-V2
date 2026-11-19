@@ -6,6 +6,9 @@
  *  Anywhere    a Cloudflare quick tunnel the server runs itself, installing
  *              cloudflared on first use; shows the https:// address + QR.
  *
+ * Both tabs explain what protects the server ("How this is protected"), and
+ * remote access turns itself off after a chosen time.
+ *
  * Server side: /api/remote (status, tunnel) and /api/server/network.
  */
 import { api } from '../api.js';
@@ -16,11 +19,22 @@ import { icon } from '../utils/icons.js';
 import { escapeHtml } from '../utils/format.js';
 import { copyText } from '../utils/clipboard.js';
 import { waitForServerDown, waitForServer } from '../utils/serverLauncher.js';
+import { securityNotes, hoursLabel } from './securityNotes.js';
 
 const SIGN_IN_PREF = 'vault_share_signin';
 
 function formatMb(bytes) {
   return `${Math.round((bytes || 0) / 1048576)} MB`;
+}
+
+/** "21:30", or "Tue 09:00" when it isn't today. */
+function formatStop(iso) {
+  const when = new Date(iso);
+  if (Number.isNaN(when.getTime())) return '';
+  const time = when.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  return when.toDateString() === new Date().toDateString()
+    ? time
+    : `${when.toLocaleDateString([], { weekday: 'short' })} ${time}`;
 }
 
 export function openShareDevice({ tab = 'lan' } = {}) {
@@ -56,6 +70,8 @@ export function openShareDevice({ tab = 'lan' } = {}) {
   window.addEventListener('vault:remote-changed', onRemote);
 
   backdrop.querySelectorAll('[data-tab]').forEach(btn => btn.addEventListener('click', () => select(btn.dataset.tab)));
+  // Links in "How this is protected" open Settings: get the dialog out of the way.
+  panel.addEventListener('click', (e) => { if (e.target.closest('a[data-route]')) close(); });
 
   function select(name) {
     active = name;
@@ -165,7 +181,7 @@ export function openShareDevice({ tab = 'lan' } = {}) {
       panel.innerHTML = `
         <div class="share-step">
           <p class="settings-callout">${icon('lock', { size: 15 })}<span>Right now Vault only accepts connections from this computer.</span></p>
-          <p class="setting-help">Allow devices on your home network to connect? They still need your password and grid (or a QR sign-in code from here).</p>
+          <p class="setting-help">Allow devices on your home network to connect? They still need your password and grid (or a QR sign-in code from here). Nothing changes on your router — Vault stays unreachable from the internet.</p>
           <div class="settings-actions"><button type="button" class="btn btn-primary" data-action="open-lan">${icon('wifi', { size: 15 })}<span>Allow devices on my network</span></button></div>
         </div>`;
       return;
@@ -185,6 +201,7 @@ export function openShareDevice({ tab = 'lan' } = {}) {
               <span class="share-address-url">${escapeHtml(a.url)}</span><span class="share-address-meta">${escapeHtml(a.label || '')}${i === 0 ? ' · recommended' : ''}</span></label>`).join('')}
         </fieldset>` : ''}
       ${qrBlock()}
+      ${securityNotes('lan', { security: status.security })}
       <details class="share-help">
         <summary>The other device can’t connect?</summary>
         <ul>
@@ -221,18 +238,23 @@ export function openShareDevice({ tab = 'lan' } = {}) {
       return;
     }
     if (t.status === 'on' && t.url) {
+      const stop = t.stopsAt ? formatStop(t.stopsAt) : '';
       panel.innerHTML = `
         <p class="share-lead"><span class="status-dot is-on" aria-hidden="true"></span> Remote access is on. Open this address on any device, anywhere:</p>
         ${qrBlock()}
+        ${totpCallout()}
+        <p class="setting-help share-stop">${stop ? `${icon('clock', { size: 14 })} Turns itself off at <strong>${escapeHtml(stop)}</strong>.` : 'Stays on until you turn it off.'} The address changes every time remote access starts. Anyone who has it still needs your password and ${status.security?.totpEnabled ? 'authenticator code' : 'grid'}.</p>
+        ${autoStopControl()}
         <label class="share-check share-keep"><input type="checkbox" role="switch" class="switch" id="share-keep"${status.tunnelOnStartup ? ' checked' : ''}> <span>Turn on again when the server restarts</span></label>
-        <p class="setting-help">The address changes every time remote access starts. Anyone who has it still needs your password and grid.</p>
-        <div class="settings-actions"><button type="button" class="btn btn-secondary" data-action="tunnel-off">${icon('power', { size: 15 })}<span>Turn off remote access</span></button></div>`;
+        <div class="settings-actions"><button type="button" class="btn btn-secondary" data-action="tunnel-off">${icon('power', { size: 15 })}<span>Turn off remote access</span></button></div>
+        ${securityNotes('remote', { security: status.security, nudged: !status.security?.totpEnabled, autoStopHours: status.autoStopHours })}`;
       panel.querySelector('#share-keep').addEventListener('change', async (e) => {
         try {
           const res = await api.setRemoteSettings({ tunnelOnStartup: e.target.checked });
           status.tunnelOnStartup = res.tunnelOnStartup;
         } catch (err) { toast.error(err.message); e.target.checked = !e.target.checked; }
       });
+      wireAutoStop();
       wireQr(t.url);
       return;
     }
@@ -243,12 +265,51 @@ export function openShareDevice({ tab = 'lan' } = {}) {
         ${error}
         <p class="share-lead">Get a private <strong>https://</strong> address that works from mobile data, work or a friend’s house.</p>
         <ul class="share-points">
-          <li>${icon('shield-check', { size: 15 })}<span>Free, through Cloudflare — no account, no router settings.</span></li>
-          <li>${icon('lock', { size: 15 })}<span>Your password and grid still protect Vault.</span></li>
+          <li>${icon('shield-check', { size: 15 })}<span>Free, through Cloudflare — no account, and no router settings or open ports.</span></li>
+          <li>${icon('lock', { size: 15 })}<span>Your password and ${status.security?.totpEnabled ? 'authenticator code' : 'grid'} still protect Vault.</span></li>
           <li>${icon('download', { size: 15 })}<span>${cf.installed ? `Uses cloudflared ${escapeHtml(cf.version || '')} on this computer.` : cf.installable === false ? 'Needs cloudflared — Cloudflare doesn’t publish it for this system, so install it yourself.' : 'Downloads Cloudflare’s small tunnel program (about 40 MB) the first time.'}</span></li>
         </ul>
+        ${totpCallout()}
+        ${autoStopControl()}
         <div class="settings-actions"><button type="button" class="btn btn-primary" data-action="tunnel-on"${!cf.installed && cf.installable === false ? ' disabled' : ''}>${icon('globe', { size: 15 })}<span>${t.status === 'error' ? 'Try again' : 'Turn on remote access'}</span></button></div>
+        ${securityNotes('remote', { security: status.security, nudged: !status.security?.totpEnabled, autoStopHours: status.autoStopHours, open: true })}
       </div>`;
+    wireAutoStop();
+  }
+
+  /** Nudge towards an authenticator app before opening Vault to the internet. */
+  function totpCallout() {
+    if (!status.security || status.security.totpEnabled) return '';
+    return `<p class="settings-callout is-warn share-totp">${icon('alert-triangle', { size: 15 })}<span>For remote access we recommend an <strong>authenticator app</strong> as well as your password. <a href="settings#security" data-route="/settings#security">Turn it on in Settings → Security</a>.</span></p>`;
+  }
+
+  function autoStopControl() {
+    const choices = status.autoStopChoices || [0, 1, 4, 8, 24];
+    const current = status.autoStopHours ?? 8;
+    return `
+      <div class="share-autostop">
+        ${icon('clock', { size: 15 })}
+        <label for="share-autostop">Turn remote access off automatically</label>
+        <select class="form-input" id="share-autostop">
+          ${choices.map(h => `<option value="${h}"${h === current ? ' selected' : ''}>${h ? `after ${hoursLabel(h)}` : 'never'}</option>`).join('')}
+        </select>
+      </div>`;
+  }
+
+  function wireAutoStop() {
+    panel.querySelector('#share-autostop')?.addEventListener('change', async (e) => {
+      const previous = status.autoStopHours;
+      try {
+        const res = await api.setRemoteSettings({ autoStopHours: Number(e.target.value) });
+        status.autoStopHours = res.autoStopHours;
+        if (res.tunnel) status.tunnel = res.tunnel;
+        paintRemote();
+        panel.querySelector('#share-autostop')?.focus();
+      } catch (err) {
+        toast.error(err.message);
+        e.target.value = String(previous);
+      }
+    });
   }
 
   function startPolling() {

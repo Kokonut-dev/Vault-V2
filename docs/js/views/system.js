@@ -13,6 +13,7 @@ import { toast } from '../components/toast.js';
 import { confirmDialog } from '../components/confirmDialog.js';
 import { promptModal } from '../components/modal.js';
 import { onUnmount } from '../utils/lifecycle.js';
+import { securityNotes } from '../components/securityNotes.js';
 
 const TABS = [
   ['health', 'Health', 'shield-check'],
@@ -704,7 +705,8 @@ async function loadServices(ctx) {
               ${profileList.map(p => `<option value="${escapeAttr(p.id)}"${!subsonic.profileMissing && p.id === (subsonic.profileId || 'default') ? ' selected' : ''}>${escapeHtml(p.name || p.id)}</option>`).join('')}
             </select>
           </label>
-          ${subsonic.profileMissing ? '<div class="row-meta" role="alert">The profile Subsonic used was removed, so Subsonic apps can’t sign in until you choose another.</div>' : ''}` : ''}</div>
+          ${subsonic.profileMissing ? '<div class="row-meta" role="alert">The profile Subsonic used was removed, so Subsonic apps can’t sign in until you choose another.</div>' : ''}` : ''}
+        ${subsonicKnown ? securityNotes('subsonic') : ''}</div>
         ${subsonicKnown ? `
           <button type="button" class="btn btn-secondary btn-sm" id="subsonic-set">${subsonic.enabled ? 'Change password' : 'Turn on'}</button>
           ${subsonic.enabled ? '<button type="button" class="btn btn-ghost btn-sm" id="subsonic-off">Turn off</button>' : ''}` : ''}

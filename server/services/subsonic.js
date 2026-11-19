@@ -77,8 +77,12 @@ const SUBSONIC_ERRORS = {
 // Subsonic clients use `u` + `p` (plaintext or `enc:`hex) or `u` + `t`/`s`
 // (md5(password + salt)). Vault stores the main password as a bcrypt hash, which
 // cannot answer token auth, so an optional *Subsonic password* can be set in
-// Settings; it is stored AES-256-GCM encrypted with the JWT secret. Plain
-// `p=` auth additionally accepts the normal account password.
+// Settings; it is stored AES-256-GCM encrypted with the JWT secret.
+//
+// Security: Subsonic is OFF until that password is set, and the normal Vault
+// password is never accepted here — Subsonic has no second step, so taking
+// the account password would let it skip the grid / authenticator check.
+// Wrong passwords count towards a per-IP lockout like the sign-in screen.
 // ---------------------------------------------------------------------------
 const crypto = require('crypto');
 
@@ -179,6 +183,12 @@ function bindProfile(req, res) {
   return true;
 }
 
+function safeEqual(a, b) {
+  const x = Buffer.from(String(a));
+  const y = Buffer.from(String(b));
+  return x.length === y.length && crypto.timingSafeEqual(x, y);
+}
+
 function authenticate(req, res) {
   const config = require('../config').getConfig();
   const { u, p, t, s } = req.query;
@@ -189,21 +199,31 @@ function authenticate(req, res) {
     return false;
   }
 
+  const ip = authService.getClientIp(req);
+  if (authService.isLocked(ip, 'subsonic')) {
+    const minutes = Math.ceil(authService.getLockoutTimeRemaining(ip, 'subsonic') / 60);
+    error(req, res, 40, `Too many wrong passwords. Try again in ${minutes} minutes.`);
+    return false;
+  }
+
+  const stored = getSubsonicPassword();
+  if (!stored) {
+    error(req, res, 40, 'Subsonic access is off. Turn it on by setting a Subsonic password in Vault → System → Services.');
+    return false;
+  }
+
   const subsonic = config.auth.subsonic || {};
-  const accountName = subsonic.enabled && subsonic.username ? subsonic.username : config.auth.username;
+  const accountName = subsonic.username || config.auth.username;
+  const fail = () => {
+    authService.recordFailedAttempt(ip, 'subsonic');
+    error(req, res, 40, 'Wrong username or password');
+    return false;
+  };
 
   // Token auth: md5(password + salt)
   if (t && s) {
-    const stored = getSubsonicPassword();
-    if (!stored) {
-      error(req, res, 40, 'This client uses token authentication. Set a Subsonic password in Vault → Settings → Server.');
-      return false;
-    }
     const expected = crypto.createHash('md5').update(`${stored}${s}`).digest('hex');
-    if (String(username) !== accountName || expected !== String(t)) {
-      error(req, res, 40, 'Wrong username or password');
-      return false;
-    }
+    if (String(username) !== accountName || !safeEqual(expected, String(t).toLowerCase())) return fail();
     return bindProfile(req, res);
   }
 
@@ -217,18 +237,11 @@ function authenticate(req, res) {
     try {
       password = Buffer.from(password.slice(4), 'hex').toString('utf8');
     } catch {
-      error(req, res, 40, 'Wrong username or password');
-      return false;
+      return fail();
     }
   }
 
-  const stored = getSubsonicPassword();
-  const matchesSubsonic = stored && username === accountName && password === stored;
-  const matchesMaster = authService.validateCredentials(String(username), password);
-  if (!matchesSubsonic && !matchesMaster) {
-    error(req, res, 40, 'Wrong username or password');
-    return false;
-  }
+  if (String(username) !== accountName || !safeEqual(password, stored)) return fail();
   return bindProfile(req, res);
 }
 
@@ -335,8 +348,15 @@ function toPlaylist(playlist, req = null) {
 // Endpoints
 // ---------------------------------------------------------------------------
 function register(router, { streamHandler, coverHandler }) {
-  router.all('/ping', (req, res) => respond(req, res, {}));
-  router.all('/getLicense', (req, res) => respond(req, res, { license: { valid: true } }));
+  // Apps call ping to check the password, so it must really check it.
+  router.all('/ping', (req, res) => {
+    if (!authenticate(req, res)) return;
+    respond(req, res, {});
+  });
+  router.all('/getLicense', (req, res) => {
+    if (!authenticate(req, res)) return;
+    respond(req, res, { license: { valid: true } });
+  });
 
   router.all('/getMusicFolders', (req, res) => {
     if (!authenticate(req, res)) return;
