@@ -5,6 +5,7 @@
 You run a small server on your own computer and open the app in your browser. Your files never leave your house.
 
 - **App:** https://kokonut-dev.github.io/Vault-V2/ — or `http://localhost:4000`, served by your own server
+- **What it looks like:** https://kokonut-dev.github.io/Vault-V2/landing.html — features, screenshots and themes on one page
 - **Runs on:** Linux, macOS and Windows (or Docker)
 - **Needs:** Node.js 20+, git, and ffmpeg + ffprobe (bundled automatically on most systems) — full list in [Requirements and dependencies](#requirements-and-dependencies)
 
@@ -300,7 +301,7 @@ For private files, add an API key or OAuth client ID in **Settings → Links & i
 
 ## Daily use
 
-- **Home** — continue watching, recently added, picks
+- **Home** — pick up where you left off, next episodes, a tile per library, what's new per type, favourites and your week; a new library gets a step-by-step welcome
 - **Movies & Series, TV Shows, Music, Artists, Audiobooks, Videos, Podcasts, Comics** — grid or list, sort and filter
 - **Live TV & DVR** — M3U/IPTV channels, played through the server. Add as many channel lists as you like (**Settings → Live TV → More channel lists**), each with its own guide and a streams-at-once limit so you never go over a provider's connection limit. Channels are grouped by list, and you can filter and search them.
 - **My List, Playlists, Favourites, History** — your collections and where you left off

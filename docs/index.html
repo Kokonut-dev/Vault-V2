@@ -16,6 +16,24 @@
   <!-- Favicon -->
   <link rel="icon" type="image/svg+xml" href="./favicon.svg">
   
+  <!-- First visit to the hosted app (GitHub Pages) with no server connected:
+       show the project's landing page instead of a bare sign-in form. It has
+       an "Open Vault" button back here (?app), and is only shown once. Never
+       on a self-hosted server, a deep link, a pairing link or once signed in. -->
+  <script>
+    (function () {
+      try {
+        var q = location.search;
+        if (/[?&]app\b/.test(q)) { localStorage.setItem('vault_seen_landing', '1'); return; }
+        if (!/\.github\.io$/.test(location.hostname)) return;
+        if (/[?&]pair=/.test(q) || sessionStorage.getItem('vault_redirect')) return;
+        if (!/\/(index\.html)?$/.test(location.pathname)) return;
+        if (localStorage.getItem('vault_token') || localStorage.getItem('vault_api_url') || localStorage.getItem('vault_seen_landing')) return;
+        location.replace('landing.html');
+      } catch (e) { /* storage blocked: stay on the app */ }
+    })();
+  </script>
+
   <!-- Apply the saved theme before the stylesheet paints: <html> defaults to
        "dark", so light-theme users saw a dark flash and every element ran the
        300 ms theme fade on each load. -->
@@ -100,6 +118,7 @@
         </details>
         <div class="auth-footer">
           <p>Server: <span id="server-url-display"></span> <button id="change-server-btn" class="btn btn-ghost btn-sm">Change</button></p>
+          <p class="auth-about"><a href="landing.html">New to Vault? See what it is and how to install it</a></p>
         </div>
         <div id="mixed-content-warning" class="auth-warning" style="display:none;"></div>
       </div>
@@ -408,6 +427,8 @@
       font-size: 12px;
       color: var(--text-secondary);
     }
+    .auth-about { margin-top: 10px; }
+    .auth-about a { color: var(--accent-text); text-underline-offset: 2px; }
     .grid-container {
       display: grid;
       grid-template-columns: repeat(4, 1fr);

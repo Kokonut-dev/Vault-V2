@@ -47,6 +47,7 @@ const SHEETS = [
   'v3.css',
   'music.css',
   'settings.css',
+  'home.css',
   'responsive.css', // last: fit-to-screen guards override earlier sheets
 ];
 
@@ -68,6 +69,7 @@ const MARKERS = {
   'v3.css': 'queue-panel',
   'music.css': 'trackEq',
   'settings.css': 'settings-rail',
+  'home.css': 'home-libraries',
   'responsive.css': 'fit-guard',
 };
 

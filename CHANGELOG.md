@@ -2,6 +2,49 @@
 
 ## [3.0.0] — in progress (branch `arena/0deefe55-vault-v2`)
 
+### Added — a new Home screen and a landing page for the project
+Tests: `server/test/home-ui.test.js`, `server/test/landing-page.test.js`.
+
+- **Home, redesigned** (`docs/js/views/home.js`, styles in the new
+  `docs/css/home.css`). From the top:
+  - a header with the date, a greeting and a one-line summary of the library
+    ("1,204 songs · 48 films · 6 shows"), plus *Surprise me*;
+  - the hero resumes what you were in the middle of, or shows the newest film;
+  - a tile for each library you have (Films, TV shows, Music, Audiobooks,
+    Podcasts, Comics, Videos) with its count. TV shows are counted per show,
+    not per episode;
+  - rows: *Continue watching*, *Next up in your shows*, *Jump back into
+    music*, *More like …*, then one *New films / New episodes / New music / …*
+    row per type, newest first, so each row has one artwork shape. Episodes
+    show one per show and songs one per album. Then *Your favourites* and
+    *Top rated*. Every row scrolls sideways, has back/forward buttons and a
+    *See all* link;
+  - *Your week*: time played this week, split into watching and listening,
+    with a bar for each day;
+  - an empty library gets a welcome with three steps (add files and scan,
+    upload, open Vault on your phone). A profile that isn't an admin is told
+    to ask whoever runs the Vault. A small library (under 20 titles) gets one
+    mixed *Recently added* row and keeps the getting-started tips.
+- **Fixed on Home:**
+  - the page re-draws when the library, history or favourites arrive after
+    the first paint, so it no longer shows as empty until you navigate away;
+  - *Random pick* is replaced by *Surprise me*. Shuffling it used to update
+    the wrong element and leave *Details* opening the old title;
+  - episode cards show the show's name ("The Lanterns · S1 · E2 · Pilot")
+    instead of a bare "Episode 2";
+  - every inline style is gone.
+- **Landing page** at `landing.html` (on GitHub Pages:
+  https://kokonut-dev.github.io/Vault-V2/landing.html). It explains what Vault
+  is and has features, screenshots, a live preview of the six themes, how it
+  works, install steps for Node.js and Docker with copy buttons, and links to
+  GitHub. It loads the app's theme tokens and fonts and makes no requests to
+  other sites.
+  - A first-time visitor to the hosted app on GitHub Pages lands there once.
+    That only happens with no sign-in and no server chosen, and never on a
+    self-hosted server, a deep link or a pairing link. *Open Vault* goes
+    straight to the app.
+  - The sign-in screen links to it.
+
 ### Added — type in the right details when the automatic ones are wrong
 Tests: `server/test/manual-metadata.test.js` (dialog: `edit-details-ui.test.js`).
 

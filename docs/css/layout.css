@@ -680,61 +680,7 @@ body.is-scrolled .breadcrumb.is-root {
   font-size: var(--text-md);
 }
 
-.home-section {
-  margin-bottom: var(--space-2xl);
-}
-
-/* Recently Added shelves — one artwork shape per grid (I-5) */
-.shelf + .shelf { margin-top: var(--space-lg); }
-.shelf-title {
-  font-size: var(--text-xs);
-  font-weight: var(--fw-strong);
-  letter-spacing: var(--tracking-overline);
-  text-transform: uppercase;
-  color: var(--text-secondary);
-  margin-bottom: var(--space-sm);
-}
-
-.home-section h2 {
-  font-family: var(--font-display);
-  font-variation-settings: var(--display-soft);
-  font-optical-sizing: auto;
-  letter-spacing: var(--tracking-display);
-  font-size: var(--text-lg);
-  font-weight: var(--fw-display);
-  margin-bottom: var(--space-md);
-}
-
-/* ---------- Hero ---------- */
-.home-hero {
-  background: rgba(var(--glass-tint), calc(var(--glass-fill) + 0.02));
-  backdrop-filter: blur(calc(var(--glass-blur-effective) + 4px)) saturate(160%);
-  -webkit-backdrop-filter: blur(calc(var(--glass-blur-effective) + 4px)) saturate(160%);
-  border: 1px solid var(--glass-border);
-  border-radius: var(--radius-xl);
-  padding: 24px;
-  display: flex;
-  gap: 20px;
-  align-items: center;
-  margin-top: 8px;
-  box-shadow: var(--glass-shadow), var(--glass-ring), inset 0 1px 0 var(--glass-highlight);
-}
-
-.home-hero-art {
-  width: 128px;
-  height: 128px;
-  border-radius: var(--radius-lg);
-  background: var(--bg-tertiary);
-  overflow: hidden;
-  flex-shrink: 0;
-  box-shadow: var(--shadow-lg);
-}
-
-.home-hero-art img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-}
+/* Home screen styles live in home.css. */
 
 /* ---------- Settings ---------- */
 .settings-grid {
@@ -788,10 +734,6 @@ body.is-scrolled .breadcrumb.is-root {
 @media (max-width: 768px) {
   .detail-layout {
     grid-template-columns: 1fr;
-  }
-  .home-hero {
-    flex-direction: column;
-    align-items: flex-start;
   }
 }
 
