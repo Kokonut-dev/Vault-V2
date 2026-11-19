@@ -2,6 +2,53 @@
 
 ## [3.0.0] — in progress (branch `arena/0deefe55-vault-v2`)
 
+### Changed — colours: less "generated", stricter contrast
+- **Why.** The "Hearth" palette (warm cream paper, terracotta accent,
+  tinted near-black, orange glows) is the look AI design tools produce by
+  default in 2026, and the leftovers made it worse: per-theme neon
+  `.accent-glow` shadows (cyan, emerald, blue — none matching their theme),
+  gradient buttons, coloured glow shadows under every accent control, and
+  Tailwind `red-500`/`green-500` literals and a violet-first profile colour
+  list straight from the framework defaults.
+- **The new palette** ("screening room"): the chrome is the darkened room
+  and the artwork is the picture. Neutrals are near-achromatic (OKLCH
+  chroma ≤ 0.02) with one temperature per theme, so posters and album art
+  keep their colours; one flat accent per theme; status colours are low
+  chroma and lightness-matched. Text steps are set by contrast target
+  (≈15 / 11 / 9:1), not by eye.
+  - **Graphite** (`dark`, default): neutral charcoal, cornflower accent.
+  - **Stone** (`light`): warm grey (not cream), petrol accent.
+  - **Sepia** (`warm`): e-reader sepia, blue-black ink accent.
+  - **Dusk** (`cold`): blue-slate, softer sea-glass accent.
+  - **Ember** (`midnight`): true black for OLED, soft amber accent.
+  - **Daylight** (`white`): white, cool-grey ink, link blue.
+  Theme ids are unchanged, so saved choices carry over; only display names
+  changed (Hearth → Graphite, Linen → Stone, Parchment → Sepia).
+- Flat primary buttons and progress bars; coloured glows replaced by a small
+  neutral `--shadow-lift`; `.accent-glow` is a quiet 2 px accent ring; status
+  chips tint from `--success`/`--warning`/`--error` instead of hard-coded
+  RGB; the artwork hero, badges and card chips use neutral instead of brown
+  scrims. Favicon, maskable icon, manifest and `theme-color` follow the new
+  default.
+- Profile colours: muted, evenly spaced hues instead of Tailwind 500s.
+- **Contrast is now checked where text actually sits.** `contrast-check.js`
+  used to measure against the page background only; it now checks every
+  text token (primary, secondary, tertiary, accent, success, warning,
+  error, info) on every surface (page, cards, sunken wells, modals) at AAA
+  7:1, labels on accent fills at 7:1, and `--border-control`, `--focus-ring`
+  and `--accent` at 3:1 (SC 1.4.11). The old palette failed 22 of those 78
+  checks (e.g. Hearth's tertiary text was 5.9:1 inside modals); the new one
+  passes all 78. New `npm run check:contrast`, and
+  `server/test/theme-palette.test.js` runs it with `npm test` (so in CI),
+  checks the theme picker swatches match the tokens, and fails on neon glow
+  or framework-default colour literals coming back.
+- README rewritten around a full **Requirements and dependencies** section:
+  Node versions, ffmpeg and ffprobe (what uses them, how Vault finds them,
+  per-OS install commands, what works without them), every npm package and
+  why, optional tools (`unrar`, `cloudflared`, `mkcert`/`openssl`, GPU
+  drivers, Docker) and optional services; plus a Configuration table of
+  environment variables.
+
 ### Fixed — browsers kept running the old app after a server update
 - After updating, the Server page still showed "0", "0 B", "Unknown" and
   "0 rows". The server was new, but the browser was still running the old

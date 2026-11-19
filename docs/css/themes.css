@@ -23,9 +23,9 @@
 }
 
 /* ---------- Ambient light ----------
-   "Hearth" (UI_REVAMP_PLAN.md C-4): one warm lamp glow from the upper left,
-   a faint ember spill bottom-right — replacing the purple/cyan/pink aurora.
-   Static: atmosphere, not motion. */
+   A barely-there room light (the --ambient-* tokens are 2–5% alpha) so the
+   glass layers have something to frost. Static: atmosphere, not motion, and
+   never a coloured wash competing with the artwork. */
 .ambient {
   position: fixed;
   inset: 0;
@@ -40,18 +40,18 @@
     var(--ambient-base);
 }
 
-/* Soft vignette: the edges fall away like lamplight */
+/* Soft vignette: the edges fall away, like a dimmed room */
 .ambient::after {
   content: '';
   position: absolute;
   inset: 0;
-  background: radial-gradient(130% 110% at 40% 30%, transparent 55%, rgba(6, 3, 1, 0.32) 100%);
+  background: radial-gradient(130% 110% at 40% 30%, transparent 55%, rgba(0, 0, 0, 0.28) 100%);
 }
 
 [data-theme="light"] .ambient::after,
 [data-theme="warm"] .ambient::after,
 [data-theme="white"] .ambient::after {
-  background: radial-gradient(130% 110% at 40% 30%, transparent 60%, rgba(70, 45, 25, 0.06) 100%);
+  background: radial-gradient(130% 110% at 40% 30%, transparent 60%, rgba(20, 20, 20, 0.05) 100%);
 }
 
 /* ---------- Theme switch ----------
@@ -100,10 +100,6 @@
   color-scheme: light;
 }
 
-[data-theme="warm"] .btn-primary {
-  background: linear-gradient(140deg in oklch, var(--accent-solid) 0%, var(--btn-accent-end) 100%);
-}
-
 /* ---------- Cold theme ---------- */
 [data-theme="cold"] {
   color-scheme: dark;
@@ -129,11 +125,7 @@
   border-color: var(--border-subtle);
 }
 
-[data-theme="cold"] .accent-glow {
-  box-shadow: 0 0 24px rgba(34, 211, 238, 0.35);
-}
-
-/* ---------- Midnight theme — sleek dynamic OLED dark ---------- */
+/* ---------- Midnight (Ember) — OLED true black ---------- */
 [data-theme="midnight"] {
   color-scheme: dark;
 }
@@ -162,30 +154,13 @@
   border-color: var(--border-subtle);
 }
 
-[data-theme="midnight"] .btn-primary {
-  background: linear-gradient(140deg in oklch, var(--accent-solid) 0%, var(--btn-accent-end) 100%);
-  color: var(--on-accent);
-}
-
-[data-theme="midnight"] .accent-glow {
-  box-shadow: 0 0 24px rgba(16, 185, 129, 0.4);
-}
-
-/* ---------- White theme — modern architectural pure white ---------- */
+/* ---------- White (Daylight) ---------- */
 [data-theme="white"] {
   color-scheme: light;
 }
 
-[data-theme="white"] .btn-primary {
-  background: linear-gradient(140deg in oklch, var(--accent-solid) 0%, var(--btn-accent-end) 100%);
-  color: var(--on-accent);
-}
-
-[data-theme="white"] .accent-glow {
-  box-shadow: 0 0 24px rgba(37, 99, 235, 0.25);
-}
-
-/* Accent glow helper used by the active states */
+/* Active-state helper. Was a per-theme neon glow (cyan, emerald, blue —
+   none of which matched their theme's accent); now a quiet accent ring. */
 .accent-glow {
-  box-shadow: 0 0 20px var(--accent-muted);
+  box-shadow: 0 0 0 2px var(--accent-muted);
 }

@@ -53,15 +53,16 @@
 }
 
 .btn-primary {
-  background: linear-gradient(160deg in oklch, var(--accent-solid), var(--btn-accent-end));
+  /* Flat fill: one colour, one hover step. No gradient, no coloured glow. */
+  background: var(--accent-solid);
   color: var(--on-accent);
   border-color: transparent;
-  box-shadow: 0 4px 14px -4px var(--accent-muted), inset 0 1px 0 rgba(255, 255, 255, 0.22);
+  box-shadow: none;
 }
 
 .btn-primary:hover {
   background: var(--btn-accent-end);
-  box-shadow: 0 8px 22px -6px var(--accent-muted), inset 0 1px 0 rgba(255, 255, 255, 0.22);
+  box-shadow: var(--shadow-lift);
 }
 
 .btn-secondary {
@@ -211,7 +212,7 @@
 .media-card-overlay {
   position: absolute;
   inset: 0;
-  background: linear-gradient(180deg in oklch, rgba(10, 6, 4, 0) 35%, rgba(10, 6, 4, 0.62) 100%);
+  background: linear-gradient(180deg in oklch, rgba(8, 8, 9, 0) 35%, rgba(8, 8, 9, 0.62) 100%);
   opacity: 0;
   transition: opacity var(--dur-2) var(--ease-standard);
   display: flex;
@@ -275,8 +276,8 @@
   position: absolute;
   right: 6px;
   bottom: 6px;
-  background: rgba(16, 11, 8, 0.86);
-  color: #F6EEE4;
+  background: rgba(14, 14, 15, 0.86);
+  color: #F2F2F0;
   font-size: 11px;
   font-weight: var(--fw-medium);
   font-variant-numeric: tabular-nums;
@@ -324,7 +325,7 @@
   left: 0;
   right: 0;
   height: 4px;
-  background: rgba(16, 11, 8, 0.6);
+  background: rgba(14, 14, 15, 0.6);
   z-index: 3;
 }
 
@@ -510,7 +511,7 @@
   opacity: 0;
   transform: scale(0.85);
   transition: opacity var(--duration-fast), transform var(--duration-fast);
-  box-shadow: 0 4px 12px var(--accent-muted);
+  box-shadow: var(--shadow-lift);
 }
 
 .media-list-item:hover .media-list-play,
@@ -822,7 +823,7 @@
 
 /* ---------- Skeleton ---------- */
 .skeleton {
-  /* Tonal shimmer (C-19): raised surface with a soft warm sweep. */
+  /* Tonal shimmer (C-19): raised surface with a soft neutral sweep. */
   background: linear-gradient(90deg in oklch,
     var(--surface-raised) 25%,
     color-mix(in oklch, var(--surface-raised) 82%, var(--text-primary)) 50%,
@@ -868,7 +869,7 @@
   width: 72px;
   height: 72px;
   border-radius: var(--radius-full);
-  /* Tonal, not glass (C-19): a warm lamp-lit disc with the accent icon. */
+  /* Tonal, not glass (C-19): a raised disc with the accent icon. */
   background: var(--surface-raised);
   border: 1px solid var(--border-subtle);
   color: var(--accent-text);
@@ -913,7 +914,7 @@
 }
 
 .badge-success {
-  background: rgba(34, 197, 94, 0.16);
+  background: color-mix(in srgb, var(--success) 14%, transparent);
   color: var(--success);
 }
 
@@ -949,7 +950,7 @@
 
 .progress-bar {
   height: 100%;
-  background: linear-gradient(90deg in oklch, var(--accent), var(--accent-strong));
+  background: var(--accent);
   border-radius: var(--radius-full);
   transition: width var(--duration-fast) var(--ease-out);
 }
@@ -1005,7 +1006,7 @@ svg.icon {
   background: var(--accent);
   border-radius: var(--radius-full);
   cursor: pointer;
-  box-shadow: 0 2px 8px var(--accent-muted), 0 0 0 1px rgba(255, 255, 255, 0.2);
+  box-shadow: var(--shadow-lift);
   transition: transform var(--duration-fast) var(--ease-out);
 }
 
@@ -1020,7 +1021,7 @@ svg.icon {
   border-radius: var(--radius-full);
   cursor: pointer;
   border: none;
-  box-shadow: 0 2px 8px var(--accent-muted);
+  box-shadow: var(--shadow-lift);
 }
 
 /* ---------- Keyboard hint ---------- */

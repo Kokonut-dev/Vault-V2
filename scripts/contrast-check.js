@@ -2,19 +2,22 @@
 /**
  * WCAG contrast checker for Vault's theme tokens (zero dependencies).
  *
- * Parses docs/css/variables.css, composites every rgba() token over its
- * theme background, and asserts AAA (7.0:1) for the pairs Stage 4 owns:
+ * Parses docs/css/variables.css, composites every rgba() token over the
+ * surface it sits on, and asserts, for each of the six themes:
  *
- *   - --text-tertiary / --text-secondary  (used for hints, kbd, meta, counts)
- *   - --accent                             (nav active, links, counts — as text)
- *   - --error / --success / --warning      (status text in auth/onboarding)
- *   - white on --accent / --accent-hover   (btn-primary, play buttons)
- *   - --accent-text                        (accent restricted to text usage)
+ *   Text — WCAG 2.2 SC 1.4.6 (AAA, 7:1), on EVERY surface text is set on
+ *   (--bg-primary/secondary and --surface-sunken/base/raised/elevated/overlay),
+ *   not just the page background:
+ *     --text-primary / --text-secondary / --text-tertiary
+ *     --accent-text, --error, --success, --warning, --info
+ *   Labels on accent fills — --on-accent vs --accent-solid and
+ *   --btn-accent-end (the hover fill), AAA 7:1.
+ *   Non-text — SC 1.4.11 (3:1) on every surface: --border-control (inputs,
+ *   checkboxes), --focus-ring, and --accent (progress bars, selection marks).
  *
- * Basis: WCAG 2.1 / 2.2 Level AAA normal-text threshold (7.0:1) against --bg-primary,
- * matching the audit's methodology so before/after numbers are comparable.
- *
- * Usage:  node scripts/contrast-check.js        (exit 1 on any FAIL)
+ * Usage:  node scripts/contrast-check.js     (exit 1 on any FAIL)
+ *         npm run check:contrast             (same, from the repo root)
+ * Also runs inside `npm test` (server/test/contrast.test.js).
  */
 'use strict';
 
@@ -110,71 +113,85 @@ function ratio(fg, bg) {
   return (hi + 0.05) / (lo + 0.05);
 }
 
-function main() {
-  const css = fs.readFileSync(VARIABLES, 'utf8');
+const AA_NON_TEXT = 3.0;
+
+/** Surfaces that body text is set on. Hover/active are transient and skipped. */
+const SURFACES = [
+  '--bg-primary', '--bg-secondary', '--surface-sunken', '--surface-base',
+  '--surface-raised', '--surface-elevated', '--surface-overlay',
+];
+const TEXT_TOKENS = [
+  '--text-primary', '--text-secondary', '--text-tertiary',
+  '--accent-text', '--error', '--success', '--warning', '--info',
+];
+const NON_TEXT_TOKENS = ['--border-control', '--focus-ring', '--accent'];
+
+/** Run every check; returns [{ theme, label, value, ratio, min, ok }]. */
+function runChecks(css = fs.readFileSync(VARIABLES, 'utf8')) {
   const all = parseThemeTokens(css);
   const rows = [];
-  let fails = 0;
 
   for (const theme of THEMES) {
     const shared = all['*'] || {};
     const own = all[theme] || {};
     const get = name => own[name] !== undefined ? own[name] : shared[name];
-    const bg = resolveColor(get('--bg-primary'), [255, 255, 255]);
-    const white = [255, 255, 255];
+    const page = resolveColor(get('--bg-primary'), [255, 255, 255]);
+    const surfaces = SURFACES
+      .filter(name => get(name))
+      .map(name => ({ name, rgb: resolveColor(get(name), page) }));
 
-    const checks = [
-      ['--text-tertiary (as text)', get('--text-tertiary')],
-      ['--text-secondary (as text)', get('--text-secondary')],
-      // Raw --accent is decorative-only after Stage 4; all accent-colored
-      // text goes through --accent-text (checked below).
-      ['--accent-text (as text)', get('--accent-text') || get('--accent')],
-      ['--error (as text)', get('--error')],
-      ['--success (as text)', get('--success')],
-      ['--warning (as text)', get('--warning')],
-    ];
+    // Worst case across surfaces, so one row per token keeps the report short.
+    const worst = (value, min, label) => {
+      let lowest = null;
+      for (const s of surfaces) {
+        const r = ratio(resolveColor(value, s.rgb), s.rgb);
+        if (!lowest || r < lowest.ratio) lowest = { ratio: r, on: s.name };
+      }
+      rows.push({ theme, label: `${label} (worst: ${lowest.on})`, value, ratio: lowest.ratio, min, ok: lowest.ratio >= min });
+    };
 
-    for (const [label, value] of checks) {
-      if (!value) continue;
-      const fg = resolveColor(value, bg);
-      const r = ratio(fg, bg);
-      const ok = r >= AAA;
-      if (!ok) fails++;
-      rows.push({ theme, label, value, ratio: r, ok });
+    for (const token of TEXT_TOKENS) {
+      const value = get(token) || (token === '--accent-text' ? get('--accent') : null);
+      if (value) worst(value, AAA, `${token} text`);
     }
 
-    // Accent surfaces carrying text/icons: --on-accent must clear AAA against
-    // the solid fill AND both ends of the button gradient (raw --accent is
-    // decorative-only after Stage 4; white is never placed on it directly).
     const onAccent = get('--on-accent') || '#FFFFFF';
-    const pairs = [
-      ['--on-accent vs --accent-solid', onAccent, get('--accent-solid') || get('--accent')],
-      ['--on-accent vs btn gradient end', onAccent, get('--btn-accent-end') || get('--accent-hover')],
+    const fills = [
+      ['--accent-solid', get('--accent-solid') || get('--accent')],
+      ['--btn-accent-end', get('--btn-accent-end') || get('--accent-hover')],
     ];
-    for (const [label, fgValue, bgValue] of pairs) {
-      if (!bgValue) continue;
-      const r = ratio(resolveColor(fgValue, [0, 0, 0]), resolveColor(bgValue, [0, 0, 0]));
-      const ok = r >= AAA;
-      if (!ok) fails++;
-      rows.push({ theme, label, value: `${fgValue} on ${bgValue}`, ratio: r, ok });
+    for (const [name, fill] of fills) {
+      if (!fill) continue;
+      const r = ratio(resolveColor(onAccent, [0, 0, 0]), resolveColor(fill, [0, 0, 0]));
+      rows.push({ theme, label: `--on-accent on ${name}`, value: `${onAccent} on ${fill}`, ratio: r, min: AAA, ok: r >= AAA });
+    }
+
+    for (const token of NON_TEXT_TOKENS) {
+      if (get(token)) worst(get(token), AA_NON_TEXT, `${token} non-text`);
     }
   }
+  return rows;
+}
 
+function main() {
+  const rows = runChecks();
   const pad = (s, n) => String(s).padEnd(n);
-  console.log(`${pad('theme', 8)} ${pad('check', 28)} ${pad('value', 40)} ${pad('ratio', 8)} verdict`);
-  console.log('-'.repeat(96));
+  console.log(`${pad('theme', 8)} ${pad('check', 50)} ${pad('value', 22)} ${pad('ratio', 8)} ${pad('min', 4)} verdict`);
+  console.log('-'.repeat(104));
   for (const row of rows) {
     console.log(
-      `${pad(row.theme, 8)} ${pad(row.label, 28)} ${pad(row.value, 40)} ${pad(row.ratio.toFixed(2) + ':1', 8)} ${row.ok ? 'PASS' : 'FAIL'}`
+      `${pad(row.theme, 8)} ${pad(row.label, 50)} ${pad(row.value, 22)} ${pad(row.ratio.toFixed(2) + ':1', 8)} ${pad(row.min, 4)} ${row.ok ? 'PASS' : 'FAIL'}`
     );
   }
   const failed = rows.filter(r => !r.ok);
-  console.log('-'.repeat(96));
+  console.log('-'.repeat(104));
   if (failed.length) {
-    console.log(`${failed.length} FAIL / ${rows.length} checks — must all reach ${AAA}:1 (WCAG AAA)`);
+    console.log(`${failed.length} FAIL / ${rows.length} checks — text must reach ${AAA}:1 (WCAG AAA), UI parts ${AA_NON_TEXT}:1`);
     process.exit(1);
   }
-  console.log(`All ${rows.length} checks PASS (≥ ${AAA.toFixed(1)}:1 — WCAG AAA certified)`);
+  console.log(`All ${rows.length} checks PASS — text ≥ ${AAA.toFixed(1)}:1 on every surface (WCAG AAA), UI parts ≥ ${AA_NON_TEXT.toFixed(1)}:1`);
 }
 
-main();
+module.exports = { runChecks, parseThemeTokens, resolveColor, ratio, THEMES, AAA, AA_NON_TEXT };
+
+if (require.main === module) main();

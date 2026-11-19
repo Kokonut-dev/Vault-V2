@@ -16,7 +16,10 @@ const events = require('./events');
 
 const store = createJsonStore('profiles.json', { profiles: [], activeProfileId: 'default' });
 
-const COLORS = ['#7C5CFF', '#22D3EE', '#F59E0B', '#EC4899', '#22C55E', '#3B82F6', '#EF4444', '#14B8A6'];
+// Profile identity colours. Muted, evenly spaced hues of similar lightness
+// (replaces the Tailwind 500-series defaults — violet, cyan, pink… — that the
+// first version shipped with). Each still reads clearly as "a different person".
+const COLORS = ['#5B87C9', '#4D9A8C', '#C48A3F', '#B5636F', '#6D9656', '#8574AE', '#BF6B4C', '#5E8A9B'];
 
 function ensureDefaults() {
   const data = store.get();
