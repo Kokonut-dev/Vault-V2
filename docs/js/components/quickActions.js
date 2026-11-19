@@ -13,6 +13,7 @@ import { toast } from './toast.js';
 import { icon } from '../utils/icons.js';
 import { escapeHtml, formatTime } from '../utils/format.js';
 import { modal, promptModal } from './modal.js';
+import { openEditDetails } from './editDetails.js';
 
 function closeModalOnEscape(backdrop) {
   const close = () => backdrop.remove();
@@ -258,6 +259,14 @@ export function initQuickActions() {
   window.addEventListener('vault:add-to-playlist', (event) => addToPlaylist(event.detail || {}).catch(() => {}));
   window.addEventListener('vault:add-to-collection', (event) => addToCollection(event.detail || {}).catch(() => {}));
   window.addEventListener('vault:match-metadata', (event) => matchMetadata(event.detail || {}).catch(() => {}));
+  // "Edit details" from the context menu, for any media type (comics and
+  // audiobooks have no detail page of their own).
+  window.addEventListener('vault:edit-details', (event) => {
+    const item = event.detail?.item;
+    if (!item) return;
+    const current = (store.get('library') || []).find(i => i.id === item.id) || item;
+    openEditDetails(current, { onSaved: () => window.dispatchEvent(new CustomEvent('vault:library-refresh')) });
+  });
   window.addEventListener('vault:download', (event) => {
     const item = event.detail?.item;
     if (!item) return;

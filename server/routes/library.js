@@ -5,7 +5,6 @@ const path = require('path');
 const multer = require('multer');
 const libraryService = require('../services/library');
 const scannerService = require('../services/scanner');
-const { sanitizeString } = require('../utils/validators');
 const logger = require('../utils/logger');
 const trash = require('../services/trash');
 const extras = require('../services/extras');
@@ -15,6 +14,7 @@ const sqlite = require('../services/sqliteIndex');
 const { getConfig } = require('../config');
 const profiles = require('../services/profiles');
 const contentRating = require('../services/contentRating');
+const metadataEdit = require('../services/metadataEdit');
 const { isAdminProfile } = require('../middleware/requireAdmin');
 const { itemParam, blockRestricted, visibleItems } = require('../middleware/profileAccess');
 
@@ -282,12 +282,19 @@ router.put('/albums/order', (req, res) => {
   res.json({ items: updated, missing });
 });
 
+// Album-wide fields: written to every track of the album at once.
+const ALBUM_FIELDS = ['album', 'albumArtist', 'artist', 'year', 'genre'];
+
 router.put('/albums/metadata', (req, res) => {
   const items = musicItemsForIds(req.body?.ids);
-  const album = req.body?.album !== undefined ? sanitizeString(req.body.album, 500).trim() : undefined;
   if (!items) return res.status(400).json({ error: 'ids required' });
-  if (!album) return res.status(400).json({ error: 'Album title is required' });
-  const updated = items.map(item => libraryService.updateItem(item.id, { album }, { manual: true }));
+  const { updates, errors } = metadataEdit.parseEdits(req.body, { allowed: ALBUM_FIELDS });
+  if (updates.album === '') errors.album = 'Album title is required';
+  if (Object.keys(errors).length) {
+    return res.status(400).json({ error: metadataEdit.firstError(errors), code: 'INVALID_METADATA', fields: errors });
+  }
+  if (!Object.keys(updates).length) return res.status(400).json({ error: 'Album title is required', code: 'INVALID_METADATA' });
+  const updated = items.map(item => libraryService.updateItem(item.id, updates, { manual: true }));
   events.broadcast('library:changed', { reason: 'album-edit' });
   res.json({ items: updated });
 });
@@ -347,63 +354,80 @@ router.get('/:id', (req, res) => {
 
 router.put('/:id', (req, res) => {
   try {
-    const { title, artist, album, genre, year, description, rating, tags, season, episode, track, coverArtPath } = req.body;
+    const body = req.body && typeof req.body === 'object' ? req.body : {};
+    const current = libraryService.getById(req.params.id);
+    if (!current) return res.status(404).json({ error: 'Item not found', code: 'NOT_FOUND' });
     // The age rating decides what Kids profiles see, so only admins set it.
-    if (req.body.contentRating !== undefined && !isAdminProfile(req.profileId)) {
+    if (body.contentRating !== undefined && !isAdminProfile(req.profileId)) {
       return res.status(403).json({ error: 'Only an admin profile can change age ratings', code: 'ADMIN_REQUIRED' });
     }
-    const updates = {};
 
-    if (title !== undefined) updates.title = sanitizeString(title, 500);
-    if (artist !== undefined) updates.artist = sanitizeString(artist, 500);
-    if (album !== undefined) updates.album = sanitizeString(album, 500);
-    if (genre !== undefined) updates.genre = sanitizeString(genre, 200);
-    if (description !== undefined) updates.description = sanitizeString(description, 2000);
-    if (year !== undefined) {
-      const y = parseInt(year, 10);
-      if (!isNaN(y) && y >= 1900 && y <= 2100) updates.year = y;
+    const { updates, errors } = metadataEdit.parseEdits(body);
+    if (Object.keys(errors).length) {
+      return res.status(400).json({ error: metadataEdit.firstError(errors), code: 'INVALID_METADATA', fields: errors });
     }
-    if (rating !== undefined) {
-      const r = parseFloat(rating);
-      if (!isNaN(r) && r >= 0 && r <= 5) updates.rating = r;
-    }
-    if (req.body.contentRating !== undefined) {
-      updates.contentRating = contentRating.normalise(req.body.contentRating);
-    }
-    if (tags !== undefined && Array.isArray(tags)) {
-      updates.tags = tags.map(t => sanitizeString(t, 100)).filter(Boolean).slice(0, 20);
-    }
-    if (season !== undefined) {
-      const s = parseInt(season, 10);
-      if (!isNaN(s)) updates.season = s;
-    }
-    if (episode !== undefined) {
-      const e = parseInt(episode, 10);
-      if (!isNaN(e)) updates.episode = e;
-    }
-    if (track !== undefined) {
-      const t = parseInt(track, 10);
-      if (!isNaN(t) && t >= 0 && t <= 10000) updates.track = t;
+    if (body.contentRating !== undefined) {
+      updates.contentRating = contentRating.normalise(body.contentRating);
     }
     // Cover art may only point inside the server's cover cache (set by the
     // album-cover upload above) — never an arbitrary path from the client.
-    if (coverArtPath !== undefined) {
+    const { coverArtPath } = body;
+    if (coverArtPath !== undefined && coverArtPath !== null) {
       const resolved = path.resolve(String(coverArtPath));
-      if (resolved.startsWith(path.resolve(COVERS_DIR))) {
+      if (resolved.startsWith(path.resolve(COVERS_DIR) + path.sep)) {
         updates.coverArtPath = resolved;
-        const current = libraryService.getById(req.params.id);
-        if (current?.type === 'music') updates.posterPath = resolved;
+        if (current.type === 'music') updates.posterPath = resolved;
       }
     }
 
     // Hand edits outlive rescans (rating isn't a tag, so it is never re-read).
     const updated = libraryService.updateItem(req.params.id, updates, { manual: true });
-    if (!updated) return res.status(404).json({ error: 'Item not found' });
-
+    if (!updated) return res.status(404).json({ error: 'Item not found', code: 'NOT_FOUND' });
+    if (Object.keys(updates).length) {
+      // Other open tabs and devices pick the new title/artist up straight away.
+      events.broadcast('library:changed', { reason: 'metadata', id: updated.id, title: updated.title });
+    }
     res.json(updated);
   } catch (err) {
+    logger.warn(`Failed to update item ${req.params.id}: ${err.message}`);
     res.status(500).json({ error: 'Failed to update item' });
   }
+});
+
+/**
+ * Put hand-edited fields back to what the file says (tags, file name, folder
+ * artwork) and stop keeping them over rescans. `fields` defaults to every
+ * hand-edited field that has a file source.
+ */
+router.post('/:id/metadata/reset', async (req, res) => {
+  const item = libraryService.getById(req.params.id);
+  if (!item) return res.status(404).json({ error: 'Item not found', code: 'NOT_FOUND' });
+  const manual = Array.isArray(item.manualFields) ? item.manualFields : [];
+  let requested = manual;
+  if (req.body?.fields !== undefined) {
+    if (!Array.isArray(req.body.fields) || req.body.fields.length > 50) {
+      return res.status(400).json({ error: 'fields must be a list', code: 'INVALID_FIELDS' });
+    }
+    requested = req.body.fields.map(String);
+  }
+  const fields = metadataEdit.expandReset(requested);
+  if (!fields.length) return res.json(item);
+  if (item.missing || !item.path || !(await fs.pathExists(item.path))) {
+    return res.status(409).json({ error: 'The file isn’t available, so its own details can’t be read', code: 'FILE_MISSING' });
+  }
+  let auto;
+  try {
+    auto = await scannerService.readAutomaticFields(item);
+  } catch (err) {
+    logger.warn(`Could not re-read ${item.path}: ${err.message}`);
+    return res.status(500).json({ error: 'Could not read the file’s details' });
+  }
+  const updates = {};
+  for (const field of fields) updates[field] = auto[field] === undefined ? null : auto[field];
+  updates.manualFields = manual.filter(f => !fields.includes(f));
+  const updated = libraryService.updateItem(item.id, updates);
+  events.broadcast('library:changed', { reason: 'metadata', id: updated.id, title: updated.title });
+  res.json(updated);
 });
 
 router.delete('/:id', async (req, res) => {

@@ -325,6 +325,7 @@ async function scanFile(filePath) {
  */
 const ARTWORK_FIELDS = ['coverArtPath', 'posterPath', 'thumbnailPath'];
 const TEXT_FIELDS = ['title', 'artist', 'albumArtist', 'album', 'year', 'genre'];
+const CLEARABLE_FIELDS = new Set(['season', 'episode']);
 const COVERS_DIR = path.resolve(__dirname, '../cache/covers');
 // Covers a person uploaded (upload form → upload-*, album editor → cover-*),
 // as opposed to artwork the scanner extracted from the file's own tags.
@@ -350,6 +351,9 @@ function applyManualFields(item, existing) {
   const fields = Array.isArray(existing.manualFields) ? existing.manualFields : [];
   for (const key of fields) {
     const value = existing[key];
+    // A season/episode number cleared by hand stays cleared: that is how a
+    // film the file name made look like an episode is filed back as a film.
+    if (CLEARABLE_FIELDS.has(key) && value === null) { item[key] = null; continue; }
     if (value === undefined || value === null || value === '') continue;
     // A hand-picked cover that has since been deleted shouldn't hide the
     // file's own artwork.
@@ -382,6 +386,54 @@ function applyManualFields(item, existing) {
     if (kept.length) item.manualFields = [...new Set([...(item.manualFields || []), ...kept])];
   }
   return item;
+}
+
+/**
+ * What the file itself says for the hand-editable fields — the values a
+ * "revert to automatic" puts back. Reads the tags (audio) or file name and
+ * folder artwork (video) again without touching anything else on the item
+ * (play counts, online matches, subtitles…), unlike a full rescan.
+ */
+async function readAutomaticFields(item) {
+  const filePath = item.path;
+  const base = path.basename(filePath, path.extname(filePath));
+  const empty = {
+    artist: '', albumArtist: '', album: '', genre: '', composer: '', author: '',
+    narrator: '', series: '', issue: '', year: null, track: null, disc: null,
+    season: null, episode: null, seriesTitle: null, seriesKey: null,
+    coverArtPath: null, posterPath: null,
+  };
+  if (item.type === 'music' || item.type === 'audiobook' || item.type === 'podcast') {
+    const m = await metadataService.extractAudioMetadata(filePath);
+    return {
+      ...empty,
+      title: m.title || base,
+      artist: m.artist || '',
+      albumArtist: m.albumArtist || '',
+      album: m.album || '',
+      year: m.year ?? null,
+      genre: m.genre || '',
+      track: m.track ?? null,
+      disc: m.disc ?? null,
+      composer: m.composer || '',
+      coverArtPath: m.coverArtPath || null,
+      // Music artwork lives in coverArtPath; a hand-picked cover also set
+      // posterPath, which a scanned track doesn't have.
+      posterPath: item.type === 'music' ? null : (item.posterPath ?? null),
+    };
+  }
+  if (item.type === 'comic') return { ...empty, title: base };
+  const m = await metadataService.extractVideoMetadata(filePath, item.type);
+  return {
+    ...empty,
+    title: m.title || base,
+    year: m.year ?? null,
+    season: m.season ?? null,
+    episode: m.episode ?? null,
+    seriesKey: seriesKeyFor(filePath, m),
+    coverArtPath: null,
+    posterPath: m.posterPath || null,
+  };
 }
 
 /**
@@ -799,6 +851,7 @@ module.exports = {
   isScanning: () => isScanning,
   getLastScan,
   scanFile,
+  readAutomaticFields,
   scanDirectory,
   scanAll,
   startWatcher,

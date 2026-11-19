@@ -321,6 +321,14 @@ class ApiClient {
     });
   }
 
+  /** Put hand-edited fields back to the file's own values (all when `fields` is omitted). */
+  resetItemMetadata(id, fields) {
+    return this.request(`/api/library/${id}/metadata/reset`, {
+      method: 'POST',
+      body: JSON.stringify(fields ? { fields } : {}),
+    });
+  }
+
   deleteItem(id, deleteFile = false) {
     return this.request(`/api/library/${id}?deleteFile=${deleteFile}`, {
       method: 'DELETE',
@@ -1335,6 +1343,11 @@ class ApiClient {
 
   updateAlbumTitle(ids, album) {
     return this.request('/api/library/albums/metadata', { method: 'PUT', body: { ids, album } });
+  }
+
+  /** Album-wide fields (album, albumArtist, artist, year, genre) for every track. */
+  updateAlbumMetadata(ids, fields) {
+    return this.request('/api/library/albums/metadata', { method: 'PUT', body: { ids, ...fields } });
   }
 
   _isMissingEndpoint(err) {

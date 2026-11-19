@@ -61,7 +61,10 @@ function buildShows(profileId) {
     shows.push({
       key,
       id: `show:${Buffer.from(key).toString('base64url').slice(0, 16)}`,
-      title: episodes[0].title?.replace(/\s*[sS]\d+[eE]\d+.*$/, '') || key,
+      // A show name typed into the edit dialog wins over the guess from the
+      // first episode's title.
+      title: episodes.find(e => e.seriesTitle)?.seriesTitle
+        || episodes[0].title?.replace(/\s*[sS]\d+[eE]\d+.*$/, '') || key,
       posterPath: episodes.find(e => e.posterPath)?.posterPath || null,
       backdropPath: episodes.find(e => e.backdropPath)?.backdropPath || null,
       episodeCount: episodes.length,
