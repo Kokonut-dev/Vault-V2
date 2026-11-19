@@ -255,18 +255,30 @@ test('a scan keeps the items of a library folder that is offline', async () => {
     { id: 'away2', type: 'music', title: 'Also there', path: nodePath.join(offline, 'sub', 'b.mp3') },
   ];
   const removed = [];
-  const origAll = libraryService.getAll;
-  const origRemove = libraryService.removeItem;
+  const missing = [];
+  const orig = { getAll: libraryService.getAll, getById: libraryService.getById, removeItem: libraryService.removeItem, markMissing: libraryService.markMissing };
   libraryService.getAll = () => lib;
+  libraryService.getById = (id) => lib.find(i => i.id === id) || null;
   libraryService.removeItem = (id) => { removed.push(id); return true; };
+  libraryService.markMissing = (id) => { missing.push(id); return lib.find(i => i.id === id); };
   try {
     const result = await scanner.scanAll();
-    assert.deepEqual(removed, ['gone'], 'only the file that is really gone is removed');
+    // Only the file that is really gone is touched — and it's flagged
+    // "missing" first (see the missing-state test in features.test.js).
+    assert.deepEqual(missing, ['gone']);
+    assert.deepEqual(removed, []);
     assert.equal(result.kept, 2);
     assert.ok(result.offline.includes(offline));
+
+    // With no grace period it's removed straight away; offline items never.
+    memory.media.missing = { retentionDays: 0 };
+    missing.length = 0;
+    await scanner.scanAll();
+    assert.deepEqual(removed, ['gone'], 'only the file that is really gone is removed');
+    assert.deepEqual(missing, []);
   } finally {
-    libraryService.getAll = origAll;
-    libraryService.removeItem = origRemove;
+    Object.assign(libraryService, orig);
+    delete memory.media.missing;
     Object.assign(memory.media, saved);
   }
   assert.equal(scanner.isUnder('/media/Movie2/x', '/media/Movie'), false);

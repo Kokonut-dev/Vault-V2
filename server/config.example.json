@@ -117,6 +117,9 @@
       "enabled": true,
       "retentionDays": 30
     },
+    "missing": {
+      "retentionDays": 30
+    },
     "extras": {
       "detectTrailers": true,
       "detectExtras": true,

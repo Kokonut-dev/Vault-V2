@@ -89,6 +89,12 @@ const DEFAULT_CONFIG = {
       enabled: true,
       retentionDays: 30
     },
+    // Items whose file disappeared stay (flagged "missing", with everyone's
+    // favourites/history) this many days before a scan removes them, so an
+    // unplugged drive or a moved folder loses nothing. 0 = remove at once.
+    missing: {
+      retentionDays: 30
+    },
     extras: {
       detectTrailers: true,
       detectExtras: true,
@@ -284,6 +290,7 @@ function persistedShape(newConfig) {
       transcoding: newConfig.media.transcoding,
       trickplay: newConfig.media.trickplay,
       trash: newConfig.media.trash,
+      missing: newConfig.media.missing,
       extras: newConfig.media.extras
     },
     metadata: newConfig.metadata,

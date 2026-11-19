@@ -145,7 +145,7 @@ for (const credentialPath of ['/api/auth/login', '/api/auth/grid', '/api/auth/se
 app.use('/api/upload/', uploadLimiter);
 
 // Ensure data dirs
-fs.ensureDirSync(path.join(__dirname, 'data'));
+fs.ensureDirSync(require('./utils/dataDir').DATA_DIR);
 fs.ensureDirSync(path.join(__dirname, 'cache'));
 fs.ensureDirSync(path.join(__dirname, 'cache/thumbnails'));
 fs.ensureDirSync(path.join(__dirname, 'cache/covers'));

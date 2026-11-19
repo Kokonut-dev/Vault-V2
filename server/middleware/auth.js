@@ -25,7 +25,7 @@ function resolveProfileId(decoded) {
   return profiles.get(profileId) ? profileId : null;
 }
 
-const BLACKLIST_PATH = path.join(__dirname, '../data/token-blacklist.json');
+const BLACKLIST_PATH = path.join(require('../utils/dataDir').DATA_DIR, 'token-blacklist.json');
 let blacklist = new Set();
 
 function loadBlacklist() {

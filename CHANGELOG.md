@@ -2,6 +2,63 @@
 
 ## [3.0.0] — in progress (branch `arena/0deefe55-vault-v2`)
 
+### Added — watch parties from the player, moved files keep their history
+Tests: `server/test/features.test.js` (player control: `syncplay-ui.test.js`).
+
+- **SyncPlay button in the video player.** Start a watch party for the
+  playing video (the room code is copied to the clipboard), join with a code,
+  see who's in, copy the invite, play the current video for everyone, or
+  leave, without opening the SyncPlay page. The SyncPlay page's *Create room*
+  now also starts on the playing video (it read a `currentVideoId` that nothing
+  ever set).
+- **Moved and renamed files keep everything.** When a scan (or the folder
+  watcher) finds a new file that has the same type and byte size as a known item
+  whose file is gone, it carries over play count, rating, tags, hand-edited
+  metadata and every profile's favourites, playlists, history, watched marks,
+  bookmarks and watchlist entries. Ambiguous matches are left alone.
+- **"File missing" instead of deleted.** A file that disappears is flagged
+  (a *File missing* badge on its card) and kept with its history for
+  `media.missing.retentionDays` (default 30; `0` means remove straight away).
+  It goes back to normal when the file returns. *Health → Remove missing*
+  still removes such items immediately.
+- **Subsonic respects age limits.** Subsonic apps browse as one chosen
+  profile (System → Services → Subsonic, default: the main profile). That
+  profile's age limit applies to every list, stream, download and cover, and
+  its favourites, playlists and history are used. If that profile is deleted,
+  Subsonic sign-in is refused; it does not fall back to no limits. Starting a
+  scan over Subsonic needs an admin profile.
+- **ASS/SSA subtitles work.** They're converted to WebVTT, keeping italic,
+  bold, underline, line breaks and top/side placement. Before, they were sent
+  as plain text, which browsers ignore. SRT conversion handles BOMs and CRLF
+  line endings.
+- **Bookmarks are per profile.** Each profile sees and deletes only its own
+  bookmarks. Older bookmarks belong to the main profile. Deleting a profile
+  deletes its bookmarks.
+
+### Fixed — bug run, part 2 (the low-severity leftovers)
+- **Removing an item left data behind.** Only the main profile's favourites,
+  playlists and history were cleaned. Now every profile's lists are cleaned,
+  plus watched marks, watchlist, collections, intro markers (including a
+  show's intro once its last episode goes), bookmarks and per-item listening
+  stats.
+- **Any device could stop anyone's Live TV stream.** Viewers are now counted
+  per device session. A device can only give up its own place, and releasing
+  twice does nothing.
+- **Server details for every profile.** The System page's Health report,
+  disk, cache, index and scrobbles are admin-only. `/api/server` no longer
+  shows the process id, launcher port, uptime or Node version to non-admins.
+  `/api/media/info` shows the file path (and ffprobe errors) to admins only.
+- **Artwork downloads could reach the LAN.** Metadata artwork is fetched
+  through `safeFetch`: public addresses only, images only, max 20 MB, with a
+  timeout. Metadata lookups time out after 15 s, and the HDHomeRun lineup
+  fetch is capped too.
+- **Unhandled stream errors.** A thumbnail, trickplay sheet, playlist or
+  Subsonic cover that vanished or failed to read between the check and the
+  read raised an unhandled stream error, which takes the server process
+  down. They now answer 404/500 (or end the response cleanly).
+- **`npm test` wrote into `server/data`.** Tests now run against a temp
+  folder (`VAULT_DATA_DIR`, see `scripts/run-tests.js`).
+
 ### Fixed — bug run (data layer and authorization)
 A review of the data layer (JSON stores, the optional SQLite index, the
 scanner) and of who can call what, plus an automated sweep of all 224 routes.

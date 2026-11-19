@@ -14,7 +14,7 @@ const trash = require('./trash');
 const comics = require('./comics');
 
 const SERVER_DIR = path.join(__dirname, '..');
-const DATA_DIR = path.join(SERVER_DIR, 'data');
+const { DATA_DIR } = require('../utils/dataDir');
 const CACHE_DIR = path.join(SERVER_DIR, 'cache');
 const LOGS_DIR = path.join(SERVER_DIR, 'logs');
 const BACKUP_DIR = path.join(DATA_DIR, 'backups');

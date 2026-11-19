@@ -16,7 +16,7 @@ let chatTimer = null;
 let offChat = null;
 
 /** This device's display name, if known (otherwise the server uses the profile name). */
-function memberName() {
+export function memberName() {
   return store.get('profile')?.name || store.get('user')?.username || undefined;
 }
 
@@ -28,7 +28,7 @@ function stopRoomTimers() {
 }
 
 /** Join (or rejoin with this tab's token), asking for the password if needed. */
-async function joinWithPrompt(idOrCode) {
+export async function joinWithPrompt(idOrCode) {
   const session = getSyncSession();
   const token = session && (session.roomId === idOrCode || session.code === String(idOrCode).toUpperCase()) ? session.token : null;
   let password;

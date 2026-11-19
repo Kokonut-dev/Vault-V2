@@ -1074,6 +1074,11 @@ class ApiClient {
     return this.request('/api/system/subsonic', { method: 'PUT', body: { password, username } });
   }
 
+  /** Which profile's library (and age limits) Subsonic apps see. */
+  setSubsonicProfile(profileId) {
+    return this.request('/api/system/subsonic', { method: 'PUT', body: { profileId } });
+  }
+
   // --- Metadata agents (match / fix) ---------------------------------------
   searchMetadata(params) {
     // The server expects `query`; callers often pass the natural `q`.

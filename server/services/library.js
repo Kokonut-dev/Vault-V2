@@ -5,10 +5,11 @@ const logger = require('../utils/logger');
 const { writeJsonAtomic, readJsonOrQuarantine } = require('../utils/fileUtils');
 const { createJsonStore } = require('../utils/jsonStore');
 
-const LIBRARY_PATH = path.join(__dirname, '../data/library.json');
-const FAVOURITES_PATH = path.join(__dirname, '../data/favourites.json');
-const PLAYLISTS_PATH = path.join(__dirname, '../data/playlists.json');
-const HISTORY_PATH = path.join(__dirname, '../data/history.json');
+const { DATA_DIR } = require('../utils/dataDir');
+const LIBRARY_PATH = path.join(DATA_DIR, 'library.json');
+const FAVOURITES_PATH = path.join(DATA_DIR, 'favourites.json');
+const PLAYLISTS_PATH = path.join(DATA_DIR, 'playlists.json');
+const HISTORY_PATH = path.join(DATA_DIR, 'history.json');
 
 // In-memory data + indexes for O(1) lookups
 let library = [];
@@ -277,13 +278,12 @@ function moveTypeIndex(item, previousType) {
   if (typeIndex[item.type]) typeIndex[item.type].push(item);
 }
 
-function removeItem(id) {
-  const item = idMap.get(id);
-  if (!item) return false;
+/** Take an item out of the in-memory indexes (no reference clean-up). */
+function detachItem(item) {
   const idx = library.indexOf(item);
   if (idx !== -1) library.splice(idx, 1);
-  idMap.delete(id);
-  if (item.path) pathMap.delete(item.path);
+  idMap.delete(item.id);
+  if (item.path && pathMap.get(item.path) === item) pathMap.delete(item.path);
   // Surgical index update — a full rebuildIndexes() per removal turned batch
   // deletes (prune missing, rescan after a drive is gone) into O(n²).
   const bucket = typeIndex[item.type];
@@ -292,29 +292,159 @@ function removeItem(id) {
     if (bucketIdx !== -1) bucket.splice(bucketIdx, 1);
   }
   genreDirty = true; // genreSet may now contain a genre with no items
+}
 
-  // Also remove from favourites, playlists, history
-  let changed = false;
-  if (favourites.includes(id)) {
-    favourites = favourites.filter(f => f !== id);
-    changed = true;
-    saveFavourites();
+/** Profiles that have their own data folder (or a loaded scoped store). */
+function scopedProfileIds() {
+  const ids = new Set([...scopedStores.keys()].map(key => key.slice(0, key.lastIndexOf(':'))));
+  try {
+    for (const entry of fs.readdirSync(path.join(DATA_DIR, 'profiles'), { withFileTypes: true })) {
+      if (entry.isDirectory()) ids.add(entry.name);
+    }
+  } catch { /* no profile folders yet */ }
+  ids.delete('default');
+  return [...ids];
+}
+
+/**
+ * Point every per-user reference to `oldId` at `newId` — or drop it when
+ * `newId` is null. Covers favourites, playlists, history and watched marks
+ * for the default profile (flat files) and every other profile (scoped
+ * stores), plus the extras (watchlist, collections, markers, bookmarks,
+ * listening stats). Removing an item used to clean only the default
+ * profile's lists, so other profiles kept dead ids forever and a moved file
+ * lost everyone's progress.
+ */
+function rewriteItemRefs(oldId, newId = null) {
+  if (!oldId || oldId === newId) return;
+  const swapList = (list) => {
+    if (!list.includes(oldId)) return null;
+    const next = newId ? list.map(id => (id === oldId ? newId : id)) : list.filter(id => id !== oldId);
+    return [...new Set(next)];
+  };
+  const swapHistory = (list) => {
+    if (!list.some(h => h.itemId === oldId)) return null;
+    if (!newId) return list.filter(h => h.itemId !== oldId);
+    // Keep one entry per item: the moved file's history wins over a fresh
+    // entry the new path may already have.
+    return list.filter(h => h.itemId !== newId).map(h => (h.itemId === oldId ? { ...h, itemId: newId } : h));
+  };
+  const swapPlaylists = (list) => {
+    let changed = false;
+    const next = list.map((pl) => {
+      const items = Array.isArray(pl.items) ? swapList(pl.items) : null;
+      if (!items) return pl;
+      changed = true;
+      return { ...pl, items, updatedAt: new Date().toISOString() };
+    });
+    return changed ? next : null;
+  };
+  const swapWatched = (map) => {
+    if (!map || !Object.prototype.hasOwnProperty.call(map, oldId)) return null;
+    const next = { ...map };
+    if (newId && !next[newId]) next[newId] = next[oldId];
+    delete next[oldId];
+    return next;
+  };
+
+  // Default profile (flat files).
+  const fav = swapList(favourites);
+  if (fav) { favourites = fav; saveFavourites(); }
+  const pls = swapPlaylists(playlists);
+  if (pls) { playlists = pls; savePlaylists(); }
+  const hist = swapHistory(history);
+  if (hist) { history = hist; saveHistory(); }
+  const watched = swapWatched(watchedStore.get());
+  if (watched) watchedStore.set(watched);
+
+  // Every other profile.
+  for (const profileId of scopedProfileIds()) {
+    const swaps = { favourites: swapList, history: swapHistory, playlists: swapPlaylists, watched: swapWatched };
+    for (const [kind, swap] of Object.entries(swaps)) {
+      const store = getScopedStore(profileId, kind);
+      if (!store) continue;
+      const next = swap(store.get());
+      if (next) store.set(next);
+    }
   }
-  let playlistsChanged = false;
-  playlists.forEach(pl => {
-    const before = pl.items.length;
-    pl.items = pl.items.filter(itemId => itemId !== id);
-    if (pl.items.length !== before) playlistsChanged = true;
-  });
-  if (playlistsChanged) savePlaylists();
 
-  const beforeHistory = history.length;
-  history = history.filter(h => h.itemId !== id);
-  if (history.length !== beforeHistory) saveHistory();
+  // Extras live in their own module (which doesn't depend on this one).
+  try {
+    require('./extras').rewriteItemRefs(oldId, newId);
+  } catch (err) {
+    logger.warn(`Couldn't update extras for ${oldId}: ${err.message}`);
+  }
+}
 
+/** Remove an item and every per-user reference to it. */
+function removeItem(id) {
+  const item = idMap.get(id);
+  if (!item) return false;
+  detachItem(item);
+  rewriteItemRefs(id, null);
+  // Series intro memory goes once the last episode of the show is gone.
+  if (item.seriesKey && !library.some(i => i.seriesKey === item.seriesKey)) {
+    try { require('./extras').removeSeriesMarker(item.seriesKey); } catch { /* best effort */ }
+  }
   mirrorSqlite('remove', id);
   saveLibraryImmediate(); // immediate for removal
   return true;
+}
+
+// What a person did with an item — kept when its file moves (relinkItem).
+const USER_FIELDS = ['addedAt', 'playCount', 'lastPlayedAt', 'rating', 'description', 'tags'];
+
+/**
+ * A file moved or was renamed: `oldId` (missing) and `newId` (just scanned
+ * at the new path) are the same media. Carry the old item's user data over
+ * to the new one — play count, rating, tags, hand-edited metadata, and every
+ * profile's favourites, playlists, history, watched marks, bookmarks… — then
+ * drop the old entry. Returns the new item, or null when either is unknown.
+ */
+function relinkItem(oldId, newId) {
+  const old = idMap.get(oldId);
+  const next = idMap.get(newId);
+  if (!old || !next || old === next) return null;
+  const patch = {};
+  for (const key of USER_FIELDS) {
+    if (old[key] !== undefined && old[key] !== null && old[key] !== '' && !(Array.isArray(old[key]) && !old[key].length)) patch[key] = old[key];
+  }
+  for (const key of old.manualFields || []) {
+    if (old[key] !== undefined) patch[key] = old[key];
+  }
+  if (old.manualFields?.length) patch.manualFields = [...new Set([...(next.manualFields || []), ...old.manualFields])];
+  if (!next.contentRating && old.contentRating) patch.contentRating = old.contentRating;
+  for (const key of ['podcastFeedId', 'episodeGuid', 'published', 'externalIds', 'matchedAt']) {
+    if (old[key] !== undefined && next[key] === undefined) patch[key] = old[key];
+  }
+  patch.movedFrom = old.path;
+  patch.missing = false;
+  patch.missingSince = null;
+  Object.assign(next, patch, { updatedAt: new Date().toISOString() });
+  searchTextCache.delete(next);
+
+  detachItem(old);
+  rewriteItemRefs(oldId, newId);
+  mirrorSqlite('remove', oldId);
+  mirrorSqlite('upsert', next);
+  saveLibraryImmediate();
+  return next;
+}
+
+/**
+ * Flag an item whose file is gone. It stays in the library (with its
+ * favourites, history, ratings…) so a drive coming back or a file being moved
+ * back loses nothing; a scan removes it for real after
+ * `media.missingRetentionDays` (see scanner.scanAll), as does Health → Remove
+ * missing.
+ */
+function markMissing(id, missing = true) {
+  const item = idMap.get(id);
+  if (!item) return null;
+  if (!!item.missing === !!missing) return item;
+  return updateItem(id, missing
+    ? { missing: true, missingSince: new Date().toISOString() }
+    : { missing: false, missingSince: null });
 }
 
 // F-14: per-item search text is cached (WeakMap) — item objects are replaced
@@ -719,7 +849,6 @@ async function removeProfileData(profileId) {
     }
   }
   await Promise.all(pending.map(p => Promise.resolve(p).catch(() => {})));
-  const { DATA_DIR } = require('../utils/jsonStore');
   if (DATA_DIR) await fs.remove(path.join(DATA_DIR, 'profiles', safeId)).catch(() => {});
   return true;
 }
@@ -787,6 +916,9 @@ module.exports = {
   updateItem,
   MANUAL_FIELDS,
   removeItem,
+  relinkItem,
+  markMissing,
+  rewriteItemRefs,
   search,
   getSearchText,
   getStats,

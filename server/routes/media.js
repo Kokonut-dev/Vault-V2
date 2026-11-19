@@ -12,8 +12,10 @@ const events = require('../services/events');
 const logger = require('../utils/logger');
 // Shared Range-aware streaming helper (moved to utils so the transcode cache
 // route can reuse it — F-16).
-const { sendFileWithRange } = require('../utils/fileUtils');
+const { sendFileWithRange, pipeFile } = require('../utils/fileUtils');
 const { itemParam } = require('../middleware/profileAccess');
+const { isAdminProfile } = require('../middleware/requireAdmin');
+const { srtToVtt, assToVtt } = require('../utils/subtitleConvert');
 
 // Age-limited profiles can't open or stream items above their limit.
 router.param('id', itemParam);
@@ -76,7 +78,7 @@ router.get('/cover/:id', async (req, res) => {
     if (resized) {
       res.setHeader('Content-Type', 'image/jpeg');
       res.setHeader('Cache-Control', 'public, max-age=604800, immutable');
-      return fs.createReadStream(resized).pipe(res);
+      return pipeFile(resized, res);
     }
   }
 
@@ -147,7 +149,7 @@ router.get('/thumbnail/:id', async (req, res) => {
   if (thumbPath && fs.existsSync(thumbPath)) {
     res.setHeader('Content-Type', 'image/jpeg');
     res.setHeader('Cache-Control', 'public, max-age=86400');
-    fs.createReadStream(thumbPath).pipe(res);
+    pipeFile(thumbPath, res);
   } else {
     res.status(404).json({ error: 'Thumbnail not found' });
   }
@@ -168,7 +170,7 @@ router.get('/trickplay/:id/:sheet', (req, res) => {
   if (!file) return res.status(404).json({ error: 'Sprite not found' });
   res.setHeader('Content-Type', 'image/jpeg');
   res.setHeader('Cache-Control', 'public, max-age=604800, immutable');
-  fs.createReadStream(file).pipe(res);
+  pipeFile(file, res);
 });
 
 // Lyrics (sidecar .lrc / embedded), served for the Now Playing view.
@@ -282,6 +284,8 @@ router.get('/subtitle/:id/:subtitleId', (req, res) => {
     const possible = [
       path.join(dir, `${base}.vtt`),
       path.join(dir, `${base}.srt`),
+      path.join(dir, `${base}.ass`),
+      path.join(dir, `${base}.ssa`),
       path.join(dir, subtitleId),
     ];
     for (const p of possible) {
@@ -302,34 +306,20 @@ router.get('/subtitle/:id/:subtitleId', (req, res) => {
 
   if (ext === '.vtt') {
     res.setHeader('Content-Type', 'text/vtt');
-    streamFile(subtitlePath, res);
-  } else if (ext === '.srt') {
-    // Convert SRT to VTT on the fly (simple conversion)
+    pipeFile(subtitlePath, res);
+  } else {
+    // SRT and ASS/SSA are converted to WebVTT, the only format browsers play.
     try {
-      let content = fs.readFileSync(subtitlePath, 'utf-8');
-      // Basic SRT to VTT conversion
-      content = 'WEBVTT\n\n' + content.replace(/(\d{2}:\d{2}:\d{2}),(\d{3})/g, '$1.$2');
-      res.setHeader('Content-Type', 'text/vtt');
-      res.send(content);
+      const content = fs.readFileSync(subtitlePath, 'utf-8');
+      res.setHeader('Content-Type', 'text/vtt; charset=utf-8');
+      res.send(ext === '.srt' ? srtToVtt(content) : assToVtt(content));
     } catch (err) {
+      logger.warn(`Subtitle conversion failed for ${item.id}: ${err.message}`);
       res.status(500).json({ error: 'Failed to convert subtitle' });
     }
-  } else {
-    // For ASS/SSA, try to serve as is or convert via ffmpeg if available
-    res.setHeader('Content-Type', 'text/plain');
-    streamFile(subtitlePath, res);
   }
 });
 
-/** Pipe a file, ending the response cleanly if the read fails mid-way. */
-function streamFile(file, res) {
-  fs.createReadStream(file)
-    .on('error', (err) => {
-      if (!res.headersSent) res.status(500).json({ error: 'Could not read file' });
-      else res.destroy(err);
-    })
-    .pipe(res);
-}
 
 router.get('/info/:id', async (req, res) => {
   const item = libraryService.getById(req.params.id);
@@ -345,21 +335,24 @@ router.get('/info/:id', async (req, res) => {
         sampleRate: item.sampleRate,
         duration: item.duration,
         fileSize: item.fileSize,
-        filePath: item.path,
         title: item.title,
         artist: item.artist,
         album: item.album,
       };
     } else {
       probeData = await metadataService.probeVideo(item.path);
-      probeData.filePath = item.path;
       probeData.fileSize = item.fileSize;
       probeData.title = item.title;
     }
+    // Where the file sits on the server's disk is for admins only.
+    if (isAdminProfile(req.profileId)) probeData.filePath = item.path;
+    else delete probeData.filePath;
 
     res.json(probeData);
   } catch (err) {
-    res.status(500).json({ error: 'Failed to get media info', details: err.message });
+    logger.warn(`Media info failed for ${item.id}: ${err.message}`);
+    // ffprobe's message includes the file path.
+    res.status(500).json({ error: 'Failed to get media info', ...(isAdminProfile(req.profileId) ? { details: err.message } : {}) });
   }
 });
 

@@ -14,7 +14,7 @@ const fs = require('fs-extra');
 const path = require('path');
 const { writeJsonAtomic, readJsonOrQuarantine } = require('./fileUtils');
 
-const DATA_DIR = path.join(__dirname, '..', 'data');
+const { DATA_DIR } = require('./dataDir');
 
 function clone(value) {
   if (typeof structuredClone === 'function') return structuredClone(value);

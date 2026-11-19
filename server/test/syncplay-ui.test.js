@@ -127,3 +127,63 @@ test('create, chat, refresh and leave a watch party from the SyncPlay page', asy
   await until(() => container.querySelector('#room-create'));
   runViewCleanups();
 });
+
+test('the player’s SyncPlay control starts a party for the playing video, shows the code and leaves', async (t) => {
+  const film = { id: 'film-1', title: 'Film', type: 'movie' };
+  const origGetById = libraryService.getById;
+  libraryService.getById = (id) => (id === film.id ? film : null);
+  t.after(() => { libraryService.getById = origGetById; });
+  sessionStorage.removeItem('vault_syncplay');
+
+  // The player's controls row (index.html) with the captions button the control sits next to.
+  const controls = document.createElement('div');
+  controls.className = 'video-controls-right';
+  controls.innerHTML = '<button id="video-captions"></button>';
+  document.body.appendChild(controls);
+  t.after(() => controls.remove());
+
+  const { initSyncPlayControl } = await import(docs('components', 'syncplayControl.js'));
+  const { store } = await import(docs('store.js'));
+  initSyncPlayControl();
+  const button = await until(() => document.getElementById('video-syncplay'));
+  assert.equal(button.nextElementSibling.id, 'video-captions');
+  assert.equal(button.getAttribute('aria-pressed'), 'false');
+
+  // Not playing anything: only "join" is offered.
+  button.click();
+  const menu = document.getElementById('video-syncplay-menu');
+  await until(() => menu.classList.contains('active'));
+  assert.equal(menu.querySelector('[data-sync-action="start"]'), null);
+  assert.ok(menu.querySelector('[data-sync-action="join"]'));
+  document.body.click();
+  assert.equal(menu.classList.contains('active'), false);
+
+  // Playing a film: start a party with it.
+  window.dispatchEvent(new CustomEvent('vault:video-opened', { detail: { item: film } }));
+  assert.equal(store.get('currentVideoId'), film.id, 'the SyncPlay page can now see what is playing');
+  button.click();
+  (await until(() => menu.querySelector('[data-sync-action="start"]'))).click();
+  const session = await until(() => JSON.parse(sessionStorage.getItem('vault_syncplay') || 'null'));
+  assert.equal(session.host, true);
+  const room = syncplay.getRoom(session.roomId);
+  assert.equal(room.itemId, film.id, 'the room starts on the playing video');
+  assert.equal(room.members[0].name, 'Sam');
+  await until(() => button.getAttribute('aria-pressed') === 'true');
+  assert.match(button.textContent, new RegExp(session.code));
+
+  // A guest joins; the menu shows the code and the head count.
+  const joined = await asGuest('POST', `/api/syncplay/rooms/${session.code}/join`, { name: 'Alex' });
+  assert.equal(joined.item.id, film.id);
+  button.click();
+  await until(() => /2 people · Film/.test(menu.querySelector('[data-sync-members]')?.textContent || ''));
+  assert.match(menu.textContent, new RegExp(`Watch party ${session.code}`));
+
+  // Leave: the session is gone and the room passes to the guest.
+  menu.querySelector('[data-sync-action="leave"]').click();
+  await until(() => !sessionStorage.getItem('vault_syncplay'));
+  await until(() => button.getAttribute('aria-pressed') === 'false');
+  assert.equal(syncplay.getRoom(session.roomId).hostMemberId, joined.member.id);
+
+  window.dispatchEvent(new CustomEvent('vault:video-closed'));
+  assert.equal(store.get('currentVideoId'), null);
+});

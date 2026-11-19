@@ -276,7 +276,7 @@ test('services: capabilities, agents, subsonic, notifications', async () => {
   }
 });
 
-test('non-admins see the report but get a clear message instead of admin controls', async () => {
+test('non-admins get a clear message instead of the health report and admin controls', async () => {
   const dom = setupDom();
   try {
     const { api } = await import(docs('api.js'));
@@ -286,7 +286,9 @@ test('non-admins see the report but get a clear message instead of admin control
     const host = document.getElementById('host');
     await renderSystem(host);
 
-    assert.match(host.querySelector('[data-stat="library"]').textContent, /1,234/);
+    // The report lists paths and server internals: admin-only, and not even requested.
+    assert.equal(host.querySelector('[data-stat="library"]'), null);
+    assert.ok(!calls.some(c => c[0] === 'health'), 'no doomed health request');
     assert.equal(host.querySelector('#health-prune'), null);
     assert.match(host.textContent, /Only an admin profile can see and change this/);
 

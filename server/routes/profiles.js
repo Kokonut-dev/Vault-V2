@@ -103,12 +103,13 @@ router.delete('/:id', requireAdmin, async (req, res) => {
   // signed in as the deleted profile must not keep working as a ghost.
   const signedOut = sessions.revokeProfile(id);
   const watchlist = extras.removeProfileWatchlist(id);
+  const bookmarks = extras.removeProfileBookmarks(id);
   try {
     await libraryService.removeProfileData(id);
   } catch (err) {
     logger.warn(`[Profiles] could not remove data for ${id}: ${err.message}`);
   }
-  res.json({ message: 'Profile removed', id, signedOut, watchlistRemoved: watchlist });
+  res.json({ message: 'Profile removed', id, signedOut, watchlistRemoved: watchlist, bookmarksRemoved: bookmarks });
 });
 
 router.post('/:id/switch', (req, res) => {

@@ -23,8 +23,11 @@ const { requireAdmin } = require('../middleware/requireAdmin');
 // Anything that changes the server — and the reads that expose its internals
 // (logs, backup archives, Subsonic settings) — is for admins. A kids' profile
 // could otherwise restore an old backup over everyone's library.
-// The trash lists deleted files from every library (and every profile).
-const ADMIN_READS = /^\/(logs|backups|subsonic|trash)(\/|$)/;
+// The trash lists deleted files from every library (and every profile); the
+// health report, disk, cache and index views list files and titles from the
+// whole library (past any age limit) and server paths; scrobbles are
+// everyone's listening history. Jobs, capabilities and agents stay open.
+const ADMIN_READS = /^\/(logs|backups|subsonic|trash|health|disk|cache|index|scrobbles)(\/|$)/;
 router.use((req, res, next) => {
   if (req.method === 'GET' || req.method === 'HEAD') {
     return ADMIN_READS.test(req.path) ? requireAdmin(req, res, next) : next();
@@ -232,7 +235,17 @@ router.get('/subsonic', (req, res) => {
 });
 
 router.put('/subsonic', (req, res) => {
-  const { password, username } = req.body || {};
+  const { password, username, profileId } = req.body || {};
+  // Choosing which profile's library (and age limits) Subsonic apps see.
+  if (profileId !== undefined) {
+    try {
+      subsonic.setSubsonicProfile(profileId);
+    } catch (err) {
+      if (err.code === 'NOT_FOUND') return res.status(404).json({ error: 'Profile not found', code: 'NOT_FOUND' });
+      throw err;
+    }
+    if (password === undefined) return res.json({ message: 'Subsonic profile saved', ...subsonic.subsonicStatus() });
+  }
   const result = subsonic.setSubsonicPassword(password, username);
   res.json({ message: password ? 'Subsonic password set' : 'Subsonic access disabled', ...result });
 });

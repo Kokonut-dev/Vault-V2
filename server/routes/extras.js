@@ -136,7 +136,7 @@ router.put('/markers/:id', blockRestricted, visibleItem(), (req, res) => {
 router.get('/bookmarks', (req, res) => {
   const itemId = req.query.itemId;
   // Only bookmarks on items this profile may see.
-  const bookmarks = extras.getBookmarks(itemId).filter((b) => {
+  const bookmarks = extras.getBookmarks(itemId, req.profileId || 'default').filter((b) => {
     const item = libraryService.getById(b.itemId);
     return !item || profiles.canAccess(req.profileId || 'default', item);
   });
@@ -146,11 +146,12 @@ router.get('/bookmarks', (req, res) => {
 router.post('/bookmarks', visibleItem(), (req, res) => {
   const { itemId, time, label } = req.body || {};
   if (!itemId) return res.status(400).json({ error: 'itemId required' });
-  res.json(extras.addBookmark({ itemId, time, label }));
+  res.json(extras.addBookmark({ itemId, time, label }, req.profileId || 'default'));
 });
 
 router.delete('/bookmarks/:id', (req, res) => {
-  const ok = extras.removeBookmark(req.params.id);
+  // Only the profile's own bookmarks; anyone else's is "not found".
+  const ok = extras.removeBookmark(req.params.id, req.profileId || 'default');
   if (!ok) return res.status(404).json({ error: 'Bookmark not found' });
   res.json({ message: 'Bookmark removed', id: req.params.id });
 });

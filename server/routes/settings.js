@@ -117,6 +117,10 @@ router.put('/', requireAdmin, (req, res) => {
       if (typeof t.enabled === 'boolean') config.media.trash.enabled = t.enabled;
       if (t.retentionDays) config.media.trash.retentionDays = Math.min(365, Math.max(1, parseInt(t.retentionDays, 10) || 30));
     }
+    if (media.missing && media.missing.retentionDays !== undefined) {
+      const days = parseInt(media.missing.retentionDays, 10);
+      config.media.missing = { ...(config.media.missing || {}), retentionDays: Number.isFinite(days) ? Math.min(365, Math.max(0, days)) : 30 };
+    }
     if (media.trickplay) {
       const t = media.trickplay;
       if (typeof t.enabled === 'boolean') config.media.trickplay.enabled = t.enabled;

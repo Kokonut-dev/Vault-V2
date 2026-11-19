@@ -44,7 +44,7 @@ router.post('/channels/:id/play', async (req, res) => {
   const channel = await livetv.getChannel(req.params.id);
   if (!channel) return res.status(404).json({ error: 'This channel is no longer in the channel list. Reload Live TV.', code: 'CHANNEL_NOT_FOUND' });
   try {
-    const session = await restream.start(channel, { transcode: Boolean((req.body || {}).transcode) });
+    const session = await restream.start(channel, { transcode: Boolean((req.body || {}).transcode), viewer: req.user?.sid || null });
     res.json({ ...session, channel: { id: channel.id, name: channel.name, kind: channel.kind } });
   } catch (err) {
     streamError(res, err);
@@ -82,7 +82,8 @@ router.get('/stream/:session/:file', (req, res) => {
 });
 
 router.delete('/stream/:session', (req, res) => {
-  restream.release(req.params.session);
+  // Releases this device's place only (see restream.addViewer).
+  restream.release(req.params.session, req.user?.sid || null);
   res.json({ ok: true });
 });
 

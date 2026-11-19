@@ -13,7 +13,7 @@
     "build:css": "node ../scripts/build-css.js",
     "check:contrast": "node ../scripts/contrast-check.js",
     "config:example": "node ../scripts/config-example.js",
-    "test": "node --test test/*.test.js",
+    "test": "node ../scripts/run-tests.js",
     "test:keyboard": "node ../scripts/keyboard-check.js",
     "test:music": "node ../scripts/music-view-check.js",
     "lint": "node ../scripts/syntax-check.js",

@@ -12,7 +12,7 @@ const logger = require('../utils/logger');
 const { getConfig } = require('../config');
 
 // VAULT_INDEX_DB lets tests (or unusual setups) put the index elsewhere.
-const DB_PATH = process.env.VAULT_INDEX_DB || path.join(__dirname, '..', 'data', 'library.db');
+const DB_PATH = process.env.VAULT_INDEX_DB || path.join(require('../utils/dataDir').DATA_DIR, 'library.db');
 
 let db = null;
 let available = null;

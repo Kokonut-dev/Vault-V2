@@ -20,6 +20,7 @@ import { applyArtworkAmbience, clearArtworkAmbience } from './utils/color.js';
 import { wireCastButton, renderSleepMenu, wireSleepMenu, updateSleepIndicator, onItemFinished } from './components/playerExtras.js';
 import { initListenTracker } from './components/listenTracker.js';
 import { initVideoExtras } from './components/videoExtras.js';
+import { initSyncPlayControl } from './components/syncplayControl.js';
 import { initPlaybackPrefs } from './components/playbackPrefs.js';
 import { confirmDialog } from './components/confirmDialog.js';
 import { icon } from './utils/icons.js';
@@ -431,7 +432,11 @@ export function initSyncPlayFollower() {
 
   const start = () => {
     clearInterval(syncplay.timer);
-    syncplay.timer = getSyncSession() ? setInterval(syncTick, SYNC_TICK_MS) : null;
+    const s = getSyncSession();
+    syncplay.timer = s ? setInterval(syncTick, SYNC_TICK_MS) : null;
+    // A host who just started/joined from the player publishes straight away
+    // instead of on the next tick, so guests don't wait 5 s at 0:00.
+    if (s?.host) publishHostState();
   };
   window.addEventListener('vault:syncplay-session', start);
   start();
@@ -566,6 +571,7 @@ export function initAppExtras() {
   initScrollHints();
   initAmbient();
   initSyncPlayFollower();
+  initSyncPlayControl();
   initPlayerExtras();
   initVideoExtras();
   initListenTracker();

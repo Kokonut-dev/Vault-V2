@@ -177,6 +177,21 @@ function writeJsonAtomic(filePath, data) {
 }
 
 /**
+ * Pipe a file to a response, ending it cleanly if the read fails (file
+ * deleted or unreadable mid-way). A bare createReadStream().pipe(res) left
+ * the request hanging and could emit an unhandled 'error'.
+ */
+function pipeFile(file, res) {
+  const stream = fs.createReadStream(file);
+  stream.on('error', (err) => {
+    if (!res.headersSent) res.status(err.code === 'ENOENT' ? 404 : 500).json({ error: 'Could not read file' });
+    else res.destroy(err);
+  });
+  res.on('close', () => stream.destroy());
+  return stream.pipe(res);
+}
+
+/**
  * Read a JSON data file for a store. A missing file gives `fallback`. A file
  * that can't be parsed — or isn't the expected shape (array vs object) — is
  * moved aside to `<file>.corrupt-<timestamp>` before `fallback` is used, so
@@ -293,4 +308,5 @@ module.exports = {
   flushWrites,
   sendFileWithRange,
   readJsonOrQuarantine,
+  pipeFile,
 };

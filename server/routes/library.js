@@ -338,7 +338,7 @@ router.get('/:id', (req, res) => {
         ...markers,
         chapters: (markers.chapters && markers.chapters.length) ? markers.chapters : (item.chapters || []),
       },
-      bookmarks: extras.getBookmarks(item.id),
+      bookmarks: extras.getBookmarks(item.id, profileId),
     });
   } catch (err) {
     res.status(500).json({ error: 'Failed to fetch item' });

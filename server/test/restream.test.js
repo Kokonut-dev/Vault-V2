@@ -200,19 +200,19 @@ http://radio.test/stream`);
 function startApp() {
   const app = express();
   app.use(express.json());
-  app.use((req, _res, next) => { req.profileId = req.headers['x-profile'] || 'default'; next(); });
+  app.use((req, _res, next) => { req.profileId = req.headers['x-profile'] || 'default'; req.user = { sid: req.headers['x-sid'] || 'device-a' }; next(); });
   app.use('/api/livetv', require('../routes/livetv'));
   return new Promise((resolve) => {
     const server = app.listen(0, '127.0.0.1', () => resolve({ server, port: server.address().port }));
   });
 }
 
-function call(port, method, urlPath, body, profile) {
+function call(port, method, urlPath, body, profile, sid) {
   return new Promise((resolve, reject) => {
     const payload = body === undefined ? null : JSON.stringify(body);
     const req = http.request({
       host: '127.0.0.1', port, method, path: urlPath,
-      headers: { 'Content-Type': 'application/json', ...(profile ? { 'X-Profile': profile } : {}) },
+      headers: { 'Content-Type': 'application/json', ...(profile ? { 'X-Profile': profile } : {}), ...(sid ? { 'X-Sid': sid } : {}) },
     }, (res) => {
       const chunks = [];
       res.on('data', c => chunks.push(c));
@@ -305,14 +305,18 @@ test('playing an IPTV movie starts an HLS session that converts HEVC/AC-3', asyn
 
   // A second viewer joins the same session instead of spawning ffmpeg again.
   const before = spawned.length;
-  const again = await call(ctx.port, 'POST', `/api/livetv/channels/${movie.id}/play`, {});
+  const again = await call(ctx.port, 'POST', `/api/livetv/channels/${movie.id}/play`, {}, undefined, 'device-b');
   assert.equal(again.body.sessionId, res.body.sessionId);
   assert.equal(spawned.length, before);
 
-  // Both leave → ffmpeg is stopped.
+  // A device that isn't watching can't stop anyone's stream, and one device
+  // releasing twice only gives up its own place.
+  await call(ctx.port, 'DELETE', `/api/livetv/stream/${res.body.sessionId}`, undefined, undefined, 'device-c');
+  await call(ctx.port, 'DELETE', `/api/livetv/stream/${res.body.sessionId}`);
   await call(ctx.port, 'DELETE', `/api/livetv/stream/${res.body.sessionId}`);
   assert.equal(session.proc.killed, false, 'one viewer still watching');
-  await call(ctx.port, 'DELETE', `/api/livetv/stream/${res.body.sessionId}`);
+  // Both leave → ffmpeg is stopped.
+  await call(ctx.port, 'DELETE', `/api/livetv/stream/${res.body.sessionId}`, undefined, undefined, 'device-b');
   assert.equal(session.proc.killed, true);
   assert.equal((await call(ctx.port, 'GET', res.body.playlist)).status, 404);
 });

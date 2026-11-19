@@ -10,6 +10,7 @@ const path = require('path');
 const fs = require('fs-extra');
 const libraryService = require('./library');
 const authService = require('./authService');
+const profiles = require('./profiles');
 const logger = require('../utils/logger');
 
 const API_VERSION = '1.16.1';
@@ -90,7 +91,7 @@ function setSubsonicPassword(password, username = null) {
   const { getConfig, saveConfig } = require('../config');
   const config = getConfig();
   if (!password) {
-    config.auth.subsonic = { enabled: false, username: null, passwordEnc: null };
+    config.auth.subsonic = { enabled: false, username: null, passwordEnc: null, profileId: config.auth.subsonic?.profileId || 'default' };
     saveConfig(config);
     return { enabled: false };
   }
@@ -100,6 +101,7 @@ function setSubsonicPassword(password, username = null) {
   config.auth.subsonic = {
     enabled: true,
     username: username || config.auth.username,
+    profileId: config.auth.subsonic?.profileId || 'default',
     passwordEnc: `${iv.toString('base64')}:${cipher.getAuthTag().toString('base64')}:${encrypted.toString('base64')}`,
   };
   saveConfig(config);
@@ -120,15 +122,61 @@ function getSubsonicPassword() {
   }
 }
 
+// ---------------------------------------------------------------------------
+// Profile
+//
+// Subsonic has one account, so it browses the library as one Vault profile
+// (Settings → System → Services; default: the main profile). That profile's
+// age limits apply to everything the API lists, streams or downloads — a kid
+// profile's Subsonic app used to see the whole library. Its favourites
+// ("starred"), playlists and play history are the ones Subsonic reads and
+// changes.
+// ---------------------------------------------------------------------------
+function subsonicProfileId() {
+  const config = require('../config').getConfig();
+  return config.auth.subsonic?.profileId || 'default';
+}
+
+function setSubsonicProfile(profileId) {
+  const { getConfig, saveConfig } = require('../config');
+  const profile = profiles.get(String(profileId || ''));
+  if (!profile) {
+    const err = new Error('Profile not found');
+    err.code = 'NOT_FOUND';
+    throw err;
+  }
+  const config = getConfig();
+  config.auth.subsonic = { ...(config.auth.subsonic || { enabled: false }), profileId: profile.id };
+  saveConfig(config);
+  return subsonicStatus();
+}
+
 function subsonicStatus() {
   const config = require('../config').getConfig();
   const entry = config.auth.subsonic || {};
+  const profile = profiles.get(entry.profileId || 'default');
   return {
     enabled: !!entry.enabled,
     username: entry.username || null,
+    profileId: entry.profileId || 'default',
+    profileName: profile?.name || null,
+    // The chosen profile was deleted: Subsonic refuses to sign in until
+    // another is picked (falling back to the main profile would lift limits).
+    profileMissing: !profile,
     // Clients that only implement token auth (t/s) need this password.
     tokenAuthSupported: !!entry.enabled,
   };
+}
+
+/** Successful sign-in: browse as the Subsonic profile (fails closed). */
+function bindProfile(req, res) {
+  const profileId = subsonicProfileId();
+  if (!profiles.get(profileId)) {
+    error(req, res, 50, 'The Vault profile Subsonic uses was removed. Choose another in Vault → System → Services.');
+    return false;
+  }
+  req.profileId = profileId;
+  return true;
 }
 
 function authenticate(req, res) {
@@ -156,7 +204,7 @@ function authenticate(req, res) {
       error(req, res, 40, 'Wrong username or password');
       return false;
     }
-    return true;
+    return bindProfile(req, res);
   }
 
   if (!p) {
@@ -181,14 +229,21 @@ function authenticate(req, res) {
     error(req, res, 40, 'Wrong username or password');
     return false;
   }
-  return true;
+  return bindProfile(req, res);
 }
 
 // ---------------------------------------------------------------------------
 // Views
 // ---------------------------------------------------------------------------
-function musicItems() {
-  return libraryService.getAll().filter(i => i.type === 'music');
+/** Music the signed-in Subsonic profile may see. */
+function musicItems(req) {
+  return profiles.filterItems(req.profileId || 'default', libraryService.getAll().filter(i => i.type === 'music'));
+}
+
+/** One item by id, if the Subsonic profile may see it. */
+function itemFor(req, id) {
+  const item = libraryService.getById(String(id || ''));
+  return item && profiles.canAccess(req.profileId || 'default', item) ? item : null;
 }
 
 function toSong(item) {
@@ -234,12 +289,12 @@ function toAlbum(name, tracks) {
   };
 }
 
-function groupAlbums() {
-  return groupBy(musicItems(), i => i.album || 'Unknown Album');
+function groupAlbums(req) {
+  return groupBy(musicItems(req), i => i.album || 'Unknown Album');
 }
 
-function groupArtists() {
-  return groupBy(musicItems(), i => i.artist || 'Unknown Artist');
+function groupArtists(req) {
+  return groupBy(musicItems(req), i => i.artist || 'Unknown Artist');
 }
 
 function groupBy(items, keyFn) {
@@ -256,8 +311,12 @@ function playlistsFor(profileId) {
   return libraryService.forProfile(profileId).getPlaylists();
 }
 
-function toPlaylist(playlist) {
-  const items = (playlist.items || []).map(id => libraryService.getById(id)).filter(Boolean);
+function playlistItems(playlist, req) {
+  return (playlist.items || []).map(id => (req ? itemFor(req, id) : libraryService.getById(id))).filter(Boolean);
+}
+
+function toPlaylist(playlist, req = null) {
+  const items = playlistItems(playlist, req);
   return {
     id: playlist.id,
     name: playlist.name,
@@ -286,7 +345,7 @@ function register(router, { streamHandler, coverHandler }) {
 
   router.all('/getArtists', (req, res) => {
     if (!authenticate(req, res)) return;
-    const artists = [...groupArtists().entries()].map(([name, tracks]) => ({
+    const artists = [...groupArtists(req).entries()].map(([name, tracks]) => ({
       id: `artist:${name}`,
       name,
       albumCount: new Set(tracks.map(t => t.album)).size,
@@ -298,7 +357,7 @@ function register(router, { streamHandler, coverHandler }) {
 
   router.all('/getIndexes', (req, res) => {
     if (!authenticate(req, res)) return;
-    const artists = [...groupArtists().entries()].map(([name, tracks]) => ({ id: `artist:${name}`, name, albumCount: new Set(tracks.map(t => t.album)).size }));
+    const artists = [...groupArtists(req).entries()].map(([name, tracks]) => ({ id: `artist:${name}`, name, albumCount: new Set(tracks.map(t => t.album)).size }));
     respond(req, res, {
       indexes: {
         lastModified: Date.now(),
@@ -311,7 +370,7 @@ function register(router, { streamHandler, coverHandler }) {
   router.all('/getArtist', (req, res) => {
     if (!authenticate(req, res)) return;
     const name = String(req.query.id || '').replace(/^artist:/, '');
-    const tracks = musicItems().filter(i => (i.artist || 'Unknown Artist') === name);
+    const tracks = musicItems(req).filter(i => (i.artist || 'Unknown Artist') === name);
     if (!tracks.length) return error(req, res, 70, 'Artist not found');
     respond(req, res, {
       artist: {
@@ -326,7 +385,7 @@ function register(router, { streamHandler, coverHandler }) {
   router.all('/getAlbum', (req, res) => {
     if (!authenticate(req, res)) return;
     const id = String(req.query.id || '').replace(/^album:/, '');
-    const tracks = musicItems().filter(i => (i.album || 'Unknown Album') === id);
+    const tracks = musicItems(req).filter(i => (i.album || 'Unknown Album') === id);
     if (!tracks.length) return error(req, res, 70, 'Album not found');
     respond(req, res, {
       album: { ...toAlbum(id, tracks), song: tracks.map(toSong) },
@@ -338,7 +397,7 @@ function register(router, { streamHandler, coverHandler }) {
     const type = req.query.type || 'recent';
     const size = Math.min(500, parseInt(req.query.size, 10) || 50);
     const offset = parseInt(req.query.offset, 10) || 0;
-    let albums = [...groupAlbums().entries()].map(([name, tracks]) => toAlbum(name, tracks));
+    let albums = [...groupAlbums(req).entries()].map(([name, tracks]) => toAlbum(name, tracks));
 
     switch (type) {
       case 'newest':
@@ -368,7 +427,7 @@ function register(router, { streamHandler, coverHandler }) {
   router.all('/getRandomSongs', (req, res) => {
     if (!authenticate(req, res)) return;
     const size = Math.min(500, parseInt(req.query.size, 10) || 20);
-    const songs = [...musicItems()].sort(() => Math.random() - 0.5).slice(0, size).map(toSong);
+    const songs = [...musicItems(req)].sort(() => Math.random() - 0.5).slice(0, size).map(toSong);
     respond(req, res, { randomSongs: { song: songs } });
   });
 
@@ -376,13 +435,13 @@ function register(router, { streamHandler, coverHandler }) {
     if (!authenticate(req, res)) return;
     const query = String(req.query.query || '').toLowerCase();
     const limit = Math.min(200, parseInt(req.query.songCount, 10) || 50);
-    const artists = [...groupArtists().entries()]
+    const artists = [...groupArtists(req).entries()]
       .filter(([name]) => name.toLowerCase().includes(query))
       .map(([name, tracks]) => ({ id: `artist:${name}`, name, albumCount: new Set(tracks.map(t => t.album)).size }));
-    const albums = [...groupAlbums().entries()]
+    const albums = [...groupAlbums(req).entries()]
       .filter(([name]) => name.toLowerCase().includes(query))
       .map(([name, tracks]) => toAlbum(name, tracks));
-    const songs = musicItems().filter(i =>
+    const songs = musicItems(req).filter(i =>
       [i.title, i.artist, i.album].filter(Boolean).some(v => String(v).toLowerCase().includes(query))
     ).slice(0, limit).map(toSong);
     respond(req, res, { searchResult3: { artist: artists, album: albums, song: songs } });
@@ -390,7 +449,7 @@ function register(router, { streamHandler, coverHandler }) {
 
   router.all('/getGenres', (req, res) => {
     if (!authenticate(req, res)) return;
-    const genres = [...groupBy(musicItems(), i => i.genre || 'Unknown').entries()]
+    const genres = [...groupBy(musicItems(req), i => i.genre || 'Unknown').entries()]
       .map(([name, tracks]) => ({ name, songCount: tracks.length, albumCount: new Set(tracks.map(t => t.album)).size }));
     respond(req, res, { genres: { genre: genres } });
   });
@@ -398,25 +457,27 @@ function register(router, { streamHandler, coverHandler }) {
   router.all('/getSongsByGenre', (req, res) => {
     if (!authenticate(req, res)) return;
     const genre = String(req.query.genre || '').toLowerCase();
-    const songs = musicItems().filter(i => String(i.genre || '').toLowerCase() === genre).map(toSong);
+    const songs = musicItems(req).filter(i => String(i.genre || '').toLowerCase() === genre).map(toSong);
     respond(req, res, { songsByGenre: { song: songs } });
   });
 
   router.all('/star', (req, res) => {
     if (!authenticate(req, res)) return;
-    if (req.query.id) libraryService.addFavourite(String(req.query.id));
+    const item = itemFor(req, req.query.id);
+    if (item) libraryService.forProfile(req.profileId || 'default').addFavourite(item.id);
     respond(req, res, {});
   });
 
   router.all('/unstar', (req, res) => {
     if (!authenticate(req, res)) return;
-    if (req.query.id) libraryService.removeFavourite(String(req.query.id));
+    if (req.query.id) libraryService.forProfile(req.profileId || 'default').removeFavourite(String(req.query.id));
     respond(req, res, {});
   });
 
   router.all('/getStarred2', (req, res) => {
     if (!authenticate(req, res)) return;
-    const favourites = libraryService.getFavourites().filter(i => i.type === 'music');
+    const favourites = profiles.filterItems(req.profileId || 'default',
+      libraryService.forProfile(req.profileId || 'default').getFavourites().filter(i => i.type === 'music'));
     respond(req, res, {
       starred2: {
         song: favourites.map(toSong),
@@ -428,7 +489,7 @@ function register(router, { streamHandler, coverHandler }) {
 
   router.all('/getPlaylists', (req, res) => {
     if (!authenticate(req, res)) return;
-    respond(req, res, { playlists: { playlist: playlistsFor(req.profileId || 'default').map(toPlaylist) } });
+    respond(req, res, { playlists: { playlist: playlistsFor(req.profileId || 'default').map(p => toPlaylist(p, req)) } });
   });
 
   router.all('/getPlaylist', (req, res) => {
@@ -437,8 +498,8 @@ function register(router, { streamHandler, coverHandler }) {
     if (!playlist) return error(req, res, 70, 'Playlist not found');
     respond(req, res, {
       playlist: {
-        ...toPlaylist(playlist),
-        entry: (playlist.items || []).map(id => libraryService.getById(id)).filter(Boolean).map(toSong),
+        ...toPlaylist(playlist, req),
+        entry: playlistItems(playlist, req).map(toSong),
       },
     });
   });
@@ -447,8 +508,8 @@ function register(router, { streamHandler, coverHandler }) {
     if (!authenticate(req, res)) return;
     const ids = [].concat(req.query.songId || []);
     const scoped = libraryService.forProfile(req.profileId || 'default');
-    const playlist = scoped.createPlaylist({ name: String(req.query.name || 'Playlist'), items: ids });
-    respond(req, res, { playlist: toPlaylist(playlist) });
+    const playlist = scoped.createPlaylist({ name: String(req.query.name || 'Playlist'), items: ids.filter(id => itemFor(req, id)) });
+    respond(req, res, { playlist: toPlaylist(playlist, req) });
   });
 
   router.all('/updatePlaylist', (req, res) => {
@@ -456,7 +517,7 @@ function register(router, { streamHandler, coverHandler }) {
     const scoped = libraryService.forProfile(req.profileId || 'default');
     const playlist = scoped.getPlaylistById(req.query.playlistId);
     if (!playlist) return error(req, res, 70, 'Playlist not found');
-    const add = [].concat(req.query.songIdToAdd || []);
+    const add = [].concat(req.query.songIdToAdd || []).filter(id => itemFor(req, id));
     const removeIndexes = [].concat(req.query.songIndexToRemove || []).map(Number);
     let items = [...(playlist.items || [])];
     for (const index of removeIndexes.sort((a, b) => b - a)) items.splice(index, 1);
@@ -479,8 +540,8 @@ function register(router, { streamHandler, coverHandler }) {
     if (!authenticate(req, res)) return;
     const itemId = String(req.query.id || '');
     const submission = req.query.submission !== 'false';
-    if (itemId) {
-      const item = libraryService.getById(itemId);
+    const item = itemId ? itemFor(req, itemId) : null;
+    if (item) {
       const scoped = libraryService.forProfile(req.profileId || 'default');
       scoped.addHistoryEntry({ itemId, progress: submission ? 100 : 0, duration: item?.duration || 0, bumpPlayCount: submission });
     }
@@ -489,32 +550,34 @@ function register(router, { streamHandler, coverHandler }) {
 
   router.all('/stream', (req, res) => {
     if (!authenticate(req, res)) return;
-    const item = libraryService.getById(String(req.query.id || ''));
+    const item = itemFor(req, req.query.id);
     if (!item || !fs.existsSync(item.path)) return error(req, res, 70, 'Song not found');
     return streamHandler(req, res, item);
   });
 
   router.all('/download', (req, res) => {
     if (!authenticate(req, res)) return;
-    const item = libraryService.getById(String(req.query.id || ''));
+    const item = itemFor(req, req.query.id);
     if (!item || !fs.existsSync(item.path)) return error(req, res, 70, 'File not found');
     res.download(item.path, path.basename(item.path));
   });
 
   router.all('/getCoverArt', (req, res) => {
     if (!authenticate(req, res)) return;
-    const item = libraryService.getById(String(req.query.id || ''));
+    const item = itemFor(req, req.query.id);
     if (!item) return error(req, res, 70, 'Cover not found');
     return coverHandler(req, res, item);
   });
 
   router.all('/getScanStatus', (req, res) => {
     if (!authenticate(req, res)) return;
-    respond(req, res, { scanStatus: { scanning: false, count: musicItems().length } });
+    respond(req, res, { scanStatus: { scanning: false, count: musicItems(req).length } });
   });
 
   router.all('/startScan', async (req, res) => {
     if (!authenticate(req, res)) return;
+    // Scanning is an admin action in Vault itself.
+    if (!require('../middleware/requireAdmin').isAdminProfile(req.profileId)) return error(req, res, 50, 'Only an admin profile can start a scan');
     try {
       const scanner = require('./scanner');
       const result = await scanner.scanAll();
@@ -528,4 +591,4 @@ function register(router, { streamHandler, coverHandler }) {
   return router;
 }
 
-module.exports = { register, respond, error, toSong, toAlbum, toPlaylist, API_VERSION, SUBSONIC_ERRORS, setSubsonicPassword, subsonicStatus, getSubsonicPassword };
+module.exports = { register, respond, error, toSong, toAlbum, toPlaylist, API_VERSION, SUBSONIC_ERRORS, setSubsonicPassword, setSubsonicProfile, subsonicProfileId, subsonicStatus, getSubsonicPassword };

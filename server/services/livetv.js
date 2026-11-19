@@ -286,7 +286,12 @@ async function discoverHDHomeRun() {
     try {
       const base = url.replace(/\/discover\.json.*$/, '').replace(/\/$/, '');
       // eslint-disable-next-line no-await-in-loop
-      const lineup = await (await fetch(`${base}/lineup.json`)).json();
+      // The address comes from an SSDP reply anyone on the LAN can send, so
+      // it is fetched with the same guards (and size/time caps) as playlists.
+      const { safeFetchText } = require('../utils/safeFetch');
+      const { text: lineupText } = await safeFetchText(`${base}/lineup.json`, { maxBytes: 2 * 1024 * 1024, timeoutMs: 8000, accept: 'application/json' });
+      const lineup = JSON.parse(lineupText);
+      if (!Array.isArray(lineup)) continue;
       for (const entry of lineup) {
         channels.push({
           id: `hdhr_${entry.GuideNumber}`,
