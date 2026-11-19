@@ -13,6 +13,14 @@ const events = require('../services/events');
 const system = require('../services/system');
 const sqlite = require('../services/sqliteIndex');
 const { getConfig } = require('../config');
+const profiles = require('../services/profiles');
+const contentRating = require('../services/contentRating');
+const { isAdminProfile } = require('../middleware/requireAdmin');
+const { itemParam, blockRestricted, visibleItems } = require('../middleware/profileAccess');
+
+// Age-limited profiles: unknown-to-them ids 404, and they can't edit.
+router.param('id', itemParam);
+router.use((req, res, next) => (req.method === 'GET' || req.method === 'HEAD' ? next() : blockRestricted(req, res, next)));
 
 router.get('/', (req, res) => {
   try {
@@ -21,7 +29,7 @@ router.get('/', (req, res) => {
     // SQL index path (opt-in): serves filtered/paged queries from SQLite when
     // configured, which is what keeps very large libraries responsive.
     const config = getConfig();
-    if (config.media?.storage === 'sqlite' && count !== 'all') {
+    if (config.media?.storage === 'sqlite' && count !== 'all' && !profiles.restrictionFor(req.profileId)) {
       const indexed = sqlite.query({
         type,
         search,
@@ -47,7 +55,8 @@ router.get('/', (req, res) => {
     // F-14: always work on a copy — getAll() returns the live master array and
     // the sort below used to mutate it, making response order depend on
     // whatever a previous request left behind.
-    let items = libraryService.getAll().slice();
+    // Age-limited profiles only ever see what they're allowed to.
+    let items = visibleItems(req, libraryService.getAll().slice());
 
     // Filter by type
     if (type && type !== 'all') {
@@ -132,8 +141,19 @@ router.get('/', (req, res) => {
 
 router.get('/stats', (req, res) => {
   try {
-    const stats = libraryService.getStats();
-    res.json(stats);
+    if (!profiles.restrictionFor(req.profileId || 'default')) return res.json(libraryService.getStats());
+    // Age-limited profiles: counts and "recently added" cover only what
+    // they can open.
+    const items = visibleItems(req);
+    const count = (type) => items.filter(i => i.type === type).length;
+    res.json({
+      totalMovies: count('movie'),
+      totalMusic: count('music'),
+      totalVideos: count('video'),
+      totalSize: items.reduce((sum, i) => sum + (i.fileSize || 0), 0),
+      totalItems: items.length,
+      recentlyAdded: [...items].sort((a, b) => new Date(b.addedAt) - new Date(a.addedAt)).slice(0, 20),
+    });
   } catch (err) {
     res.status(500).json({ error: 'Failed to fetch stats' });
   }
@@ -141,8 +161,12 @@ router.get('/stats', (req, res) => {
 
 router.get('/genres', (req, res) => {
   try {
-    const genres = libraryService.getGenres();
-    res.json({ genres });
+    if (!profiles.restrictionFor(req.profileId || 'default')) return res.json({ genres: libraryService.getGenres() });
+    const genres = new Set();
+    for (const item of visibleItems(req)) {
+      for (const g of [].concat(item.genre || [])) genres.add(g);
+    }
+    res.json({ genres: [...genres].sort() });
   } catch (err) {
     res.status(500).json({ error: 'Failed to fetch genres' });
   }
@@ -153,7 +177,7 @@ router.get('/search', (req, res) => {
     const { q, type } = req.query;
     if (!q) return res.json({ results: { movies: [], music: [], videos: [] }, query: '' });
 
-    const all = libraryService.search(q, type || 'all');
+    const all = visibleItems(req, libraryService.search(q, type || 'all'));
     const results = {
       movies: all.filter(i => i.type === 'movie'),
       music: all.filter(i => i.type === 'music'),
@@ -195,7 +219,7 @@ router.get('/libraries', (req, res) => {
 router.get('/recent', (req, res) => {
   const since = req.query.since ? new Date(req.query.since).getTime() : Date.now() - 7 * 86400000;
   const limit = Math.min(100, parseInt(req.query.limit, 10) || 20);
-  const items = libraryService.getAll()
+  const items = visibleItems(req)
     .filter(i => i.addedAt && new Date(i.addedAt).getTime() >= since)
     .sort((a, b) => new Date(b.addedAt) - new Date(a.addedAt))
     .slice(0, limit);
@@ -301,7 +325,7 @@ router.get('/:id', (req, res) => {
     const markers = extras.getMarkers(item.id);
     res.json({
       ...item,
-      isFavourite: libraryService.isFavourite(item.id),
+      isFavourite: libraryService.forProfile(profileId).isFavourite(item.id),
       inWatchlist: extras.getWatchlist().some(w => w.itemId === item.id && (w.profileId || 'default') === profileId),
       watched: libraryService.isWatched(item.id, profileId),
       markers: {
@@ -318,6 +342,10 @@ router.get('/:id', (req, res) => {
 router.put('/:id', (req, res) => {
   try {
     const { title, artist, album, genre, year, description, rating, tags, season, episode, track, coverArtPath } = req.body;
+    // The age rating decides what Kids profiles see, so only admins set it.
+    if (req.body.contentRating !== undefined && !isAdminProfile(req.profileId)) {
+      return res.status(403).json({ error: 'Only an admin profile can change age ratings', code: 'ADMIN_REQUIRED' });
+    }
     const updates = {};
 
     if (title !== undefined) updates.title = sanitizeString(title, 500);
@@ -332,6 +360,9 @@ router.put('/:id', (req, res) => {
     if (rating !== undefined) {
       const r = parseFloat(rating);
       if (!isNaN(r) && r >= 0 && r <= 5) updates.rating = r;
+    }
+    if (req.body.contentRating !== undefined) {
+      updates.contentRating = contentRating.normalise(req.body.contentRating);
     }
     if (tags !== undefined && Array.isArray(tags)) {
       updates.tags = tags.map(t => sanitizeString(t, 100)).filter(Boolean).slice(0, 20);

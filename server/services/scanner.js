@@ -276,6 +276,9 @@ async function scanFile(filePath) {
       rating: existing ? existing.rating : 0,
       description: existing ? existing.description : '',
       tags: existing ? existing.tags : [],
+      // Age rating for profile limits: from an .nfo / .info.json sidecar,
+      // else whatever a metadata match stored earlier.
+      contentRating: sidecarContentRating(filePath, type) || existing?.contentRating || null,
     };
 
     applyManualFields(item, existing);
@@ -315,6 +318,18 @@ const isUploadedCover = p => typeof p === 'string'
   && path.resolve(p).startsWith(COVERS_DIR + path.sep)
   && /^(upload|cover)-/.test(path.basename(p))
   && fs.existsSync(p);
+
+const RATED_TYPES = new Set(['movie', 'video']);
+
+function sidecarContentRating(filePath, type) {
+  if (!RATED_TYPES.has(type)) return null;
+  try {
+    const nfo = require('./agent').readNfo(filePath);
+    return require('./contentRating').normalise(nfo?.contentRating);
+  } catch {
+    return null;
+  }
+}
 
 function applyManualFields(item, existing) {
   if (!existing) return item;

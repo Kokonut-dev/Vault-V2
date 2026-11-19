@@ -3,6 +3,7 @@
  */
 import { api } from './api.js';
 import { store } from './store.js';
+import { lastProfileId, rememberProfile } from './profileSession.js';
 
 export class AuthManager {
   constructor() {
@@ -20,19 +21,29 @@ export class AuthManager {
     }
   }
 
-  async submitGrid(pattern) {
+  /**
+   * Second step. Signs in as the profile this device used last (the server
+   * falls back to one without a PIN when that's not possible). Options:
+   * `profileId` (null = let the server choose) and `profilePin`.
+   */
+  async submitGrid(pattern, options = {}) {
     if (!this.challengeToken && !store.get('challengeToken')) {
       return { success: false, error: 'No challenge token. Please login again.', code: 'NO_CHALLENGE' };
     }
     const token = this.challengeToken || store.get('challengeToken');
+    const profileId = options.profileId === undefined ? lastProfileId() : options.profileId;
+    const profile = {};
+    if (profileId) profile.profileId = profileId;
+    if (options.profilePin) profile.profilePin = options.profilePin;
     try {
-      const res = await api.gridChallenge(token, pattern);
+      const res = await api.gridChallenge(token, pattern, profile);
       store.setAuth(res.token, res.user);
+      if (res.profile) rememberProfile(res.profile);
       this.challengeToken = null;
       store.set('challengeToken', null);
-      return { success: true, token: res.token, user: res.user };
+      return { success: true, token: res.token, user: res.user, profile: res.profile, profileCount: res.profileCount || 1 };
     } catch (err) {
-      return { success: false, error: err.message, code: err.code || 'GRID_FAILED' };
+      return { success: false, error: err.message, code: err.code || 'GRID_FAILED', profile: err.profile || null, askedFor: profileId || null };
     }
   }
 
@@ -43,6 +54,7 @@ export class AuthManager {
       const res = await api.verify();
       store.set('isAuthenticated', res.valid);
       store.set('user', res.user);
+      if (res.profile) rememberProfile(res.profile);
       return res;
     } catch (err) {
       // Only clear the session when the server actively rejected the token.

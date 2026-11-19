@@ -4,6 +4,27 @@ const fs = require('fs-extra');
 const path = require('path');
 const sessions = require('../services/sessions');
 
+// Media tokens (GET /api/auth/media-token) only unlock media reads, never the
+// rest of the API.
+const MEDIA_SCOPE_BASES = ['/api/media', '/api/transcode', '/api/comics', '/api/playlists'];
+
+/**
+ * Which profile a token acts as. The session record wins over the token:
+ * switching profile re-binds the session, so an older token from the same
+ * device can't keep using the previous (possibly unrestricted) profile.
+ * Returns null when that profile no longer exists.
+ */
+function resolveProfileId(decoded) {
+  let profileId = decoded.profileId || 'default';
+  if (decoded.sid) {
+    const session = sessions.get(decoded.sid);
+    if (session?.profileId) profileId = session.profileId;
+  }
+  // Lazy: services/profiles pulls in config and the JSON store.
+  const profiles = require('../services/profiles');
+  return profiles.get(profileId) ? profileId : null;
+}
+
 const BLACKLIST_PATH = path.join(__dirname, '../data/token-blacklist.json');
 let blacklist = new Set();
 
@@ -78,9 +99,20 @@ function authMiddleware(req, res, next) {
     }
     if (decoded.sid) sessions.touch(decoded.sid);
 
-    req.user = decoded;
+    if (decoded.scope === 'media') {
+      const allowed = (req.method === 'GET' || req.method === 'HEAD')
+        && MEDIA_SCOPE_BASES.some(base => (req.baseUrl || '').startsWith(base));
+      if (!allowed) return res.status(401).json({ error: 'This token only plays media', code: 'INVALID_TOKEN' });
+    }
+
+    const profileId = resolveProfileId(decoded);
+    if (!profileId) {
+      return res.status(401).json({ error: 'This profile was deleted', code: 'PROFILE_REMOVED' });
+    }
+
+    req.user = { ...decoded, profileId };
     req.token = token;
-    req.profileId = decoded.profileId || 'default';
+    req.profileId = profileId;
     next();
   } catch (err) {
     if (err.name === 'TokenExpiredError') {
@@ -117,9 +149,14 @@ function optionalAuthMiddleware(req, res, next) {
       req.user = null;
       return next();
     }
-    req.user = decoded;
+    const profileId = resolveProfileId(decoded);
+    if (!profileId || decoded.scope === 'media') {
+      req.user = null;
+      return next();
+    }
+    req.user = { ...decoded, profileId };
     req.token = token;
-    req.profileId = decoded.profileId || 'default';
+    req.profileId = profileId;
   } catch {
     req.user = null;
   }
@@ -152,4 +189,4 @@ function isTokenBlacklisted(token) {
   return blacklist.has(token);
 }
 
-module.exports = { authMiddleware, optionalAuthMiddleware, blacklistToken, isTokenBlacklisted };
+module.exports = { authMiddleware, optionalAuthMiddleware, blacklistToken, isTokenBlacklisted, resolveProfileId };

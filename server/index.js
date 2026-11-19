@@ -224,13 +224,15 @@ app.use('/api/torrents', authMiddleware, requireAdmin, require('./routes/torrent
 
 // Metadata agents (search + apply a match to an item).
 const agentRouter = express.Router();
+const profileAccess = require('./middleware/profileAccess');
+agentRouter.param('id', profileAccess.itemParam);
 agentRouter.get('/search', async (req, res) => {
   const { query, type, year, artist, album } = req.query;
   if (!query && !album && !artist) return res.status(400).json({ error: 'query required' });
   const result = await agentService.searchMatches({ query, type, year, artist, album });
   res.json(result);
 });
-agentRouter.post('/apply/:id', async (req, res) => {
+agentRouter.post('/apply/:id', profileAccess.blockRestricted, async (req, res) => {
   const item = libraryService.getById(req.params.id);
   if (!item) return res.status(404).json({ error: 'Item not found' });
   try {

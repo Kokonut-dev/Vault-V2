@@ -40,6 +40,16 @@ function addToWatchlist(itemId, profileId = 'default') {
   return true;
 }
 
+/** Drop a deleted profile's watchlist entries. Returns how many went. */
+function removeProfileWatchlist(profileId) {
+  const list = getWatchlist();
+  const next = list.filter(w => (w.profileId || 'default') !== profileId);
+  if (next.length === list.length) return 0;
+  watchlistStore.set(next);
+  events.broadcast('watchlist:changed', { profileId, removed: list.length - next.length });
+  return list.length - next.length;
+}
+
 function removeFromWatchlist(itemId, profileId = 'default') {
   const list = getWatchlist();
   const next = list.filter(w => !(w.itemId === itemId && (w.profileId || 'default') === profileId));
@@ -298,6 +308,7 @@ module.exports = {
   isInWatchlist,
   addToWatchlist,
   removeFromWatchlist,
+  removeProfileWatchlist,
   getCollections,
   getCollection,
   createCollection,

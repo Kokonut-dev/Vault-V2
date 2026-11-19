@@ -187,6 +187,11 @@ class ApiClient {
           const isCredentialStep = path.startsWith('/api/auth/login')
             || path.startsWith('/api/auth/grid')
             || path.startsWith('/api/auth/second-factor');
+          if (data.code === 'PROFILE_REMOVED') {
+            // The profile this device remembered was deleted: the next
+            // sign-in must not ask for it again (profileSession.LAST_PROFILE_KEY).
+            try { localStorage.removeItem('vault_last_profile'); } catch { /* private mode */ }
+          }
           if (data.code !== 'GRID_REQUIRED' && !isCredentialStep) {
             this.clearTokenCache();
             store.clearAuth();
@@ -212,6 +217,8 @@ class ApiClient {
           // Per-field validation messages (Settings forms show them inline).
           if (data.fields && typeof data.fields === 'object') err.fields = data.fields;
           else if (data.field) err.fields = { [data.field]: data.error };
+          // e.g. PROFILE_PIN_REQUIRED says which profile wants the PIN.
+          if (data.profile && typeof data.profile === 'object') err.profile = data.profile;
           err.path = data.path || path;
           err.endpointNotFound = data.code === 'NOT_FOUND' && typeof data.path === 'string';
           throw err;
@@ -250,11 +257,12 @@ class ApiClient {
     });
   }
 
-  gridChallenge(challengeToken, pattern) {
+  /** `profile` = { profileId, profilePin } — which profile to sign in as. */
+  gridChallenge(challengeToken, pattern, profile = {}) {
     return this.request('/api/auth/grid', {
       method: 'POST',
       auth: false,
-      body: JSON.stringify({ challengeToken, pattern }),
+      body: JSON.stringify({ challengeToken, pattern, ...profile }),
     });
   }
 

@@ -4,6 +4,10 @@ const fs = require('fs-extra');
 const path = require('path');
 const comics = require('../services/comics');
 const libraryService = require('../services/library');
+const { itemParam } = require('../middleware/profileAccess');
+
+// Age-limited profiles can't open or stream items above their limit.
+router.param('id', itemParam);
 
 function getComic(req, res) {
   const item = libraryService.getById(req.params.id);

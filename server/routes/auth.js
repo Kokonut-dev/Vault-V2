@@ -4,7 +4,7 @@ const crypto = require('crypto');
 const authService = require('../services/authService');
 const profiles = require('../services/profiles');
 const sessions = require('../services/sessions');
-const { blacklistToken, isTokenBlacklisted, authMiddleware } = require('../middleware/auth');
+const { blacklistToken, isTokenBlacklisted, authMiddleware, resolveProfileId } = require('../middleware/auth');
 const { sanitizeString } = require('../utils/validators');
 const logger = require('../utils/logger');
 
@@ -104,20 +104,56 @@ router.post('/login', (req, res) => {
 // ---------------------------------------------------------------------------
 // Step 2 — grid pattern, TOTP or recovery code
 // ---------------------------------------------------------------------------
+/**
+ * Which profile a login lands on. An explicitly requested profile (the one
+ * this device used last) wins. Without one, the first profile is used — unless
+ * it has a PIN, in which case the first profile without a PIN is, so signing
+ * in never bypasses a PIN. Only when every profile has a PIN is one needed.
+ */
+function resolveLoginProfile(req, decoded) {
+  const requestedId = req.body?.profileId || null;
+  const requested = requestedId ? profiles.get(requestedId) : null;
+  if (requested) return { profile: requested, explicit: true };
+  const fromChallenge = decoded.profileId ? profiles.get(decoded.profileId) : null;
+  if (fromChallenge) return { profile: fromChallenge, explicit: true };
+  const all = profiles.list();
+  const first = all[0];
+  if (!first.pinHash) return { profile: first, explicit: false };
+  return { profile: all.find(p => !p.pinHash) || first, explicit: false };
+}
+
+/**
+ * Called before the second factor is checked: a missing PIN is reported
+ * straight away (the password step already listed which profiles have one),
+ * but a PIN is only *checked* after the second factor, so the PIN can't be
+ * guessed with just the password.
+ */
+function profilePinMissing(req, res, decoded) {
+  const { profile } = resolveLoginProfile(req, decoded);
+  if (profile.pinHash && !req.body?.profilePin) {
+    res.status(403).json({
+      error: `Enter the PIN for ${profile.name}`,
+      code: 'PROFILE_PIN_REQUIRED',
+      profile: profiles.toPublic(profile),
+    });
+    return true;
+  }
+  return false;
+}
+
 function completeLogin(req, res, decoded) {
   const ip = authService.getClientIp(req);
-  const { profileId, profilePin, remember } = req.body;
+  const { profilePin, remember } = req.body;
 
-  let resolvedProfile = profileId || decoded.profileId || 'default';
-  const profile = profiles.get(resolvedProfile);
-  if (!profile) resolvedProfile = profiles.getDefault().id;
+  const { profile } = resolveLoginProfile(req, decoded);
+  const resolvedProfile = profile.id;
 
-  if (profileId && profiles.hasPin(profileId)) {
-    if (!profiles.checkPin(profileId, profilePin)) {
-      authService.recordFailedAttempt(ip, 'second');
-      res.locals.countAsAuthFailure = true;
-      return res.status(401).json({ error: 'Profile PIN required', code: 'PROFILE_PIN_REQUIRED' });
-    }
+  if (profile.pinHash && !profiles.checkPin(profile.id, profilePin)) {
+    authService.recordFailedAttempt(ip, 'second');
+    res.locals.countAsAuthFailure = true;
+    // 403, like /api/profiles/:id/switch — the client must stay on the
+    // sign-in screen and ask again, not treat it as an expired session.
+    return res.status(403).json({ error: 'That PIN isn’t right', code: 'PROFILE_PIN_REQUIRED', profile: profiles.toPublic(profile) });
   }
 
   // Fully authenticated — restore both stages' budgets.
@@ -146,6 +182,7 @@ function completeLogin(req, res, decoded) {
     expiresAt: new Date(verified.exp * 1000).toISOString(),
     user: { username: decoded.username },
     profile: profiles.toPublic(profile),
+    profileCount: profiles.list().length,
     sessionId: session.id,
   });
 }
@@ -163,6 +200,8 @@ router.post('/grid', (req, res) => {
   if (!decoded || !decoded.step) {
     return res.status(401).json({ error: 'Invalid or expired challenge token. Please log in again.', code: 'INVALID_CHALLENGE' });
   }
+
+  if (profilePinMissing(req, res, decoded)) return undefined;
 
   const result = validateSecondFactor(challengeToken, { pattern });
   if (!result.ok) {
@@ -185,6 +224,8 @@ router.post('/second-factor', (req, res) => {
   if (!decoded || !decoded.step) {
     return res.status(401).json({ error: 'Invalid or expired challenge token. Please log in again.', code: 'INVALID_CHALLENGE' });
   }
+
+  if (profilePinMissing(req, res, decoded)) return undefined;
 
   const result = validateSecondFactor(challengeToken, req.body);
   if (!result.ok) {
@@ -218,7 +259,7 @@ router.post('/refresh', authMiddleware, (req, res) => {
   const decoded = req.user || {};
   const token = authService.generateAccessToken(decoded.username, {
     sid: decoded.sid,
-    profileId: decoded.profileId || 'default',
+    profileId: req.profileId || decoded.profileId || 'default',
     remember: !!decoded.remember,
   });
   const verified = authService.verifyToken(token);
@@ -241,10 +282,17 @@ router.get('/verify', (req, res) => {
     return res.status(401).json({ valid: false, error: 'Session revoked', code: 'TOKEN_REVOKED' });
   }
 
+  // The session (not the token) says which profile this device is on, so a
+  // reload after a profile switch still shows the profile that was picked.
+  const profileId = resolveProfileId(decoded);
+  if (!profileId) {
+    return res.status(401).json({ valid: false, error: 'Profile removed', code: 'PROFILE_REMOVED' });
+  }
+
   res.json({
     valid: true,
     user: { username: decoded.username },
-    profile: profiles.toPublic(profiles.get(decoded.profileId || 'default')),
+    profile: profiles.toPublic(profiles.get(profileId)),
     expiresAt: new Date(decoded.exp * 1000).toISOString(),
   });
 });
@@ -252,7 +300,9 @@ router.get('/verify', (req, res) => {
 // Short-lived token for media URLs (so the long-lived session token does not
 // have to appear in query strings / access logs).
 router.get('/media-token', authMiddleware, (req, res) => {
-  const token = authService.generateMediaToken(req.user.username, '12h');
+  // Bound to the same session and profile, so a Kids profile's media URLs
+  // stay inside its age limit.
+  const token = authService.generateMediaToken(req.user.username, '12h', { sid: req.user.sid, profileId: req.profileId });
   res.json({ token, expiresIn: 12 * 60 * 60 });
 });
 

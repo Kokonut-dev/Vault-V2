@@ -96,6 +96,15 @@ function revokeOthers(keepId) {
   return list.length - next.length;
 }
 
+/** Sign out every device using a profile (the profile was deleted). */
+function revokeProfile(profileId) {
+  const list = store.get();
+  const next = list.filter(s => (s.profileId || 'default') !== profileId);
+  if (next.length === list.length) return 0;
+  store.set(next);
+  return list.length - next.length;
+}
+
 function revokeAll() {
   const count = store.get().length;
   store.set([]);
@@ -106,4 +115,4 @@ async function flush() {
   await store.flush();
 }
 
-module.exports = { create, list, get, touch, isValid, revoke, revokeOthers, revokeAll, describeDevice, setProfile, flush };
+module.exports = { create, list, get, touch, isValid, revoke, revokeOthers, revokeProfile, revokeAll, describeDevice, setProfile, flush };
