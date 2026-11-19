@@ -49,16 +49,23 @@ async function until(what, fn, ms) {
   }
 }
 let failed = false;
+// On GitHub Actions failures also become annotations, readable on the PR
+// without opening the raw log.
+const annotate = (title, text) => {
+  if (process.env.GITHUB_ACTIONS) console.log(`::error title=${title}::${String(text).replace(/%/g, '%25').replace(/\r/g, '').replace(/\n/g, '%0A')}`);
+};
 function check(ok, message) {
   console.log(`${ok ? 'ok  ' : 'FAIL'} ${message}`);
-  if (!ok) failed = true;
+  if (!ok) { failed = true; annotate(`Smoke test (${process.platform}-${process.arch})`, message); }
 }
 function dumpLogs() {
   const logs = path.join(home, 'logs');
   if (!fs.existsSync(logs)) return;
   for (const f of fs.readdirSync(logs)) {
+    const lines = fs.readFileSync(path.join(logs, f), 'utf8').split('\n').slice(-60).join('\n');
     console.log(`--- ${f} ---`);
-    console.log(fs.readFileSync(path.join(logs, f), 'utf8').split('\n').slice(-60).join('\n'));
+    console.log(lines);
+    annotate(`Log ${f}`, lines.slice(-3500));
   }
 }
 
@@ -73,7 +80,8 @@ function dumpLogs() {
   const ffprobe = path.join(server, 'node_modules', 'ffprobe-static', 'bin', process.platform, process.arch, `ffprobe${ext}`);
   for (const [name, bin] of [['ffmpeg', ffmpeg], ['ffprobe', ffprobe]]) {
     const run = fs.existsSync(bin) ? spawnSync(bin, ['-version'], { encoding: 'utf8' }) : null;
-    check(run?.status === 0, `${name} is bundled and runs${run?.stdout ? ` (${run.stdout.split('\n')[0].slice(0, 60)})` : ''}`);
+    const why = !fs.existsSync(bin) ? ` — missing ${path.relative(resources, bin)}` : run?.status !== 0 ? ` — exit ${run?.status ?? run?.error?.message} ${String(run?.stderr || '').slice(0, 300)}` : '';
+    check(run?.status === 0, `${name} is bundled and runs${run?.stdout ? ` (${run.stdout.split('\n')[0].slice(0, 60)})` : ''}${why}`);
   }
 
   // 2. Start it like a user would
