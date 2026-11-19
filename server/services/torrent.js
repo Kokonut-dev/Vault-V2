@@ -34,7 +34,7 @@ const logger = require('../utils/logger');
 const events = require('./events');
 const { safeRelativeParts } = require('../utils/validators');
 
-const DATA_DIR = path.join(__dirname, '..', 'data');
+const { DATA_DIR } = require('../utils/dataDir');
 const STAGING_DIR = '.vault-downloads';
 const LIBRARY_KEYS = { movie: 'movies', music: 'music', video: 'videos' };
 const MAX_JOBS = 200;

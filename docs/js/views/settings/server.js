@@ -307,7 +307,7 @@ function renderExtraSources(s, ctx, state) {
       li.querySelector('[data-test]').addEventListener('click', (e) => testSource(src, e.currentTarget));
       li.querySelector('[data-remove]').addEventListener('click', async (e) => {
         const { confirmed: ok } = await confirmDialog({
-          title: `Remove “${escapeHtml(src.name)}”?`,
+          title: `Remove “${src.name}”?`,
           message: 'Its channels disappear from Live TV. Recordings you already made stay in your library.',
           confirmText: 'Remove list',
           danger: true,

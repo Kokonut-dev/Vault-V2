@@ -2,6 +2,127 @@
 
 ## [3.0.0] — in progress (branch `arena/0deefe55-vault-v2`)
 
+### Added — watch parties from the player, moved files keep their history
+Tests: `server/test/features.test.js` (player control: `syncplay-ui.test.js`).
+
+- **SyncPlay button in the video player.** Start a watch party for the
+  playing video (the room code is copied to the clipboard), join with a code,
+  see who's in, copy the invite, play the current video for everyone, or
+  leave, without opening the SyncPlay page. The SyncPlay page's *Create room*
+  now also starts on the playing video (it read a `currentVideoId` that nothing
+  ever set).
+- **Moved and renamed files keep everything.** When a scan (or the folder
+  watcher) finds a new file that has the same type and byte size as a known item
+  whose file is gone, it carries over play count, rating, tags, hand-edited
+  metadata and every profile's favourites, playlists, history, watched marks,
+  bookmarks and watchlist entries. Ambiguous matches are left alone.
+- **"File missing" instead of deleted.** A file that disappears is flagged
+  (a *File missing* badge on its card) and kept with its history for
+  `media.missing.retentionDays` (default 30; `0` means remove straight away).
+  It goes back to normal when the file returns. *Health → Remove missing*
+  still removes such items immediately.
+- **Subsonic respects age limits.** Subsonic apps browse as one chosen
+  profile (System → Services → Subsonic, default: the main profile). That
+  profile's age limit applies to every list, stream, download and cover, and
+  its favourites, playlists and history are used. If that profile is deleted,
+  Subsonic sign-in is refused; it does not fall back to no limits. Starting a
+  scan over Subsonic needs an admin profile.
+- **ASS/SSA subtitles work.** They're converted to WebVTT, keeping italic,
+  bold, underline, line breaks and top/side placement. Before, they were sent
+  as plain text, which browsers ignore. SRT conversion handles BOMs and CRLF
+  line endings.
+- **Bookmarks are per profile.** Each profile sees and deletes only its own
+  bookmarks. Older bookmarks belong to the main profile. Deleting a profile
+  deletes its bookmarks.
+
+### Fixed — bug run, part 2 (the low-severity leftovers)
+- **Removing an item left data behind.** Only the main profile's favourites,
+  playlists and history were cleaned. Now every profile's lists are cleaned,
+  plus watched marks, watchlist, collections, intro markers (including a
+  show's intro once its last episode goes), bookmarks and per-item listening
+  stats.
+- **Any device could stop anyone's Live TV stream.** Viewers are now counted
+  per device session. A device can only give up its own place, and releasing
+  twice does nothing.
+- **Server details for every profile.** The System page's Health report,
+  disk, cache, index and scrobbles are admin-only. `/api/server` no longer
+  shows the process id, launcher port, uptime or Node version to non-admins.
+  `/api/media/info` shows the file path (and ffprobe errors) to admins only.
+- **Artwork downloads could reach the LAN.** Metadata artwork is fetched
+  through `safeFetch`: public addresses only, images only, max 20 MB, with a
+  timeout. Metadata lookups time out after 15 s, and the HDHomeRun lineup
+  fetch is capped too.
+- **Unhandled stream errors.** A thumbnail, trickplay sheet, playlist or
+  Subsonic cover that vanished or failed to read between the check and the
+  read raised an unhandled stream error, which takes the server process
+  down. They now answer 404/500 (or end the response cleanly).
+- **`npm test` wrote into `server/data`.** Tests now run against a temp
+  folder (`VAULT_DATA_DIR`, see `scripts/run-tests.js`).
+
+### Fixed — bug run (data layer and authorization)
+A review of the data layer (JSON stores, the optional SQLite index, the
+scanner) and of who can call what, plus an automated sweep of all 224 routes.
+Each fix has a reproducing test in `server/test/bugrun.test.js` (SyncPlay page:
+`syncplay-ui.test.js`).
+
+- **Critical: settings leaked the signing secret.** `PUT /api/settings`
+  had no admin check and returned the raw config, JWT secret and password
+  hash included, so any profile (Kids too) could forge tokens.
+  It is admin-only now and returns the same safe shape as `GET`.
+  `PUT /api/settings/credentials` is admin-only too.
+  Notification targets can only be set through `PUT /api/settings/notifications`,
+  which checks the links.
+- **Changing the password signs other devices out.** A new password or grid
+  revokes other sessions and replaces the token-signing secret; this device
+  gets a new token. Tokens that don't belong to a device session are refused.
+- **Kids and other non-admin profiles can't destroy things.** Emptying,
+  purging, restoring or listing the trash, clearing the transcode/HLS caches,
+  managing podcast feeds (the server fetches their URLs) and Live TV
+  recordings are admin-only. Profiles with an age limit can't upload, edit
+  collections or write intro/outro markers (shared by the whole series).
+  Markers, watched, listens and bookmarks give 404 for items above the
+  profile's age limit.
+- **Profile PINs lock after 5 wrong guesses** (30 s, doubling up to 15 min;
+  `429 PROFILE_PIN_LOCKED`), for switching, signing in and changing a PIN.
+- **An unmounted drive no longer empties the library.** A scan (and the
+  file watcher) used to remove every item whose file was missing, so an
+  offline drive or NAS lost all its items with their history,
+  favourites and playlist entries. Items under a library folder that is
+  missing, unreadable or empty are kept until it is back.
+- **A corrupt data file is kept, not replaced.** A JSON store that can't be
+  read is moved to `<file>.corrupt-<time>` before Vault starts that list
+  fresh; before, the next save overwrote it with an empty list. Failed saves
+  are logged. `config.json` is written atomically.
+- **Settings that were lost on save.** `saveConfig` dropped the Google Drive
+  (`integrations`) and Remote access (`remoteAccess`) settings, so "keep
+  remote access on" never stuck.
+- **SQLite index.** It now applies the library and rating filters,
+  matches genres exactly (no `LIKE` wildcards), sorts titles without regard
+  to case, and checks page numbers. Searches and the watched filter use the
+  in-memory path so results match. `library.db` is no longer created in
+  JSON mode (by deleting an item or opening System → Index), and a missing
+  `data/` folder no longer turns the index off until restart.
+- **Subtitles.** The subtitle route only serves `.vtt/.srt/.ass/.ssa` files
+  from the item's own folder. Before, it served any file next to the
+  video, and a folder `Movie2` counted as inside `Movie`.
+- **SyncPlay works.** The host was refused (403) when changing the item, the
+  page read the room code and member id from the wrong place (chat gave
+  404 and leaving failed), nothing sent the host's playback to guests, and
+  guests read `paused` from events that carry `playing`. Members get a
+  private token (member ids are public). Room events go only to the
+  room's devices. Chat is for members only. Room passwords are hashed, codes
+  are random and unambiguous, the host role passes on when the host leaves,
+  and active members aren't dropped after 60 s.
+- **Stored XSS in dialogs.** Dialog titles, prompt labels, messages and
+  placeholders were inserted as HTML. Media titles and profile names are now
+  always shown as text (`createModal`/`promptModal` escape them). The
+  bookmarks dialog title and QR pairing errors too.
+- **Fuzzer 500s.** `?type=__proto__` on search, downloading from an unknown
+  podcast feed (now 404), and a Google Drive import without a link (now 400).
+- **Smaller fixes.** CBR comic pages are extracted without blocking the
+  server (and time out). The token blacklist drops expired tokens. Subtitle
+  streams handle read errors. `body-parser`/`qs` updated (`npm audit`).
+
 ### Fixed — profiles
 Profiles were mostly cosmetic: the "active profile" was one server-wide
 value, so switching on one device switched every device, and age limits,

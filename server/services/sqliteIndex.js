@@ -11,7 +11,8 @@ const fs = require('fs-extra');
 const logger = require('../utils/logger');
 const { getConfig } = require('../config');
 
-const DB_PATH = path.join(__dirname, '..', 'data', 'library.db');
+// VAULT_INDEX_DB lets tests (or unusual setups) put the index elsewhere.
+const DB_PATH = process.env.VAULT_INDEX_DB || path.join(require('../utils/dataDir').DATA_DIR, 'library.db');
 
 let db = null;
 let available = null;
@@ -22,6 +23,9 @@ function tryLoad() {
   try {
     // eslint-disable-next-line global-require
     const { DatabaseSync } = require('node:sqlite');
+    // On a fresh install data/ may not exist yet; without it the open failed
+    // and "unavailable" was cached for the life of the process.
+    fs.ensureDirSync(path.dirname(DB_PATH));
     db = new DatabaseSync(DB_PATH);
     db.exec(`
       CREATE TABLE IF NOT EXISTS items (
@@ -58,13 +62,26 @@ function tryLoad() {
   return available;
 }
 
+/** Can node:sqlite be used at all (without creating a database file)? */
+function sqliteSupported() {
+  try {
+    // eslint-disable-next-line global-require
+    return typeof require('node:sqlite').DatabaseSync === 'function';
+  } catch {
+    return false;
+  }
+}
+
 function status() {
-  const loaded = tryLoad();
   const config = getConfig();
+  // Just looking at the status (System → Index) used to create library.db
+  // even in JSON mode; only open it when it's in use or already exists.
+  const inUse = config.media?.storage === 'sqlite' || db !== null || fs.existsSync(DB_PATH);
+  const loaded = inUse ? tryLoad() : sqliteSupported();
   let count = 0;
   let size = 0;
   try {
-    if (loaded) count = db.prepare('SELECT COUNT(*) AS c FROM items').get().c;
+    if (loaded && db) count = db.prepare('SELECT COUNT(*) AS c FROM items').get().c;
     size = fs.existsSync(DB_PATH) ? fs.statSync(DB_PATH).size : 0;
   } catch {}
   return {
@@ -74,7 +91,7 @@ function status() {
     dbBytes: size,
     lastSync: lastSync ? new Date(lastSync).toISOString() : null,
     node: process.version,
-    path: loaded ? DB_PATH : null,
+    path: loaded && db ? DB_PATH : null,
   };
 }
 
@@ -155,32 +172,44 @@ function remove(id) {
  * Query the SQL index. Returns null when SQLite is unavailable so callers can
  * fall back to the in-memory implementation.
  */
-function query({ type = null, search = null, genre = null, year = null, sort = 'added_at', order = 'desc', page = 1, limit = 50 } = {}) {
+function query({ type = null, genre = null, year = null, libraryId = null, rating = null, sort = 'added_at', order = 'desc', page = 1, limit = 50 } = {}) {
   if (!tryLoad()) return null;
   const where = [];
   const params = [];
   if (type && type !== 'all') {
     where.push('type = ?');
-    params.push(type);
-  }
-  if (search) {
-    where.push('(LOWER(title) LIKE ? OR LOWER(artist) LIKE ? OR LOWER(album) LIKE ?)');
-    const like = `%${String(search).toLowerCase()}%`;
-    params.push(like, like, like);
+    params.push(String(type));
   }
   if (genre) {
-    where.push('LOWER(genre) LIKE ?');
-    params.push(`%${String(genre).toLowerCase()}%`);
+    // Exact genre, like the in-memory path: genres are stored "Rock, Pop",
+    // and a LIKE '%rock%' also matched "Rock & Roll" and "Krautrock" (and
+    // treated % and _ in the filter as wildcards).
+    where.push("instr(', ' || genre || ', ', ', ' || ? || ', ') > 0");
+    params.push(String(genre));
   }
   if (year) {
-    where.push('year = ?');
-    params.push(Number(year));
+    const y = parseInt(year, 10);
+    if (!Number.isNaN(y)) {
+      where.push('year = ?');
+      params.push(y);
+    }
+  }
+  if (libraryId) {
+    where.push('library_id = ?');
+    params.push(String(libraryId));
+  }
+  if (rating) {
+    const min = parseFloat(rating);
+    if (!Number.isNaN(min)) {
+      where.push('COALESCE(rating, 0) >= ?');
+      params.push(min);
+    }
   }
   const sortColumn = {
     addedAt: 'added_at',
-    title: 'title',
-    artist: 'artist',
-    album: 'album',
+    title: 'title COLLATE NOCASE',
+    artist: 'artist COLLATE NOCASE',
+    album: 'album COLLATE NOCASE',
     year: 'year',
     rating: 'rating',
     duration: 'duration',
@@ -192,10 +221,11 @@ function query({ type = null, search = null, genre = null, year = null, sort = '
     const clause = where.length ? `WHERE ${where.join(' AND ')}` : '';
     const total = db.prepare(`SELECT COUNT(*) AS c FROM items ${clause}`).get(...params).c;
     const size = Math.min(1000, Math.max(1, parseInt(limit, 10) || 50));
-    const offset = (Math.max(1, parseInt(page, 10) || 1) - 1) * size;
-    const rows = db.prepare(`SELECT data FROM items ${clause} ORDER BY ${sortColumn} ${direction} LIMIT ? OFFSET ?`)
+    const pageNum = Math.max(1, parseInt(page, 10) || 1);
+    const offset = (pageNum - 1) * size;
+    const rows = db.prepare(`SELECT data FROM items ${clause} ORDER BY ${sortColumn} ${direction}, id ASC LIMIT ? OFFSET ?`)
       .all(...params, size, offset);
-    return { items: rows.map(r => JSON.parse(r.data)), total, page, limit: size };
+    return { items: rows.map(r => JSON.parse(r.data)), total, page: pageNum, limit: size };
   } catch (err) {
     logger.warn(`[Index] query failed: ${err.message}`);
     return null;

@@ -3,6 +3,7 @@ const path = require('path');
 const fs = require('fs-extra');
 const multer = require('multer');
 const mime = require('mime-types');
+const { pipeFile } = require('../utils/fileUtils');
 const router = express.Router();
 const libraryService = require('../services/library');
 const extras = require('../services/extras');
@@ -146,7 +147,7 @@ router.get('/:id/cover', (req, res) => {
   if (!playlist?.coverArt || !fs.existsSync(playlist.coverArt)) return res.status(404).json({ error: 'Cover not found' });
   res.setHeader('Content-Type', mime.lookup(playlist.coverArt) || 'image/jpeg');
   res.setHeader('Cache-Control', 'no-cache');
-  fs.createReadStream(playlist.coverArt).pipe(res);
+  pipeFile(playlist.coverArt, res);
 });
 
 router.delete('/:id/cover', (req, res) => {

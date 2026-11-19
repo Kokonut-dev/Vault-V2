@@ -4,13 +4,19 @@
 import { createFocusTrap } from '../utils/focusTrap.js';
 import { icon } from '../utils/icons.js';
 
+// Titles, labels and messages are plain text: they often contain media titles
+// and profile names (anything a file name or tag can hold), so they are
+// always escaped here. Callers pass raw strings. `content` stays HTML.
+const esc = (s) => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+
 export function createModal({ title, content, onClose }) {
+  const safeTitle = esc(title);
   const backdrop = document.createElement('div');
   backdrop.className = 'modal-backdrop active';
   backdrop.innerHTML = `
-    <div class="modal" role="dialog" aria-modal="true" aria-label="${title}">
+    <div class="modal" role="dialog" aria-modal="true" aria-label="${safeTitle}">
       <div class="modal-header">
-        <div class="modal-title">${title}</div>
+        <div class="modal-title">${safeTitle}</div>
         <button class="modal-close" aria-label="Close dialog">${icon('x', { size: 16 })}</button>
       </div>
       <div class="modal-body">${content}</div>
@@ -59,13 +65,13 @@ export function promptModal({ title, message = '', label = 'Value', value = '', 
     const { backdrop, close } = createModal({
       title,
       content: `
-        ${message ? `<p class="modal-text">${message}</p>` : ''}
-        <label class="form-label" for="prompt-input">${label}</label>
-        <input class="form-input" id="prompt-input" type="${inputType === 'password' ? 'password' : 'text'}" autocomplete="${autocomplete}"${inputMode ? ` inputmode="${inputMode}"` : ''} value="${String(value).replace(/"/g, '&quot;')}" placeholder="${placeholder}">
+        ${message ? `<p class="modal-text">${esc(message)}</p>` : ''}
+        <label class="form-label" for="prompt-input">${esc(label)}</label>
+        <input class="form-input" id="prompt-input" type="${inputType === 'password' ? 'password' : 'text'}" autocomplete="${esc(autocomplete)}"${inputMode ? ` inputmode="${esc(inputMode)}"` : ''} value="${esc(value)}" placeholder="${esc(placeholder)}">
         <div class="modal-error" id="prompt-error" role="alert"></div>
         <div class="modal-actions">
           <button type="button" class="btn btn-secondary" data-cancel>Cancel</button>
-          <button type="button" class="btn btn-primary" data-confirm>${confirmLabel}</button>
+          <button type="button" class="btn btn-primary" data-confirm>${esc(confirmLabel)}</button>
         </div>
       `,
       onClose: () => resolve(null),

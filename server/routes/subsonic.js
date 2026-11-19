@@ -5,7 +5,7 @@
 const express = require('express');
 const fs = require('fs-extra');
 const subsonic = require('../services/subsonic');
-const { sendFileWithRange } = require('../utils/fileUtils');
+const { sendFileWithRange, pipeFile } = require('../utils/fileUtils');
 
 const router = express.Router();
 
@@ -25,7 +25,7 @@ subsonic.register(router, {
     const cover = [item.posterPath, item.coverArtPath, item.thumbnailPath].find(p => p && fs.existsSync(p));
     if (!cover) return res.status(404).end();
     res.setHeader('Cache-Control', 'public, max-age=86400');
-    return fs.createReadStream(cover).pipe(res);
+    return pipeFile(cover, res);
   },
 });
 

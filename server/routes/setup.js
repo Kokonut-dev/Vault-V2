@@ -398,7 +398,10 @@ router.post('/complete', async (req, res) => {
     authService.resetAttempts(ip);
 
     // Generate access token for immediate login
-    const token = authService.generateAccessToken(cleanUsername);
+    // A real device session, like any other sign-in (tokens without one are
+    // refused by the auth middleware).
+    const session = require('../services/sessions').create({ username: cleanUsername, profileId: 'default', req, label: 'Setup' });
+    const token = authService.generateAccessToken(cleanUsername, { sid: session.id, profileId: 'default' });
     const decoded = authService.verifyToken(token);
 
     logger.info(`Setup completed by ${cleanUsername} from ${ip} — config saved to ${CONFIG_PATH}`);

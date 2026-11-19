@@ -1,5 +1,10 @@
 const express = require('express');
 const router = express.Router();
+const { requireAdmin } = require('../middleware/requireAdmin');
+
+// Feeds are shared by every profile, and subscribing/refreshing makes the
+// server fetch the given URL and download files: admin profiles only.
+router.use((req, res, next) => (req.method === 'GET' || req.method === 'HEAD' ? next() : requireAdmin(req, res, next)));
 const podcasts = require('../services/podcasts');
 const extras = require('../services/extras');
 const libraryService = require('../services/library');
@@ -71,6 +76,7 @@ router.post('/feeds/:id/episodes/:guid/download', async (req, res) => {
     const result = await podcasts.downloadEpisode(req.params.id, decodeURIComponent(req.params.guid));
     res.json({ message: 'Episode downloaded', ...result });
   } catch (err) {
+    if (/^(Feed|Episode) not found$/.test(err.message)) return res.status(404).json({ error: err.message, code: 'NOT_FOUND' });
     logger.warn(`[Podcast] download failed: ${err.message}`);
     res.status(500).json({ error: err.message });
   }

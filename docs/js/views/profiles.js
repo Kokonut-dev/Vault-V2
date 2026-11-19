@@ -61,7 +61,7 @@ function metaFor(profile) {
 
 async function askPin(profile, message = '') {
   return promptModal({
-    title: `PIN for ${escapeHtml(profile.name)}`,
+    title: `PIN for ${profile.name}`,
     message,
     label: 'PIN',
     inputType: 'password',
@@ -292,7 +292,8 @@ export function openProfileEditor({ profile, isAdmin, isSelf, options = {}, coun
       ? [`<option value="${Number(draft.maxRating)}">Up to ${Number(draft.maxRating)}</option>`] : []),
   ].join('');
   const needsCurrentPin = !isAdmin && isSelf && profile?.hasPin;
-  const title = creating ? 'New profile' : `Edit ${escapeHtml(profile.name)}`;
+  // Plain text: createModal escapes the title.
+  const title = creating ? 'New profile' : `Edit ${profile.name}`;
 
   return new Promise(resolve => {
     let settled = false;

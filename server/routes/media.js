@@ -12,8 +12,10 @@ const events = require('../services/events');
 const logger = require('../utils/logger');
 // Shared Range-aware streaming helper (moved to utils so the transcode cache
 // route can reuse it — F-16).
-const { sendFileWithRange } = require('../utils/fileUtils');
+const { sendFileWithRange, pipeFile } = require('../utils/fileUtils');
 const { itemParam } = require('../middleware/profileAccess');
+const { isAdminProfile } = require('../middleware/requireAdmin');
+const { srtToVtt, assToVtt } = require('../utils/subtitleConvert');
 
 // Age-limited profiles can't open or stream items above their limit.
 router.param('id', itemParam);
@@ -76,7 +78,7 @@ router.get('/cover/:id', async (req, res) => {
     if (resized) {
       res.setHeader('Content-Type', 'image/jpeg');
       res.setHeader('Cache-Control', 'public, max-age=604800, immutable');
-      return fs.createReadStream(resized).pipe(res);
+      return pipeFile(resized, res);
     }
   }
 
@@ -147,7 +149,7 @@ router.get('/thumbnail/:id', async (req, res) => {
   if (thumbPath && fs.existsSync(thumbPath)) {
     res.setHeader('Content-Type', 'image/jpeg');
     res.setHeader('Cache-Control', 'public, max-age=86400');
-    fs.createReadStream(thumbPath).pipe(res);
+    pipeFile(thumbPath, res);
   } else {
     res.status(404).json({ error: 'Thumbnail not found' });
   }
@@ -168,7 +170,7 @@ router.get('/trickplay/:id/:sheet', (req, res) => {
   if (!file) return res.status(404).json({ error: 'Sprite not found' });
   res.setHeader('Content-Type', 'image/jpeg');
   res.setHeader('Cache-Control', 'public, max-age=604800, immutable');
-  fs.createReadStream(file).pipe(res);
+  pipeFile(file, res);
 });
 
 // Lyrics (sidecar .lrc / embedded), served for the Now Playing view.
@@ -251,14 +253,25 @@ router.get('/subtitle/:id/:subtitleId', (req, res) => {
   }
 
   let subtitlePath = null;
+  // Only subtitle files are ever served from here. (The direct lookup below
+  // used to hand out *any* file next to the media file — .nfo files, other
+  // videos, stray notes — as text/plain.)
+  const SUBTITLE_EXT = /\.(vtt|srt|ass|ssa)$/i;
+  // "Inside dir" with a separator, so /media/Movie doesn't also allow
+  // /media/Movie2/…
+  const inside = (file, dir) => {
+    const base = path.resolve(dir);
+    const resolved = path.resolve(file);
+    return resolved.startsWith(base.endsWith(path.sep) ? base : base + path.sep);
+  };
 
   if (item.subtitles && Array.isArray(item.subtitles)) {
-    const sub = item.subtitles.find(s => s.id === subtitleId || (s.path && s.path.includes(subtitleId)));
+    // Exact id or file name (a substring match let "a" pick any subtitle).
+    const sub = item.subtitles.find(s => s.id === subtitleId || (s.path && path.basename(s.path) === subtitleId));
     if (sub && sub.path) {
       // Ensure subtitle path is inside same directory as media file (prevent traversal)
       const mediaDir = path.dirname(item.path);
-      const resolved = path.resolve(sub.path);
-      if (resolved.startsWith(path.resolve(mediaDir)) || resolved.startsWith(path.resolve(__dirname, '../cache'))) {
+      if (SUBTITLE_EXT.test(sub.path) && (inside(sub.path, mediaDir) || inside(sub.path, path.resolve(__dirname, '../cache')))) {
         subtitlePath = sub.path;
       }
     }
@@ -271,12 +284,13 @@ router.get('/subtitle/:id/:subtitleId', (req, res) => {
     const possible = [
       path.join(dir, `${base}.vtt`),
       path.join(dir, `${base}.srt`),
+      path.join(dir, `${base}.ass`),
+      path.join(dir, `${base}.ssa`),
       path.join(dir, subtitleId),
     ];
     for (const p of possible) {
-      const resolved = path.resolve(p);
-      // Must be inside media dir
-      if (!resolved.startsWith(path.resolve(dir))) continue;
+      // Must be a subtitle file inside the media dir
+      if (!SUBTITLE_EXT.test(p) || !inside(p, dir)) continue;
       if (fs.existsSync(p)) {
         subtitlePath = p;
         break;
@@ -292,24 +306,20 @@ router.get('/subtitle/:id/:subtitleId', (req, res) => {
 
   if (ext === '.vtt') {
     res.setHeader('Content-Type', 'text/vtt');
-    fs.createReadStream(subtitlePath).pipe(res);
-  } else if (ext === '.srt') {
-    // Convert SRT to VTT on the fly (simple conversion)
+    pipeFile(subtitlePath, res);
+  } else {
+    // SRT and ASS/SSA are converted to WebVTT, the only format browsers play.
     try {
-      let content = fs.readFileSync(subtitlePath, 'utf-8');
-      // Basic SRT to VTT conversion
-      content = 'WEBVTT\n\n' + content.replace(/(\d{2}:\d{2}:\d{2}),(\d{3})/g, '$1.$2');
-      res.setHeader('Content-Type', 'text/vtt');
-      res.send(content);
+      const content = fs.readFileSync(subtitlePath, 'utf-8');
+      res.setHeader('Content-Type', 'text/vtt; charset=utf-8');
+      res.send(ext === '.srt' ? srtToVtt(content) : assToVtt(content));
     } catch (err) {
+      logger.warn(`Subtitle conversion failed for ${item.id}: ${err.message}`);
       res.status(500).json({ error: 'Failed to convert subtitle' });
     }
-  } else {
-    // For ASS/SSA, try to serve as is or convert via ffmpeg if available
-    res.setHeader('Content-Type', 'text/plain');
-    fs.createReadStream(subtitlePath).pipe(res);
   }
 });
+
 
 router.get('/info/:id', async (req, res) => {
   const item = libraryService.getById(req.params.id);
@@ -325,21 +335,24 @@ router.get('/info/:id', async (req, res) => {
         sampleRate: item.sampleRate,
         duration: item.duration,
         fileSize: item.fileSize,
-        filePath: item.path,
         title: item.title,
         artist: item.artist,
         album: item.album,
       };
     } else {
       probeData = await metadataService.probeVideo(item.path);
-      probeData.filePath = item.path;
       probeData.fileSize = item.fileSize;
       probeData.title = item.title;
     }
+    // Where the file sits on the server's disk is for admins only.
+    if (isAdminProfile(req.profileId)) probeData.filePath = item.path;
+    else delete probeData.filePath;
 
     res.json(probeData);
   } catch (err) {
-    res.status(500).json({ error: 'Failed to get media info', details: err.message });
+    logger.warn(`Media info failed for ${item.id}: ${err.message}`);
+    // ffprobe's message includes the file path.
+    res.status(500).json({ error: 'Failed to get media info', ...(isAdminProfile(req.profileId) ? { details: err.message } : {}) });
   }
 });
 

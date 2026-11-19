@@ -253,13 +253,18 @@ function checkIcon(status) {
 
 async function loadHealth(ctx, { deep = false } = {}) {
   const { body } = ctx;
+  if (!ctx.isAdmin) {
+    // The report covers the whole library and the server's disks.
+    body.innerHTML = errorState(ADMIN_NOTE, { html: true });
+    return;
+  }
   let health;
   let disk;
   try {
     [health, disk] = await Promise.all([api.getLibraryHealth(deep), api.getDisk().catch(() => null)]);
   } catch (err) {
     if (ctx.isCurrent?.() === false) return;
-    body.innerHTML = errorState(`Couldn’t load the health report: ${err.message}`);
+    body.innerHTML = isAdminError(err) ? errorState(ADMIN_NOTE, { html: true }) : errorState(`Couldn’t load the health report: ${err.message}`);
     return;
   }
   if (ctx.isCurrent?.() === false) return;
@@ -666,12 +671,14 @@ async function loadServices(ctx) {
     if (!isAdminError(err)) failed.push(label);
     return { ...fallback, _error: err };
   });
-  const [caps, scrobbleData, agentData, subsonic] = await Promise.all([
+  const [caps, scrobbleData, agentData, subsonic, profileData] = await Promise.all([
     settle(api.getCapabilities(), {}, 'transcoding'),
-    settle(api.getScrobbles(20), { scrobbles: [] }, 'scrobbles'),
+    ctx.isAdmin ? settle(api.getScrobbles(20), { scrobbles: [] }, 'scrobbles') : Promise.resolve({ scrobbles: [] }),
     settle(api.getAgents(), { providers: {} }, 'metadata agents'),
     ctx.isAdmin ? settle(api.getSubsonic(), {}, 'Subsonic') : Promise.resolve({ _error: { status: 403 } }),
+    ctx.isAdmin ? api.getProfiles().catch(() => ({ profiles: [] })) : Promise.resolve({ profiles: [] }),
   ]);
+  const profileList = Array.isArray(profileData) ? profileData : (profileData?.profiles || []);
   if (ctx.isCurrent?.() === false) return;
 
   const scrobbles = scrobbleData.scrobbles || [];
@@ -688,7 +695,16 @@ async function loadServices(ctx) {
           ? 'Only an admin profile can see or change Subsonic access.'
           : subsonic.enabled
             ? `On for “${escapeHtml(subsonic.username || '')}”. Point your Subsonic app (DSub, Symfonium, Substreamer…) at this server’s address.`
-            : 'Off. Set a password to use Subsonic music apps.'}</div></div>
+            : 'Off. Set a password to use Subsonic music apps.'}</div>
+        ${subsonicKnown && profileList.length ? `
+          <label class="row-meta" style="display:flex;align-items:center;gap:8px;margin-top:6px">
+            <span>Library and age limits of</span>
+            <select class="form-select" style="width:auto" id="subsonic-profile" aria-label="Profile Subsonic apps use">
+              ${subsonic.profileMissing ? '<option value="" selected disabled>Removed profile — choose one</option>' : ''}
+              ${profileList.map(p => `<option value="${escapeAttr(p.id)}"${!subsonic.profileMissing && p.id === (subsonic.profileId || 'default') ? ' selected' : ''}>${escapeHtml(p.name || p.id)}</option>`).join('')}
+            </select>
+          </label>
+          ${subsonic.profileMissing ? '<div class="row-meta" role="alert">The profile Subsonic used was removed, so Subsonic apps can’t sign in until you choose another.</div>' : ''}` : ''}</div>
         ${subsonicKnown ? `
           <button type="button" class="btn btn-secondary btn-sm" id="subsonic-set">${subsonic.enabled ? 'Change password' : 'Turn on'}</button>
           ${subsonic.enabled ? '<button type="button" class="btn btn-ghost btn-sm" id="subsonic-off">Turn off</button>' : ''}` : ''}
@@ -717,13 +733,13 @@ async function loadServices(ctx) {
       </div>
     </section>
 
-    <section class="section">
+    ${ctx.isAdmin ? `<section class="section">
       <h2 class="section-title">Recent scrobbles</h2>
       ${scrobbles.slice(0, 10).map(entry => {
         const sent = Object.entries(entry.submitted || {}).filter(([, ok]) => ok).map(([service]) => (service === 'lastfm' ? 'Last.fm' : 'ListenBrainz'));
         return `<div class="row-meta" style="padding:4px 0">${escapeHtml(entry.title || 'Unknown track')}${entry.artist ? ` — ${escapeHtml(entry.artist)}` : ''}${entry.playedAt ? ` · ${escapeHtml(formatRelativeTime(entry.playedAt).toLowerCase())}` : ''}${sent.length ? ` · sent to ${escapeHtml(sent.join(' and '))}` : ' · not sent'}</div>`;
       }).join('') || '<div class="row-meta">No scrobbles yet. Connect Last.fm or ListenBrainz in Settings → Notifications.</div>'}
-    </section>
+    </section>` : ''}
   `;
 
   body.querySelector('#subsonic-set')?.addEventListener('click', event => busy(event.currentTarget, async () => {
@@ -741,6 +757,18 @@ async function loadServices(ctx) {
     toast.success('Subsonic password saved');
     await loadServices(ctx);
   }));
+
+  body.querySelector('#subsonic-profile')?.addEventListener('change', async (event) => {
+    const select = event.currentTarget;
+    select.disabled = true;
+    try {
+      const result = await api.setSubsonicProfile(select.value);
+      toast.success(`Subsonic apps now see ${result.profileName ? `${result.profileName}’s` : 'that profile’s'} library`);
+    } catch (err) {
+      toast.error(`Couldn’t change the Subsonic profile: ${err.message}`);
+    }
+    await loadServices(ctx);
+  });
 
   body.querySelector('#subsonic-off')?.addEventListener('click', event => busy(event.currentTarget, async () => {
     const { confirmed } = await confirmDialog({

@@ -117,8 +117,9 @@ test('/health includes last scan, scan state and index status', async () => {
   assert.equal(res.body.scanning, false);
   assert.ok(res.body.lastScan && res.body.lastScan.at);
   assert.ok(res.body.index && 'sqliteAvailable' in res.body.index);
-  // Readable by every profile; only changes are admin-only.
-  assert.equal((await call('GET', '/api/system/health', { token: tokenFor('kid') })).status, 200);
+  // Health exposes paths and internals, so it's admin-only like logs.
+  assert.equal((await call('GET', '/api/system/health', { token: tokenFor('kid') })).status, 403);
+  assert.equal((await call('GET', '/api/system/scrobbles', { token: tokenFor('kid') })).status, 403);
   assert.equal((await call('POST', '/api/system/health/prune-missing', { token: tokenFor('kid') })).status, 403);
 });
 

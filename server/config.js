@@ -89,6 +89,12 @@ const DEFAULT_CONFIG = {
       enabled: true,
       retentionDays: 30
     },
+    // Items whose file disappeared stay (flagged "missing", with everyone's
+    // favourites/history) this many days before a scan removes them, so an
+    // unplugged drive or a moved folder loses nothing. 0 = remove at once.
+    missing: {
+      retentionDays: 30
+    },
     extras: {
       detectTrailers: true,
       detectExtras: true,
@@ -258,8 +264,9 @@ function isObject(item) {
   return item && typeof item === 'object' && !Array.isArray(item);
 }
 
-function saveConfig(newConfig) {
-  const toSave = {
+/** The part of the live config that is written to config.json. */
+function persistedShape(newConfig) {
+  return {
     server: newConfig.server,
     auth: {
       username: newConfig.auth.username,
@@ -283,6 +290,7 @@ function saveConfig(newConfig) {
       transcoding: newConfig.media.transcoding,
       trickplay: newConfig.media.trickplay,
       trash: newConfig.media.trash,
+      missing: newConfig.media.missing,
       extras: newConfig.media.extras
     },
     metadata: newConfig.metadata,
@@ -292,17 +300,30 @@ function saveConfig(newConfig) {
     notifications: newConfig.notifications,
     cors: newConfig.cors,
     security: newConfig.security,
+    // Written by the Google Drive import and Remote access settings; left out
+    // of this list they were dropped on the next save of *any* setting (and
+    // "keep remote access on" never survived even its own save).
+    integrations: newConfig.integrations,
+    remoteAccess: newConfig.remoteAccess,
     onboarding: newConfig.onboarding || {
       completedAt: new Date().toISOString(),
       version: '2.0.0',
       enablement: true,
     }
   };
+}
+
+function saveConfig(newConfig) {
+  const toSave = persistedShape(newConfig);
   // Ensure enablement is true when onboarding exists
   if (toSave.onboarding) {
     toSave.onboarding.enablement = true;
   }
-  fs.writeJsonSync(CONFIG_PATH, toSave, { spaces: 2 });
+  // Atomic (temp file + rename): a crash mid-write used to leave a truncated
+  // config.json, and the server then started on built-in defaults.
+  const tmpPath = `${CONFIG_PATH}.tmp`;
+  fs.writeJsonSync(tmpPath, toSave, { spaces: 2 });
+  fs.renameSync(tmpPath, CONFIG_PATH);
   config = null; // force reload
   return loadConfig();
 }
@@ -312,4 +333,4 @@ function getConfig() {
   return config;
 }
 
-module.exports = { loadConfig, getConfig, saveConfig, CONFIG_PATH, DEFAULT_CONFIG, _internals: { migrateLegacyRateLimits, LEGACY_GENERAL_RATE_LIMIT_MAX, LEGACY_UPLOAD_RATE_LIMIT_MAX } };
+module.exports = { loadConfig, getConfig, saveConfig, CONFIG_PATH, DEFAULT_CONFIG, _internals: { persistedShape, migrateLegacyRateLimits, LEGACY_GENERAL_RATE_LIMIT_MAX, LEGACY_UPLOAD_RATE_LIMIT_MAX } };

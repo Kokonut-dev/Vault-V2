@@ -41,6 +41,9 @@ export function createMediaCard(item, options = {}) {
   card.dataset.itemId = item.id;
   card.dataset.contextMenuFor = item.id;
   if (item.watched) card.classList.add('watched');
+  // The file is gone (drive unplugged, moved outside the library…); the item
+  // stays with its history until a scan removes it — see scanner.scanAll.
+  if (item.missing) card.classList.add('missing');
   card.dataset.type = item.type || 'movie'; // F-12: per-type intrinsic sizes in CSS
   // C-11 (UI_REVAMP_PLAN.md): the card used to be role="button" while also
   // containing the real Play <button> — a nested-interactive violation (axe,
@@ -84,7 +87,9 @@ export function createMediaCard(item, options = {}) {
       </div>
       ${hasProgress ? `<div class="media-card-progress"><div class="media-card-progress-bar" style="width:${progress}%"></div></div>` : ''}
       ${item.duration && !isMusic ? `<div class="media-card-duration">${formatTime(item.duration)}</div>` : ''}
-      ${qualityBadges(item).length ? `<div class="quality-badges">${qualityBadges(item).map(([label, kind]) => `<span class="quality-badge ${kind}">${label}</span>`).join('')}</div>` : ''}
+      ${item.missing
+    ? '<div class="quality-badges"><span class="quality-badge missing" title="The file can’t be found. It’s kept until a scan removes it.">File missing</span></div>'
+    : (qualityBadges(item).length ? `<div class="quality-badges">${qualityBadges(item).map(([label, kind]) => `<span class="quality-badge ${kind}">${label}</span>`).join('')}</div>` : '')}
       ${item.watched ? `<div class="media-card-watched" title="Watched">${icon('check', { size: 14 })}</div>` : ''}
     </div>
     <div class="media-card-info">

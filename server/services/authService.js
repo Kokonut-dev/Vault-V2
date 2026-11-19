@@ -6,7 +6,8 @@ const { getConfig } = require('../config');
 const logger = require('../utils/logger');
 const { writeJsonAtomic } = require('../utils/fileUtils');
 
-const BRUTEFORCE_PATH = path.join(__dirname, '../data/bruteforce.json');
+const { DATA_DIR } = require('../utils/dataDir');
+const BRUTEFORCE_PATH = path.join(DATA_DIR, 'bruteforce.json');
 let attempts = new Map();
 
 // Brute-force tracking is split by *stage*: password failures and

@@ -12,7 +12,7 @@ const { createJsonStore } = require('../utils/jsonStore');
 const { writeJsonAtomic } = require('../utils/fileUtils');
 const logger = require('../utils/logger');
 
-const TRASH_DIR = path.join(__dirname, '..', 'data', 'trash');
+const TRASH_DIR = path.join(require('../utils/dataDir').DATA_DIR, 'trash');
 const store = createJsonStore('trash.json', []);
 
 function uniqueName(name) {

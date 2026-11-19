@@ -51,9 +51,34 @@ function cacheSet(key, value) {
   cache.set(all);
 }
 
+const MAX_ARTWORK_BYTES = 20 * 1024 * 1024;
+
+async function downloadImage(url) {
+  const { safeFetchStream } = require('../utils/safeFetch');
+  const { res } = await safeFetchStream(url, { allowPrivate: false, timeoutMs: 20000, accept: 'image/*' });
+  const type = String(res.headers['content-type'] || '');
+  if (!/^image\//i.test(type)) {
+    res.resume();
+    throw new Error(`not an image (${type || 'no content type'})`);
+  }
+  const chunks = [];
+  let size = 0;
+  for await (const chunk of res) {
+    size += chunk.length;
+    if (size > MAX_ARTWORK_BYTES) {
+      res.destroy();
+      throw new Error('image too large');
+    }
+    chunks.push(chunk);
+  }
+  return Buffer.concat(chunks);
+}
+
 async function fetchJson(url, options = {}) {
   const res = await fetch(url, {
     ...options,
+    // Provider APIs (fixed hosts) — but never wait forever on one.
+    signal: options.signal || AbortSignal.timeout(15000),
     headers: { 'User-Agent': USER_AGENT, Accept: 'application/json', ...(options.headers || {}) },
   });
   if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
@@ -271,9 +296,11 @@ async function applyMatch(item, match, options = {}) {
     if (!url || !downloadArtwork) return null;
     const target = path.join(dir, name);
     try {
-      const res = await fetch(url, { headers: { 'User-Agent': USER_AGENT } });
-      if (!res.ok) throw new Error(`${res.status}`);
-      const buffer = Buffer.from(await res.arrayBuffer());
+      // The URL comes from the match the browser sent, so it goes through
+      // safeFetch (no LAN/loopback/metadata addresses, redirects re-checked),
+      // must be an image, and is capped in size. A plain fetch() let any
+      // profile make the server download any URL next to a media file.
+      const buffer = await downloadImage(url);
       await fs.writeFile(target, buffer);
       written[name] = target;
       return target;

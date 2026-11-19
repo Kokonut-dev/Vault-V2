@@ -16,7 +16,7 @@ const lifecycle = require('../services/lifecycle');
 const autostart = require('../services/autostart');
 const remoteAccess = require('../services/remoteAccess');
 const keepAwake = require('../utils/keepAwake');
-const { requireAdmin } = require('../middleware/requireAdmin');
+const { requireAdmin, isAdminProfile } = require('../middleware/requireAdmin');
 const logger = require('../utils/logger');
 
 function info() {
@@ -50,7 +50,14 @@ const NOT_SUPERVISED = {
   code: 'NOT_SUPERVISED',
 };
 
-router.get('/', (req, res) => res.json(info()));
+// Non-admin profiles see what the (read-only) settings page shows, not the
+// process internals.
+router.get('/', (req, res) => {
+  const full = info();
+  if (isAdminProfile(req.profileId)) return res.json(full);
+  const { pid, launcherPort, uptime, node, ...shown } = full;
+  return res.json(shown);
+});
 
 router.post('/restart', requireAdmin, (req, res) => {
   if (!lifecycle.supervised()) return res.status(409).json(NOT_SUPERVISED);

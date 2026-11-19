@@ -1,6 +1,7 @@
 /**
  * SyncPlay — watch together with friends (host/guest sync + chat).
- * Server: /api/syncplay (short codes, drift correction, 12 h TTL rooms).
+ * Server: /api/syncplay (short codes, member tokens, drift correction).
+ * Playback sync itself lives in app-extras (initSyncPlayFollower).
  */
 import { api } from '../api.js';
 import { store } from '../store.js';
@@ -8,14 +9,51 @@ import { icon } from '../utils/icons.js';
 import { escapeHtml } from '../utils/format.js';
 import { toast } from '../components/toast.js';
 import { promptModal } from '../components/modal.js';
+import { getSyncSession, rememberRoom, clearSyncSession } from '../utils/syncplaySession.js';
+import { onUnmount } from '../utils/lifecycle.js';
 
 let chatTimer = null;
+let offChat = null;
 
-function memberName() {
-  return store.get('user')?.username || store.get('profileId') || 'Guest';
+/** This device's display name, if known (otherwise the server uses the profile name). */
+export function memberName() {
+  return store.get('profile')?.name || store.get('user')?.username || undefined;
+}
+
+function stopRoomTimers() {
+  clearInterval(chatTimer);
+  chatTimer = null;
+  offChat?.();
+  offChat = null;
+}
+
+/** Join (or rejoin with this tab's token), asking for the password if needed. */
+export async function joinWithPrompt(idOrCode) {
+  const session = getSyncSession();
+  const token = session && (session.roomId === idOrCode || session.code === String(idOrCode).toUpperCase()) ? session.token : null;
+  let password;
+  for (let tries = 0; tries < 4; tries++) {
+    try {
+      const result = await api.joinRoom(idOrCode, { name: memberName(), password }, token);
+      rememberRoom(result.room, result.member);
+      return result;
+    } catch (err) {
+      if (err.code !== 'ROOM_PASSWORD') throw err;
+      password = await promptModal({
+        title: 'Room password',
+        message: password ? 'That password isn’t right. Try again.' : 'This watch party has a password.',
+        label: 'Password',
+        inputType: 'password',
+        confirmLabel: 'Join',
+      });
+      if (password === null) return null;
+    }
+  }
+  return null;
 }
 
 export async function renderSyncPlay(container, params = {}) {
+  stopRoomTimers();
   container.className = 'page';
   container.innerHTML = `
     <div class="page-header">
@@ -27,6 +65,7 @@ export async function renderSyncPlay(container, params = {}) {
   const body = container.querySelector('#syncplay-body');
 
   async function loadRooms() {
+    stopRoomTimers();
     let rooms = [];
     try {
       rooms = (await api.getRooms()).rooms || [];
@@ -34,6 +73,7 @@ export async function renderSyncPlay(container, params = {}) {
       body.innerHTML = `<div class="empty-state"><div class="empty-state-message">${escapeHtml(err.message)}</div></div>`;
       return;
     }
+    const mine = getSyncSession();
 
     body.innerHTML = `
       <div class="page-actions" style="display:flex;gap:8px;margin-bottom:16px">
@@ -44,11 +84,11 @@ export async function renderSyncPlay(container, params = {}) {
         <div class="download-row">
           <span class="row-icon">${icon('users', { size: 18 })}</span>
           <div class="row-main">
-            <div class="row-title">${escapeHtml(room.name || 'Watch party')}</div>
-            <div class="row-meta">${room.members?.length ?? 0} member(s) · host ${escapeHtml(room.host || '—')}${room.item ? ` · watching ${escapeHtml(room.item.title || '')}` : ''}</div>
+            <div class="row-title">${escapeHtml(room.name || 'Watch party')}${room.hasPassword ? ` ${icon('lock', { size: 12 })}` : ''}</div>
+            <div class="row-meta">${room.members?.length ?? 0} member(s) · host ${escapeHtml(room.host || '—')}</div>
           </div>
           <span class="room-code">${escapeHtml(room.code || '')}</span>
-          <button class="btn btn-secondary btn-sm" data-room="${room.id}">Open</button>
+          <button class="btn btn-secondary btn-sm" data-room="${escapeHtml(room.id)}">${mine?.roomId === room.id ? 'Open' : 'Join'}</button>
         </div>`).join('') : '<div class="row-meta">No rooms are open right now.</div>'}
       <section class="section">
         <h2 class="section-title">How it works</h2>
@@ -57,12 +97,16 @@ export async function renderSyncPlay(container, params = {}) {
     `;
 
     body.querySelector('#room-create').addEventListener('click', async () => {
-      const name = await promptModal({ title: 'Create a watch party', label: 'Room name', value: `${memberName()}'s party`, confirmLabel: 'Create' });
+      const name = await promptModal({ title: 'Create a watch party', label: 'Room name', value: memberName() ? `${memberName()}'s party` : 'Watch party', confirmLabel: 'Create' });
       if (!name) return;
       try {
-        const room = await api.createRoom({ name, itemId: store.get('currentVideoId') || null });
-        toast.success(`Room created — code ${room.code}`);
-        openRoom(room.id);
+        // Leaving any previous room first, so this device isn't in two.
+        const previous = getSyncSession();
+        if (previous) await api.leaveRoom(previous.roomId, previous.token).catch(() => {});
+        const result = await api.createRoom({ name, hostName: memberName(), itemId: store.get('currentVideoId') || null });
+        rememberRoom(result.room, result.member);
+        toast.success(`Room created — code ${result.room.code}`);
+        openRoom(result.room.id);
       } catch (err) {
         toast.error(err.message);
       }
@@ -70,68 +114,115 @@ export async function renderSyncPlay(container, params = {}) {
     body.querySelector('#room-join').addEventListener('click', async () => {
       const code = await promptModal({ title: 'Join a room', label: 'Room code', placeholder: 'ABC123', confirmLabel: 'Join' });
       if (!code) return;
-      try {
-        const room = await api.joinRoom(code.toUpperCase(), { name: memberName(), guest: true });
-        window.dispatchEvent(new CustomEvent('vault:syncplay-joined', { detail: { roomId: room.id, memberId: room.memberId } }));
-        if (room.item) window.dispatchEvent(new CustomEvent('vault:open-video', { detail: { item: room.item } }));
-        toast.success('Joined — playback follows the host');
-      } catch (err) {
-        toast.error(`Could not join: ${err.message}`);
-      }
+      openRoom(code.trim().toUpperCase(), { join: true });
     });
     body.querySelectorAll('[data-room]').forEach(button => {
-      button.addEventListener('click', () => openRoom(button.dataset.room));
+      button.addEventListener('click', () => openRoom(button.dataset.room, { join: true }));
     });
   }
 
-  async function openRoom(roomId) {
-    clearInterval(chatTimer);
+  async function openRoom(idOrCode, { join = false } = {}) {
+    stopRoomTimers();
+    let session = getSyncSession();
+    const isMine = session && (session.roomId === idOrCode || session.code === String(idOrCode).toUpperCase());
+    try {
+      if (!isMine || join) {
+        const joined = await joinWithPrompt(idOrCode);
+        if (!joined) return loadRooms();
+        session = getSyncSession();
+        if (joined.item) {
+          window.dispatchEvent(new CustomEvent('vault:open-video', { detail: { item: joined.item } }));
+          toast.success(session.host ? 'You are the host' : 'Joined — playback follows the host');
+        }
+      }
+    } catch (err) {
+      toast.error(`Could not join: ${err.message}`);
+      return loadRooms();
+    }
+
     let room;
     try {
-      room = await api.getRoom(roomId);
+      room = await api.getRoom(session.roomId, session.token);
     } catch (err) {
       toast.error(err.message);
-      return;
+      clearSyncSession();
+      return loadRooms();
     }
-    const members = room.members || [];
 
     body.innerHTML = `
       <div class="room-header" style="display:flex;align-items:center;gap:12px;margin-bottom:16px">
         <span class="room-code">${escapeHtml(room.code || '')}</span>
         <div class="row-main">
           <div class="row-title">${escapeHtml(room.name || 'Watch party')}</div>
-          <div class="row-meta">${members.map(m => `<span class="syncplay-member">${icon('users', { size: 12 })} ${escapeHtml(m.name)}${m.host ? ' · host' : ''}</span>`).join(' ')}</div>
+          <div class="row-meta" id="room-members"></div>
         </div>
         <button class="btn btn-ghost btn-sm" id="room-leave">Leave</button>
       </div>
-      ${room.item ? `<div class="health-item ok">${icon('play', { size: 16 })}<div class="row-main"><div class="row-title">Now playing: ${escapeHtml(room.item.title)}</div></div>
-        <button class="btn btn-primary btn-sm" id="room-play">Watch</button></div>` : ''}
+      <div id="room-item"></div>
       <section class="section">
         <h2 class="section-title">Chat</h2>
         <div class="syncplay-chat" id="chat-log"></div>
         <form id="chat-form" style="display:flex;gap:8px;margin-top:8px">
-          <input class="form-input" id="chat-input" placeholder="Say something…" autocomplete="off">
-          <button class="btn btn-primary" type="submit">${icon('send', { size: 15 })}</button>
+          <input class="form-input" id="chat-input" placeholder="Say something…" autocomplete="off" maxlength="600">
+          <button class="btn btn-primary" type="submit" aria-label="Send">${icon('send', { size: 15 })}</button>
         </form>
       </section>
     `;
 
     const log = body.querySelector('#chat-log');
-    function paintChat(messages = []) {
-      log.innerHTML = messages.map(message => message.system
+    let current = room;
+    function paint(fresh) {
+      current = fresh;
+      const me = fresh.member?.id;
+      body.querySelector('#room-members').innerHTML = (fresh.members || []).map(m => `<span class="syncplay-member">${icon('users', { size: 12 })} ${escapeHtml(m.name)}${m.host ? ' · host' : ''}${m.id === me ? ' (you)' : ''}</span>`).join(' ');
+      body.querySelector('#room-item').innerHTML = fresh.item
+        ? `<div class="health-item ok">${icon('play', { size: 16 })}<div class="row-main"><div class="row-title">Now playing: ${escapeHtml(fresh.item.title)}</div></div>
+          <button class="btn btn-primary btn-sm" id="room-play">Watch</button></div>`
+        : `<div class="row-meta">${fresh.member?.host ? 'Play something and everyone in the room follows.' : 'Waiting for the host to play something.'}</div>`;
+      body.querySelector('#room-play')?.addEventListener('click', () => {
+        window.dispatchEvent(new CustomEvent('vault:open-video', { detail: { item: current.item } }));
+      });
+      const atBottom = log.scrollHeight - log.scrollTop - log.clientHeight < 40;
+      log.innerHTML = (fresh.chat || []).map(message => message.system
         ? `<div class="chat-line system">${escapeHtml(message.text)}</div>`
         : `<div class="chat-line"><span class="who">${escapeHtml(message.name)}:</span> ${escapeHtml(message.text)}</div>`).join('');
-      log.scrollTop = log.scrollHeight;
+      if (atBottom) log.scrollTop = log.scrollHeight;
+      // Host can change hands (the host left); keep the controller in step.
+      const s = getSyncSession();
+      if (s && fresh.member && s.host !== !!fresh.member.host) rememberRoom(fresh, { ...fresh.member, token: s.token });
     }
-    paintChat(room.chat || []);
+    paint(room);
 
-    const refreshChat = async () => {
+    const refresh = async () => {
+      const s = getSyncSession();
+      if (!s) return;
       try {
-        const fresh = await api.getRoom(roomId);
-        paintChat(fresh.chat || []);
-      } catch { /* room closed */ }
+        const fresh = await api.getRoom(s.roomId, s.token);
+        if (!fresh.member) {
+          // Dropped (timed out, or removed) — back to the room list.
+          clearSyncSession();
+          toast.info('You left the room');
+          loadRooms();
+          return;
+        }
+        paint(fresh);
+      } catch (err) {
+        if (err.status === 404) {
+          clearSyncSession();
+          toast.info('The room was closed');
+          loadRooms();
+        }
+      }
     };
-    chatTimer = setInterval(refreshChat, 4000);
+    // Refreshing also keeps this member "seen" by the server.
+    chatTimer = setInterval(refresh, 5000);
+    const onLive = (event) => { if (event.detail?.roomId === session.roomId) refresh(); };
+    window.addEventListener('vault:syncplay-chat', onLive);
+    window.addEventListener('vault:syncplay-members', onLive);
+    offChat = () => {
+      window.removeEventListener('vault:syncplay-chat', onLive);
+      window.removeEventListener('vault:syncplay-members', onLive);
+    };
 
     body.querySelector('#chat-form').addEventListener('submit', async (event) => {
       event.preventDefault();
@@ -140,30 +231,30 @@ export async function renderSyncPlay(container, params = {}) {
       if (!text) return;
       input.value = '';
       try {
-        await api.syncPlayChat(roomId, room.memberId, text);
-        refreshChat();
+        await api.syncPlayChat(session.roomId, session.token, text);
+        refresh();
       } catch (err) {
         toast.error(err.message);
+        input.value = text;
       }
     });
 
-    body.querySelector('#room-play')?.addEventListener('click', () => {
-      window.dispatchEvent(new CustomEvent('vault:open-video', { detail: { item: room.item } }));
-    });
-
     body.querySelector('#room-leave').addEventListener('click', async () => {
-      clearInterval(chatTimer);
+      stopRoomTimers();
       try {
-        await api.leaveRoom(roomId, room.memberId);
+        await api.leaveRoom(session.roomId, session.token);
       } catch { /* already gone */ }
-      window.dispatchEvent(new CustomEvent('vault:syncplay-left', { detail: { roomId } }));
+      clearSyncSession();
       loadRooms();
     });
   }
 
-  window.addEventListener('vault:hashchange-cleanup', () => clearInterval(chatTimer));
+  // (The old page listened for an event nothing sent, so its chat poll ran
+  // forever after leaving the page.)
+  onUnmount(stopRoomTimers);
 
   if (params.id) openRoom(params.id);
+  else if (getSyncSession()) openRoom(getSyncSession().roomId);
   else await loadRooms();
 }
 

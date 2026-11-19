@@ -147,10 +147,17 @@ export function securitySection() {
     const btn = form.querySelector('#save-creds');
     busy(btn, true, 'Updating…');
     try {
-      await api.updateCredentials(payload);
+      const result = await api.updateCredentials(payload);
+      // A new password or grid rotates the server's signing key and signs
+      // out other devices; this one gets a fresh token to stay signed in.
+      if (result?.token) {
+        store.setAuth(result.token, store.get('user'));
+        api.clearTokenCache();
+      }
       form.reset();
       if (picker) { picker.clear(); gridToggle.click(); }
-      flashStatus(s, 'Sign-in details updated');
+      const others = result?.signedOut ? ` Other devices (${result.signedOut}) were signed out.` : '';
+      flashStatus(s, `Sign-in details updated.${others}`);
       toast.success('Sign-in details updated');
     } catch (err) {
       if (!applyFieldErrors(inputs, err.fields || (err.code === 'WRONG_PASSWORD' ? { currentPassword: err.message } : {}))) {

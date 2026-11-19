@@ -44,7 +44,7 @@ router.post('/channels/:id/play', async (req, res) => {
   const channel = await livetv.getChannel(req.params.id);
   if (!channel) return res.status(404).json({ error: 'This channel is no longer in the channel list. Reload Live TV.', code: 'CHANNEL_NOT_FOUND' });
   try {
-    const session = await restream.start(channel, { transcode: Boolean((req.body || {}).transcode) });
+    const session = await restream.start(channel, { transcode: Boolean((req.body || {}).transcode), viewer: req.user?.sid || null });
     res.json({ ...session, channel: { id: channel.id, name: channel.name, kind: channel.kind } });
   } catch (err) {
     streamError(res, err);
@@ -82,7 +82,8 @@ router.get('/stream/:session/:file', (req, res) => {
 });
 
 router.delete('/stream/:session', (req, res) => {
-  restream.release(req.params.session);
+  // Releases this device's place only (see restream.addViewer).
+  restream.release(req.params.session, req.user?.sid || null);
   res.json({ ok: true });
 });
 
@@ -97,7 +98,7 @@ router.get('/recordings', (req, res) => {
   res.json({ recordings: livetv.listRecordings() });
 });
 
-router.post('/recordings', async (req, res) => {
+router.post('/recordings', requireAdmin, async (req, res) => {
   try {
     const { channelUrl, title, durationSeconds, channelId, startAt } = req.body || {};
     if (!channelUrl && !channelId) return res.status(400).json({ error: 'channelId required' });
@@ -114,13 +115,13 @@ router.post('/recordings', async (req, res) => {
   }
 });
 
-router.post('/recordings/:id/stop', (req, res) => {
+router.post('/recordings/:id/stop', requireAdmin, (req, res) => {
   const ok = livetv.stopRecording(req.params.id);
   if (!ok) return res.status(404).json({ error: 'Recording not active' });
   res.json({ message: 'Recording stopped', id: req.params.id });
 });
 
-router.delete('/recordings/:id', async (req, res) => {
+router.delete('/recordings/:id', requireAdmin, async (req, res) => {
   const ok = await livetv.deleteRecording(req.params.id);
   if (!ok) return res.status(404).json({ error: 'Recording not found' });
   res.json({ message: 'Recording deleted', id: req.params.id });

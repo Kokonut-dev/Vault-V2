@@ -688,13 +688,11 @@
       let options = {};
       let result = await authManager.submitGrid(pattern, options);
       for (let tries = 0; !result.success && result.code === 'PROFILE_PIN_REQUIRED' && tries < 5; tries++) {
-        const [{ promptModal }, { escapeHtml }] = await Promise.all([
-          import('./js/components/modal.js'),
-          import('./js/utils/format.js'),
-        ]);
+        // promptModal escapes the title (the profile name) itself.
+        const { promptModal } = await import('./js/components/modal.js');
         document.body.classList.add('auth-prompt-open');
         const pin = await promptModal({
-          title: `PIN for ${escapeHtml(result.profile?.name || 'this profile')}`,
+          title: `PIN for ${result.profile?.name || 'this profile'}`,
           message: options.profilePin ? 'That PIN isn’t right. Try again.' : 'This profile is protected with a PIN.',
           label: 'PIN',
           inputType: 'password',

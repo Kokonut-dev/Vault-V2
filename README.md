@@ -362,6 +362,7 @@ Variables marked \* are **first-run defaults**: once the setup wizard has saved 
 | `LOG_LEVEL` | `info` | `debug`, `info`, `warn` or `error` |
 | `VAULT_DEBUG` | off | `1` includes error details in API responses (never on a public server) |
 | `ALLOW_SETUP_RESET` | off | `true` allows resetting setup through the API |
+| `VAULT_DATA_DIR` | `server/data` | Where the data files (library, profiles, history…) live. `npm test` points it at a temp folder; backups and *Move to another server* still use `server/data`, so leave it unset on a real install |
 
 ---
 

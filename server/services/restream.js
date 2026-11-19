@@ -396,14 +396,27 @@ async function waitForFirstSegment(session) {
  * Start (or join) a restream for one channel.
  * @param {{id:string,name:string,url:string,kind?:string,userAgent?:string,referrer?:string}} channel
  */
-async function start(channel, { transcode = false } = {}) {
+/**
+ * Viewers are tracked by device session (`viewer`), so a device can only
+ * release its own place: the old bare counter could be decremented by
+ * anyone, any number of times, stopping other people's streams.
+ */
+function addViewer(session, viewer) {
+  if (!session.viewerIds) session.viewerIds = new Set();
+  const key = viewer || `anon:${crypto.randomBytes(6).toString('hex')}`;
+  session.viewerIds.add(key);
+  session.viewers = session.viewerIds.size;
+  return key;
+}
+
+async function start(channel, { transcode = false, viewer = null } = {}) {
   const live = channel.kind !== 'vod';
   const key = `${channel.id}:${transcode ? 'transcode' : 'auto'}`;
 
   for (const session of sessions.values()) {
     if (session.key === key && !session.exited) {
       session.lastAccess = Date.now();
-      session.viewers += 1;
+      addViewer(session, viewer);
       return publicSession(session);
     }
   }
@@ -466,7 +479,8 @@ async function start(channel, { transcode = false } = {}) {
     plan,
     source,
     lastAccess: Date.now(),
-    viewers: 1,
+    viewers: 0,
+    viewerIds: new Set(),
     stderr: '',
     exited: false,
     exitOk: false,
@@ -495,6 +509,7 @@ async function start(channel, { transcode = false } = {}) {
       logger.warn(`[Restream] ${session.label} ffmpeg exited (${describeExit(code, signal)}): ${tail}`);
     }
   });
+  addViewer(session, viewer);
   sessions.set(id, session);
   startReaper();
   logger.info(`[Restream] ${session.label} → video ${plan.video}, audio ${plan.audio} (${describeSource(source)})`);
@@ -519,10 +534,16 @@ function publicSession(session) {
 }
 
 /** Viewer left. The process stops once nobody is watching. */
-function release(id) {
+function release(id, viewer = null) {
   const session = sessions.get(id);
   if (!session) return false;
-  session.viewers = Math.max(0, session.viewers - 1);
+  if (session.viewerIds) {
+    // Only a device that is watching can give up its place.
+    if (!viewer || !session.viewerIds.delete(viewer)) return false;
+    session.viewers = session.viewerIds.size;
+  } else {
+    session.viewers = Math.max(0, session.viewers - 1);
+  }
   if (session.viewers === 0) stopSession(id, 'closed');
   return true;
 }

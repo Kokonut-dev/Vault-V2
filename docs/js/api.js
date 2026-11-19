@@ -1074,6 +1074,11 @@ class ApiClient {
     return this.request('/api/system/subsonic', { method: 'PUT', body: { password, username } });
   }
 
+  /** Which profile's library (and age limits) Subsonic apps see. */
+  setSubsonicProfile(profileId) {
+    return this.request('/api/system/subsonic', { method: 'PUT', body: { profileId } });
+  }
+
   // --- Metadata agents (match / fix) ---------------------------------------
   searchMetadata(params) {
     // The server expects `query`; callers often pass the natural `q`.
@@ -1271,35 +1276,40 @@ class ApiClient {
 
   // --- SyncPlay (watch party) ----------------------------------------------
   getRooms() {
-    return this.request('/api/syncplay/rooms');
+    return this.request('/api/syncplay/rooms', { dedupe: false });
+  }
+
+  // Room calls carry the member token (only this device has it) in a header.
+  _syncplayHeaders(memberToken) {
+    return memberToken ? { 'X-SyncPlay-Member': memberToken } : {};
   }
 
   createRoom(data) {
     return this.request('/api/syncplay/rooms', { method: 'POST', body: data });
   }
 
-  getRoom(id) {
-    return this.request(`/api/syncplay/rooms/${id}`);
+  getRoom(id, memberToken = null) {
+    return this.request(`/api/syncplay/rooms/${encodeURIComponent(id)}`, { headers: this._syncplayHeaders(memberToken), dedupe: false });
   }
 
-  joinRoom(id, data) {
-    return this.request(`/api/syncplay/rooms/${id}/join`, { method: 'POST', body: data });
+  joinRoom(id, data = {}, memberToken = null) {
+    return this.request(`/api/syncplay/rooms/${encodeURIComponent(id)}/join`, { method: 'POST', body: data, headers: this._syncplayHeaders(memberToken) });
   }
 
-  leaveRoom(id, memberId) {
-    return this.request(`/api/syncplay/rooms/${id}/leave`, { method: 'POST', body: { memberId } });
+  leaveRoom(id, memberToken) {
+    return this.request(`/api/syncplay/rooms/${encodeURIComponent(id)}/leave`, { method: 'POST', body: {}, headers: this._syncplayHeaders(memberToken) });
   }
 
-  syncPlayState(id, data) {
-    return this.request(`/api/syncplay/rooms/${id}/state`, { method: 'POST', body: data });
+  syncPlayState(id, memberToken, data) {
+    return this.request(`/api/syncplay/rooms/${encodeURIComponent(id)}/state`, { method: 'POST', body: data, headers: this._syncplayHeaders(memberToken) });
   }
 
-  syncPlayItem(id, itemId, memberId) {
-    return this.request(`/api/syncplay/rooms/${id}/item`, { method: 'POST', body: { itemId, memberId } });
+  syncPlayItem(id, memberToken, itemId) {
+    return this.request(`/api/syncplay/rooms/${encodeURIComponent(id)}/item`, { method: 'POST', body: { itemId }, headers: this._syncplayHeaders(memberToken) });
   }
 
-  syncPlayChat(id, memberId, text) {
-    return this.request(`/api/syncplay/rooms/${id}/chat`, { method: 'POST', body: { memberId, text } });
+  syncPlayChat(id, memberToken, text) {
+    return this.request(`/api/syncplay/rooms/${encodeURIComponent(id)}/chat`, { method: 'POST', body: { text }, headers: this._syncplayHeaders(memberToken) });
   }
 
   // --- Library additions ---------------------------------------------------

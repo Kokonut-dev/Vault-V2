@@ -194,32 +194,54 @@ function setSeriesMarker(key, intro, outro) {
 // ---------------------------------------------------------------------------
 // Bookmarks (video + audio timestamps)
 // ---------------------------------------------------------------------------
-function getBookmarks(itemId) {
+// Bookmarks belong to the profile that made them. Ones saved before that
+// (no profileId) belong to the default profile, like the watchlist.
+const BOOKMARKS_PER_PROFILE = 1000;
+const ownerOf = b => b.profileId || 'default';
+
+/**
+ * Bookmarks for one profile (optionally one item). Without a profileId this
+ * returns every profile's bookmarks — internal use only.
+ */
+function getBookmarks(itemId, profileId) {
   const list = bookmarksStore.get();
-  return itemId ? list.filter(b => b.itemId === itemId) : list;
+  return list.filter(b => (!itemId || b.itemId === itemId) && (profileId === undefined || ownerOf(b) === profileId));
 }
 
-function addBookmark(data) {
+function addBookmark(data, profileId = 'default') {
   const bookmark = {
     id: shortId('bm'),
     itemId: data.itemId,
+    profileId,
     time: Math.max(0, Number(data.time) || 0),
     label: String(data.label || '').slice(0, 160) || `At ${Math.round(data.time || 0)}s`,
     createdAt: new Date().toISOString(),
   };
   const list = bookmarksStore.get();
   list.unshift(bookmark);
-  bookmarksStore.set(list.slice(0, 1000));
-  events.broadcast('bookmark:changed', { itemId: bookmark.itemId });
+  // The cap is per profile, so one profile can't push out everyone else's.
+  let mine = 0;
+  bookmarksStore.set(list.filter(b => ownerOf(b) !== profileId || ++mine <= BOOKMARKS_PER_PROFILE));
+  events.broadcast('bookmark:changed', { itemId: bookmark.itemId, profileId });
   return bookmark;
 }
 
-function removeBookmark(id) {
+/** Remove one of `profileId`'s bookmarks. Someone else's counts as not found. */
+function removeBookmark(id, profileId = 'default') {
   const list = bookmarksStore.get();
-  const next = list.filter(b => b.id !== id);
+  const next = list.filter(b => !(b.id === id && ownerOf(b) === profileId));
   if (next.length === list.length) return false;
   bookmarksStore.set(next);
+  events.broadcast('bookmark:changed', { id, profileId });
   return true;
+}
+
+/** Drop a deleted profile's bookmarks. Returns how many went. */
+function removeProfileBookmarks(profileId) {
+  const list = bookmarksStore.get();
+  const next = list.filter(b => ownerOf(b) !== profileId);
+  if (next.length !== list.length) bookmarksStore.set(next);
+  return list.length - next.length;
 }
 
 // ---------------------------------------------------------------------------
@@ -292,6 +314,75 @@ function getListens() {
   return listensStore.get();
 }
 
+function removeSeriesMarker(key) {
+  const all = markersStore.get();
+  if (!all[`series:${key}`]) return false;
+  delete all[`series:${key}`];
+  markersStore.set(all);
+  return true;
+}
+
+/**
+ * Point references to item `oldId` at `newId` (a moved file), or drop them
+ * when `newId` is null (the item was removed). Called by
+ * library.rewriteItemRefs.
+ */
+function rewriteItemRefs(oldId, newId = null) {
+  if (!oldId || oldId === newId) return;
+
+  const watchlist = watchlistStore.get();
+  if (watchlist.some(w => w.itemId === oldId)) {
+    const seen = new Set();
+    const next = [];
+    for (const w of watchlist) {
+      const entry = w.itemId === oldId ? (newId ? { ...w, itemId: newId } : null) : w;
+      if (!entry) continue;
+      const key = `${entry.profileId || 'default'}\u0000${entry.itemId}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      next.push(entry);
+    }
+    watchlistStore.set(next);
+  }
+
+  const collections = collectionsStore.get();
+  let collectionsChanged = false;
+  for (const c of collections) {
+    if (!Array.isArray(c.items) || !c.items.includes(oldId)) continue;
+    c.items = [...new Set(newId ? c.items.map(i => (i === oldId ? newId : i)) : c.items.filter(i => i !== oldId))];
+    collectionsChanged = true;
+  }
+  if (collectionsChanged) collectionsStore.set(collections);
+
+  const markers = markersStore.get();
+  if (Object.prototype.hasOwnProperty.call(markers, oldId)) {
+    if (newId && !markers[newId]) markers[newId] = markers[oldId];
+    delete markers[oldId];
+    markersStore.set(markers);
+  }
+
+  const bookmarks = bookmarksStore.get();
+  if (bookmarks.some(b => b.itemId === oldId)) {
+    bookmarksStore.set(newId
+      ? bookmarks.map(b => (b.itemId === oldId ? { ...b, itemId: newId } : b))
+      : bookmarks.filter(b => b.itemId !== oldId));
+  }
+
+  // Listening stats: per-item totals follow the item; the daily listening
+  // time itself stays (it still happened).
+  const listens = listensStore.get();
+  let listensChanged = false;
+  const move = (bucket) => {
+    if (!bucket || !Object.prototype.hasOwnProperty.call(bucket, oldId)) return;
+    if (newId) bucket[newId] = (bucket[newId] || 0) + bucket[oldId];
+    delete bucket[oldId];
+    listensChanged = true;
+  };
+  move(listens.total);
+  for (const day of Object.values(listens.daily || {})) move(day.items);
+  if (listensChanged) listensStore.set(listens);
+}
+
 async function flush() {
   await Promise.all([
     watchlistStore.flush(),
@@ -323,6 +414,9 @@ module.exports = {
   getBookmarks,
   addBookmark,
   removeBookmark,
+  removeProfileBookmarks,
+  removeSeriesMarker,
+  rewriteItemRefs,
   getFeeds,
   addFeed,
   updateFeed,

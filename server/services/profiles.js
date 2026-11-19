@@ -207,6 +207,49 @@ function checkPin(id, pin) {
   }
 }
 
+// ---- PIN guessing ----------------------------------------------------------
+// A 4-digit PIN has only 10,000 values, and switching profiles needs nothing
+// but a signed-in device — so without a limit a Kids profile could simply try
+// them all. After PIN_FREE_TRIES wrong PINs the profile is locked for 30 s,
+// doubling with each further miss (up to 15 min). A right PIN resets it.
+const PIN_FREE_TRIES = 5;
+const PIN_BASE_LOCK_MS = 30 * 1000;
+const PIN_MAX_LOCK_MS = 15 * 60 * 1000;
+const pinAttempts = new Map(); // profileId -> { fails, lockedUntil }
+
+/**
+ * Check a PIN with the attempt limit applied.
+ * @returns {{ ok: boolean, locked?: boolean, retryAfterMs?: number }}
+ */
+function verifyPin(id, pin, now = Date.now()) {
+  if (!hasPin(id)) return { ok: !!get(id) };
+  const record = pinAttempts.get(id) || { fails: 0, lockedUntil: 0 };
+  if (record.lockedUntil > now) return { ok: false, locked: true, retryAfterMs: record.lockedUntil - now };
+  // An empty PIN is "which PIN?", not a guess.
+  if (pin === undefined || pin === null || pin === '') return { ok: false };
+  if (checkPin(id, pin)) {
+    pinAttempts.delete(id);
+    return { ok: true };
+  }
+  record.fails += 1;
+  if (record.fails >= PIN_FREE_TRIES) {
+    const lock = Math.min(PIN_MAX_LOCK_MS, PIN_BASE_LOCK_MS * 2 ** (record.fails - PIN_FREE_TRIES));
+    record.lockedUntil = now + lock;
+  }
+  pinAttempts.set(id, record);
+  return { ok: false, wrong: true, locked: record.lockedUntil > now, retryAfterMs: Math.max(0, record.lockedUntil - now) };
+}
+
+/** The 403/429 body for a failed PIN check (shared by every route). */
+function pinFailure(result, { missing = 'Profile PIN required' } = {}) {
+  if (result.locked) {
+    const seconds = Math.ceil(result.retryAfterMs / 1000);
+    const wait = seconds >= 90 ? `${Math.ceil(seconds / 60)} minutes` : `${seconds} seconds`;
+    return { status: 429, body: { error: `Too many wrong PINs. Try again in ${wait}.`, code: 'PROFILE_PIN_LOCKED', retryAfter: seconds } };
+  }
+  return { status: 403, body: { error: result.wrong ? 'That PIN isn’t right' : missing, code: 'PROFILE_PIN_REQUIRED' } };
+}
+
 function hasPin(id) {
   const profile = get(id);
   return !!(profile && profile.pinHash);
@@ -287,6 +330,9 @@ module.exports = {
   update,
   remove,
   checkPin,
+  verifyPin,
+  pinFailure,
+  _pinAttempts: pinAttempts,
   hasPin,
   toPublic,
   ratingCeiling,
