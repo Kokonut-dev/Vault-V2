@@ -300,6 +300,8 @@
 
   <style>
     /* Auth Gate Styles (inline for immediate render) */
+    /* The profile-PIN prompt during sign-in must sit above the gate. */
+    body.auth-prompt-open .modal-backdrop { z-index: 410; }
     .auth-gate {
       position: fixed;
       inset: 0;
@@ -512,6 +514,7 @@
     import { store } from './js/store.js';
     import { api } from './js/api.js';
     import { authManager } from './js/auth.js';
+    import { lastProfileId, hydrateProfileData } from './js/profileSession.js';
     import { themeManager } from './js/themes.js';
     import { initEffects } from './js/effects.js';
     import { keyboardManager } from './js/keyboard.js';
@@ -676,6 +679,42 @@
       });
     }
     
+    /**
+     * Submit the grid, asking for a profile PIN when the server needs one.
+     * Cancelling the PIN for the device's last profile signs in as a profile
+     * without a PIN instead (the server picks it).
+     */
+    async function submitGridWithProfile(pattern) {
+      let options = {};
+      let result = await authManager.submitGrid(pattern, options);
+      for (let tries = 0; !result.success && result.code === 'PROFILE_PIN_REQUIRED' && tries < 5; tries++) {
+        const [{ promptModal }, { escapeHtml }] = await Promise.all([
+          import('./js/components/modal.js'),
+          import('./js/utils/format.js'),
+        ]);
+        document.body.classList.add('auth-prompt-open');
+        const pin = await promptModal({
+          title: `PIN for ${escapeHtml(result.profile?.name || 'this profile')}`,
+          message: options.profilePin ? 'That PIN isn’t right. Try again.' : 'This profile is protected with a PIN.',
+          label: 'PIN',
+          inputType: 'password',
+          inputMode: 'numeric',
+          confirmLabel: 'Sign in',
+        }).finally(() => document.body.classList.remove('auth-prompt-open'));
+        if (pin === null) {
+          if (result.askedFor) {
+            options = { profileId: null };
+            result = await authManager.submitGrid(pattern, options);
+            continue;
+          }
+          return { success: false, code: 'PROFILE_PIN_CANCELLED', error: 'Sign-in needs the profile PIN.' };
+        }
+        options = { profileId: result.profile?.id || options.profileId || null, profilePin: pin };
+        result = await authManager.submitGrid(pattern, options);
+      }
+      return result;
+    }
+
     if (gridSubmit) {
       gridSubmit.addEventListener('click', async () => {
         if (selectedSquares.length !== 8) return;
@@ -683,11 +722,20 @@
         gridSubmit.textContent = 'Verifying...';
         if (gridError) gridError.style.display = 'none';
         
-        const result = await authManager.submitGrid(selectedSquares);
+        const hadProfile = !!lastProfileId();
+        const result = await submitGridWithProfile(selectedSquares.slice());
 
         if (result.success) {
-          toast.success('Welcome to Vault!');
+          toast.success(result.profile?.name ? `Welcome, ${result.profile.name}` : 'Welcome to Vault!');
           showApp();
+          // First sign-in on this device with several profiles: ask who's
+          // watching instead of silently using the owner's profile.
+          if (!hadProfile && result.profileCount > 1) router.navigate('/profiles', true);
+        } else if (result.code === 'PROFILE_PIN_CANCELLED') {
+          if (gridError) {
+            gridError.textContent = result.error;
+            gridError.style.display = 'block';
+          }
         } else if (result.code === 'INVALID_CHALLENGE' || result.code === 'NO_CHALLENGE') {
           // The 5-minute challenge window expired (or was lost) — this is NOT a
           // wrong pattern. Send the user back to the password step instead of
@@ -840,6 +888,9 @@
       try {
         const data = await api.getLibrary({ limit: 1000 });
         store.setLibrary(data.items || []);
+        // Favourites, history and resume points are per profile on the
+        // server; the device cache must not show another profile's.
+        hydrateProfileData(store.get('profileId') || 'default').catch(err => console.warn('Profile data:', err.message));
       } catch (err) {
         console.warn('Failed to load library:', err.message);
         if (err.message.includes('Cannot connect')) {
@@ -1031,6 +1082,7 @@
         try {
           const data = await api.getLibrary({ limit: 1000 });
           store.setLibrary(data.items || []);
+          hydrateProfileData(store.get('profileId') || 'default').catch(() => {});
         } catch { /* the banner logic will retry */ }
         window.dispatchEvent(new CustomEvent('vault:server-up'));
       }

@@ -6,6 +6,12 @@ const express = require('express');
 const router = express.Router();
 const libraryService = require('../services/library');
 const extras = require('../services/extras');
+const profiles = require('../services/profiles');
+
+/** The library as this profile may see it (age limits applied). */
+function visible(profileId) {
+  return profiles.filterItems(profileId || 'default', libraryService.getAll());
+}
 
 function showKey(item) {
   return item.seriesKey || (item.title || '').toLowerCase();
@@ -25,7 +31,7 @@ function episodeSort(a, b) {
 
 /** All shows with episode counts + progress, newest first. */
 function buildShows(profileId) {
-  const items = libraryService.getAll().filter(i => isEpisode(i));
+  const items = visible(profileId).filter(i => isEpisode(i));
   const watchedMap = libraryService.getWatchedMap(profileId);
   const history = libraryService.forProfile(profileId).getHistory();
   const historyMap = new Map(history.map(h => [h.itemId, h]));
@@ -90,7 +96,7 @@ router.get('/shows/:key', (req, res) => {
   const history = libraryService.forProfile(profileId).getHistory();
   const historyMap = new Map(history.map(h => [h.itemId, h]));
 
-  const episodes = libraryService.getAll()
+  const episodes = visible(profileId)
     .filter(i => isEpisode(i) && showKey(i) === key)
     .sort(episodeSort);
 
@@ -135,7 +141,7 @@ router.get('/next-up', (req, res) => {
 
   for (const show of shows) {
     if (show.key && req.query.show && req.query.show !== show.key) continue;
-    const episodes = libraryService.getAll()
+    const episodes = visible(profileId)
       .filter(i => isEpisode(i) && showKey(i) === show.key)
       .sort(episodeSort);
 
@@ -175,7 +181,7 @@ router.post('/watched', (req, res) => {
   const { key, season = null, watched = true } = req.body || {};
   if (!key) return res.status(400).json({ error: 'key required' });
 
-  const episodes = libraryService.getAll().filter(i => isEpisode(i) && showKey(i) === key &&
+  const episodes = visible(profileId).filter(i => isEpisode(i) && showKey(i) === key &&
     (season === null || Number(i.season) === Number(season)));
 
   for (const episode of episodes) {

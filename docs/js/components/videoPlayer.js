@@ -16,6 +16,8 @@ let controlsTimeout = null;
 let currentItem = null;
 let rafId = null;
 let lastProgressSave = 0;
+// Resume points are per profile on the server; send one every 15 s.
+let lastServerProgress = 0;
 let nextEpisodeListener = null;
 let nextEpisodeInterval = null;
 let usingTranscode = false;
@@ -222,6 +224,10 @@ export function initVideoPlayer() {
       if (currentItem && !isExternalItem(currentItem) && now - lastProgressSave > 5000) {
         lastProgressSave = now;
         store.addToHistory(currentItem.id, percent);
+        if (now - lastServerProgress > 15000) {
+          lastServerProgress = now;
+          api.addHistory({ itemId: currentItem.id, progress: percent, duration: videoEl.duration }).catch(() => {});
+        }
       }
       // v3: one shared tick for lyrics highlighting, skip-intro prompts,
       // chapter highlighting and the trickplay preview.
@@ -710,6 +716,7 @@ export function closePlayer() {
 
   currentItem = null;
   lastProgressSave = 0;
+  lastServerProgress = 0;
   usingTranscode = false;
   clearError();
 }

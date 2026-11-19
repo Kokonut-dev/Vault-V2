@@ -83,9 +83,29 @@ async function tmdbSearch(query, type = 'movie', year = null) {
   }));
 }
 
+/**
+ * The age rating from a TMDb record: the configured region first (e.g.
+ * "NL"), then the US, then any region that has one.
+ */
+function tmdbCertification(data, region) {
+  const byRegion = new Map();
+  for (const entry of data.content_ratings?.results || []) {
+    if (entry.rating) byRegion.set(entry.iso_3166_1, entry.rating);
+  }
+  for (const entry of data.release_dates?.results || []) {
+    const cert = (entry.release_dates || []).map(r => r.certification).find(Boolean);
+    if (cert) byRegion.set(entry.iso_3166_1, cert);
+  }
+  const wanted = [String(region || '').toUpperCase(), 'US'].filter(Boolean);
+  for (const code of wanted) if (byRegion.has(code)) return code === 'US' ? byRegion.get(code) : `${code}:${byRegion.get(code)}`;
+  const [code, cert] = byRegion.entries().next().value || [];
+  return cert ? `${code}:${cert}` : null;
+}
+
 async function tmdbDetails(id, kind = 'movie') {
   const cfg = providerConfig('tmdb');
-  const data = await fetchJson(`https://api.themoviedb.org/3/${kind}/${id}?api_key=${cfg.apiKey}&append_to_response=credits,images`);
+  const extra = kind === 'tv' ? 'content_ratings' : 'release_dates';
+  const data = await fetchJson(`https://api.themoviedb.org/3/${kind}/${id}?api_key=${cfg.apiKey}&append_to_response=credits,images,${extra}`);
   const isTv = kind === 'tv';
   return {
     provider: 'tmdb',
@@ -95,6 +115,7 @@ async function tmdbDetails(id, kind = 'movie') {
     year: ((data.release_date || data.first_air_date) || '').slice(0, 4) || null,
     overview: data.overview || '',
     tagline: data.tagline || null,
+    contentRating: tmdbCertification(data, cfg.region),
     runtime: data.runtime || (data.episode_run_time && data.episode_run_time[0]) || null,
     genres: (data.genres || []).map(g => g.name),
     rating: data.vote_average || null,
@@ -155,7 +176,10 @@ function readNfo(filePath) {
     try {
       if (candidate.endsWith('.json')) {
         const data = fs.readJsonSync(candidate);
-        return { provider: 'nfo', source: candidate, ...data };
+        // yt-dlp writes `age_limit` (a plain age, 0 = everyone).
+        const age = Number.isInteger(data.age_limit) && data.age_limit > 0 ? String(data.age_limit) : null;
+        const label = data.contentRating || data.content_rating || data.certification || age;
+        return { provider: 'nfo', source: candidate, ...data, contentRating: label ? String(label) : null };
       }
       const xml = fs.readFileSync(candidate, 'utf8');
       const pick = tag => {
@@ -169,6 +193,9 @@ function readNfo(filePath) {
         year: pick('year'),
         overview: pick('plot') || pick('outline'),
         rating: pick('rating') ? Number(pick('rating')) : null,
+        // Kodi/Jellyfin/Emby put the age rating in <mpaa> ("PG-13",
+        // "NL:12", "Rated R"); some tools use <certification>.
+        contentRating: pick('mpaa') || pick('certification') || null,
         genres: [...xml.matchAll(/<genre[^>]*>([\s\S]*?)<\/genre>/gi)].map(m => m[1].trim()),
         poster: pick('poster') || pick('thumb'),
         backdrop: pick('fanart') || null,
@@ -268,6 +295,7 @@ async function applyMatch(item, match, options = {}) {
     rating: details.rating ? Math.round(details.rating * 10) / 10 : item.rating,
     cast: details.cast || item.cast || [],
     tagline: details.tagline || item.tagline || null,
+    contentRating: details.contentRating || item.contentRating || null,
     metadataSource: details.provider,
     metadataSourceId: details.id || null,
     metadataMatchedAt: new Date().toISOString(),
@@ -283,4 +311,4 @@ async function flush() {
   await cache.flush();
 }
 
-module.exports = { status, searchMatches, applyMatch, readNfo, tmdbDetails, tmdbSearch, musicbrainzSearch, flush, isEnabled };
+module.exports = { status, searchMatches, applyMatch, readNfo, tmdbCertification, tmdbDetails, tmdbSearch, musicbrainzSearch, flush, isEnabled };

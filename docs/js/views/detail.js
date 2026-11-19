@@ -112,6 +112,7 @@ function renderVideoDetail(container, item) {
           ${item.genre ? `<span>${escapeHtml(item.genre)}</span>` : ''}
           ${item.duration ? `<span>${formatTime(item.duration)}</span>` : ''}
           ${item.resolution ? `<span>${item.resolution}</span>` : ''}
+          ${item.contentRating ? `<span class="content-rating" title="Age rating">${escapeHtml(item.contentRating)}</span>` : ''}
           ${item.rating ? `<span style="display:inline-flex; align-items:center; gap:4px;">${icon('star-filled', { size: 14 })}${item.rating}</span>` : ''}
         </div>
         
@@ -478,6 +479,11 @@ function showAlbumEditModal({ albumKey, tracks, onSaved }) {
   });
 }
 
+/** Age ratings decide what Kids profiles see, so only admins edit them. */
+function canEditAgeRating() {
+  return store.get('profile')?.isAdmin === true;
+}
+
 function showEditModal(item) {
   const backdrop = document.createElement('div');
   backdrop.className = 'modal-backdrop active';
@@ -490,6 +496,11 @@ function showEditModal(item) {
         <div class="form-group"><label class="form-label">Year</label><input type="number" class="form-input" id="edit-year" value="${item.year || ''}"></div>
         <div class="form-group"><label class="form-label">Description</label><textarea class="form-textarea" id="edit-desc">${escapeHtml(item.description || '')}</textarea></div>
         <div class="form-group"><label class="form-label">Rating (0-5)</label><input type="number" class="form-input" id="edit-rating" min="0" max="5" step="0.5" value="${item.rating || 0}"></div>
+        ${canEditAgeRating() ? `<div class="form-group">
+          <label class="form-label" for="edit-content-rating">Age rating</label>
+          <input type="text" class="form-input" id="edit-content-rating" maxlength="24" autocomplete="off" placeholder="e.g. PG, 12, PG-13, 16" aria-describedby="edit-content-rating-help" value="${escapeHtml(item.contentRating || '')}">
+          <p class="setting-help" id="edit-content-rating-help">Used by profiles with an age limit (Kids profiles). Leave empty for unrated.</p>
+        </div>` : ''}
       </div>
       <div class="modal-footer"><button class="btn btn-secondary" id="edit-cancel">Cancel</button><button class="btn btn-primary" id="edit-save">Save</button></div>
     </div>
@@ -509,6 +520,8 @@ function showEditModal(item) {
       description: backdrop.querySelector('#edit-desc').value.trim(),
       rating: parseFloat(backdrop.querySelector('#edit-rating').value) || 0,
     };
+    const ageInput = backdrop.querySelector('#edit-content-rating');
+    if (ageInput && ageInput.value.trim() !== (item.contentRating || '')) updates.contentRating = ageInput.value.trim() || null;
     
     try {
       await api.updateItem(item.id, updates);

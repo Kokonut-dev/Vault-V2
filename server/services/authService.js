@@ -198,9 +198,12 @@ function generateAccessToken(username, extra = {}) {
 }
 
 /** Short-lived token embedded in media URLs (basic ?token= streaming). */
-function generateMediaToken(username, ttl = '12h') {
+function generateMediaToken(username, ttl = '12h', extra = {}) {
   const config = getConfig();
-  return jwt.sign({ username, scope: 'media' }, config.auth.jwtSecret, { expiresIn: ttl });
+  const claims = { username, scope: 'media' };
+  if (extra.sid) claims.sid = extra.sid;
+  if (extra.profileId) claims.profileId = extra.profileId;
+  return jwt.sign(claims, config.auth.jwtSecret, { expiresIn: ttl });
 }
 
 // --- Optional TOTP second factor -------------------------------------------

@@ -8,6 +8,10 @@ const logger = require('../utils/logger');
 const { sendFileWithRange } = require('../utils/fileUtils');
 const hls = require('../services/hls');
 const transcodePlan = require('../services/transcodePlan');
+const { itemParam } = require('../middleware/profileAccess');
+
+// Age-limited profiles can't open or stream items above their limit.
+router.param('id', itemParam);
 
 router.get('/audio/:id', (req, res) => {
   const item = libraryService.getById(req.params.id);

@@ -13,6 +13,10 @@ const logger = require('../utils/logger');
 // Shared Range-aware streaming helper (moved to utils so the transcode cache
 // route can reuse it — F-16).
 const { sendFileWithRange } = require('../utils/fileUtils');
+const { itemParam } = require('../middleware/profileAccess');
+
+// Age-limited profiles can't open or stream items above their limit.
+router.param('id', itemParam);
 
 // Download the original file as an attachment. This is the remote-access
 // path: when the UI is hosted elsewhere (GitHub Pages / a tunnel) the plain

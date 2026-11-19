@@ -12,6 +12,8 @@ const links = require('../services/links');
 
 // Every route in here is profile-scoped: the default profile keeps using the
 // original flat data files, extra profiles get their own copies.
+const profiles = require('../services/profiles');
+
 function scoped(req) {
   return libraryService.forProfile(req.profileId || 'default');
 }
@@ -32,7 +34,7 @@ router.get('/', (req, res) => {
 
 router.get('/favourites', (req, res) => {
   try {
-    const favs = scoped(req).getFavourites();
+    const favs = profiles.filterItems(req.profileId, scoped(req).getFavourites());
     res.json({ items: favs, total: favs.length });
   } catch (err) {
     res.status(500).json({ error: 'Failed to fetch favourites' });
@@ -66,7 +68,7 @@ router.get('/history', (req, res) => {
     const expanded = history.map(h => ({
       ...h,
       item: libraryService.getById(h.itemId),
-    })).filter(h => h.item);
+    })).filter(h => h.item && profiles.canAccess(req.profileId, h.item));
     res.json({ history: expanded, total: expanded.length });
   } catch (err) {
     res.status(500).json({ error: 'Failed to fetch history' });
@@ -162,7 +164,7 @@ router.get('/:id', (req, res) => {
     if (!playlist) return res.status(404).json({ error: 'Playlist not found' });
 
     // Expand items
-    const items = playlist.items.map(id => libraryService.getById(id)).filter(Boolean);
+    const items = profiles.filterItems(req.profileId, playlist.items.map(id => libraryService.getById(id)).filter(Boolean));
     res.json({ ...playlist, itemsExpanded: items });
   } catch (err) {
     res.status(500).json({ error: 'Failed to fetch playlist' });
@@ -187,6 +189,22 @@ router.post('/', (req, res) => {
   }
 });
 
+// The playlist's items this profile may see (age limits apply to playlists
+// made before a limit was set, too).
+function visiblePlaylistItems(req, ids = []) {
+  return profiles.filterItems(req.profileId || 'default', ids.map(id => libraryService.getById(id)).filter(Boolean));
+}
+
+// An age-limited profile only sees part of a playlist. When it saves a new
+// order it sends what it can see; the entries hidden from it are kept, at
+// the end, instead of being dropped.
+function withHiddenEntries(req, playlist, nextIds) {
+  if (!profiles.restrictionFor(req.profileId || 'default')) return nextIds;
+  const visibleIds = new Set(visiblePlaylistItems(req, playlist.items).map(i => i.id));
+  const hidden = playlist.items.filter(id => !visibleIds.has(id));
+  return [...nextIds.filter(id => visibleIds.has(id)), ...hidden];
+}
+
 router.put('/:id', (req, res) => {
   try {
     const { name, description, items, coverArt } = req.body;
@@ -194,7 +212,11 @@ router.put('/:id', (req, res) => {
     if (coverArt === null) updates.coverArt = null; // clearing only; uploads go through /:id/cover
     if (name !== undefined) updates.name = sanitizeString(name, 200);
     if (description !== undefined) updates.description = sanitizeString(description, 1000);
-    if (items !== undefined && Array.isArray(items)) updates.items = items;
+    if (items !== undefined && Array.isArray(items)) {
+      const current = scoped(req).getPlaylistById(req.params.id);
+      if (!current) return res.status(404).json({ error: 'Playlist not found' });
+      updates.items = withHiddenEntries(req, current, items);
+    }
 
     const updated = scoped(req).updatePlaylist(req.params.id, updates);
     if (!updated) return res.status(404).json({ error: 'Playlist not found' });
@@ -240,14 +262,18 @@ router.put('/:id/order', (req, res) => {
     const playlist = scoped(req).getPlaylistById(req.params.id);
     if (!playlist) return res.status(404).json({ error: 'Playlist not found' });
 
-    let next = Array.isArray(items) ? items : [...playlist.items];
+    // Indexes refer to the list this profile sees.
+    const restricted = !!profiles.restrictionFor(req.profileId || 'default');
+    let next = Array.isArray(items) ? [...items]
+      : restricted ? visiblePlaylistItems(req, playlist.items).map(i => i.id) : [...playlist.items];
     if (!Array.isArray(items) && Number.isInteger(from) && Number.isInteger(to)) {
       const [moved] = next.splice(from, 1);
       next.splice(to, 0, moved);
     }
+    next = withHiddenEntries(req, playlist, next);
     const updated = scoped(req).updatePlaylist(playlist.id, { items: next });
     events.broadcast('playlist:changed', { id: playlist.id, action: 'reorder' });
-    res.json({ ...updated, itemsExpanded: updated.items.map(id => libraryService.getById(id)).filter(Boolean) });
+    res.json({ ...updated, itemsExpanded: visiblePlaylistItems(req, updated.items) });
   } catch (err) {
     res.status(500).json({ error: 'Failed to reorder playlist' });
   }
@@ -258,9 +284,7 @@ router.get('/:id/export', (req, res) => {
   const playlist = scoped(req).getPlaylistById(req.params.id);
   if (!playlist) return res.status(404).json({ error: 'Playlist not found' });
   const lines = ['#EXTM3U'];
-  for (const id of playlist.items) {
-    const item = libraryService.getById(id);
-    if (!item) continue;
+  for (const item of visiblePlaylistItems(req, playlist.items)) {
     const seconds = Math.round(item.duration || 0);
     lines.push(`#EXTINF:${seconds},${item.artist ? `${item.artist} - ` : ''}${item.title}`);
     lines.push(item.path);
@@ -275,7 +299,7 @@ router.post('/import', (req, res) => {
   try {
     const { name, content, paths } = req.body || {};
     const entries = Array.isArray(paths) ? paths : String(content || '').split(/\r?\n/);
-    const { matched, missed } = links.matchEntries(entries, libraryService.getAll());
+    const { matched, missed } = links.matchEntries(entries, profiles.filterItems(req.profileId || 'default', libraryService.getAll()));
     const playlist = scoped(req).createPlaylist({ name: name || 'Imported playlist', items: matched });
     res.json({ ...playlist, matched: matched.length, missed });
   } catch (err) {
@@ -287,7 +311,7 @@ router.post('/import', (req, res) => {
 router.get('/:id/stats', (req, res) => {
   const playlist = scoped(req).getPlaylistById(req.params.id);
   if (!playlist) return res.status(404).json({ error: 'Playlist not found' });
-  const items = (playlist.items || []).map(id => libraryService.getById(id)).filter(Boolean);
+  const items = visiblePlaylistItems(req, playlist.items || []);
   const titles = new Map();
   for (const item of items) {
     const key = `${item.title}|${item.artist || ''}`;

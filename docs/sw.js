@@ -18,7 +18,8 @@
 // could hand an old index.html or view module to a reload for 10 minutes,
 // mixing builds ("does not provide an export named 'THEME_META'").
 // v11: 3.0 colour refresh — new theme tokens, favicon and manifest colours.
-const CACHE_NAME = 'vault-v2-shell-v11';
+// v12: profiles — auth.js imports js/profileSession.js (in the shell list).
+const CACHE_NAME = 'vault-v2-shell-v12';
 const BASE_PATH = '/Vault-V2';
 
 const SHELL_ASSETS = [
@@ -36,6 +37,7 @@ const SHELL_ASSETS = [
   `${BASE_PATH}/js/config.js`,
   `${BASE_PATH}/js/api.js`,
   `${BASE_PATH}/js/auth.js`,
+  `${BASE_PATH}/js/profileSession.js`,
   `${BASE_PATH}/js/onboarding.js`,
   `${BASE_PATH}/js/store.js`,
   `${BASE_PATH}/js/router.js`,

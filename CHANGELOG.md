@@ -2,6 +2,55 @@
 
 ## [3.0.0] — in progress (branch `arena/0deefe55-vault-v2`)
 
+### Fixed — profiles
+Profiles were mostly cosmetic: the "active profile" was one server-wide
+value, so switching on one device switched every device, and age limits,
+PINs and admin rights could be stepped around. Profiles now work per
+device and are enforced on the server.
+
+- **Per device, per session.** The signed-in session decides which profile is
+  in use (`sessions.setProfile`); the global `activeProfileId` /
+  `profiles.setActive` is gone. A token from before a switch follows the
+  switch, so it can't be used to get back to the profile you left.
+  `/api/auth/verify` and short-lived media tokens report the session's
+  profile.
+- **PINs can't be skipped.** Switching to a PIN-protected profile, or signing
+  in to one, needs the PIN (`403 PROFILE_PIN_REQUIRED`). The sign-in screen
+  asks for it, and asks again after a wrong PIN. Changing your own PIN needs
+  the current one.
+- **Admin rights are enforced.** Only admins create or delete profiles,
+  change age limits or admin rights, or edit another profile; others can
+  change only their own name, picture, colour and PIN. Vault always keeps at
+  least one admin, and a missing `default` profile is never treated as admin.
+- **Age limits work.** Items get an age rating (`contentRating`) from `.nfo`
+  `<mpaa>`/`<certification>`, metadata matches, or the admin-only "Age
+  rating" field in the Edit dialog. US, UK, NL (Kijkwijzer), DE (FSK), TV and
+  "16+" style labels map to a minimum age (`services/contentRating.js`). A
+  profile's limit is an age from 0 to 18 (Kids profiles start at 9). By
+  default Kids profiles also hide unrated films, shows and videos. The
+  limit applies to the library, search, recent, series and next-up, genres,
+  stats, favourites, watchlist, history and playlists (including M3U export
+  and stats), and so to the home page built from them. Opening, streaming, transcoding or reading a hidden item
+  returns 404. Reordering a playlist on an age-limited profile keeps the
+  entries it can't see.
+- **Deleting a profile cleans up.** Its devices are signed out, and its
+  favourites, history, playlists, resume points and watchlist are removed.
+  The profile you are using can't be deleted (`PROFILE_IN_USE`).
+- **Device data follows the profile.** Favourites, history and resume points
+  load from the server for the current profile, and local copies are cleared
+  on a switch (`docs/js/profileSession.js`). The device remembers the last
+  profile for the next sign-in and forgets it if that profile is deleted.
+- **Profiles page redesigned.** Avatar cards with a colour ring, a profile
+  editor (name, picture, colour, PIN, age limit, unrated toggle), clear
+  validation messages (`NAME_REQUIRED`, `INVALID_PIN`, `PROFILE_LIMIT`,
+  `LAST_ADMIN`, …), and an admin "Manage profiles" list.
+- Service worker shell cache bumped to `vault-v2-shell-v12`.
+- Tests: `profiles-system.test.js` (server rules, filtering, sessions,
+  sign-in PINs, cleanup) and `profiles-ui.test.js` (jsdom: profiles page,
+  editor payloads, profile data hydration).
+- Not changed: the Subsonic API (`/rest`) signs in with the account
+  password and acts as the owner account, not as a profile.
+
 ### Changed — colours: less "generated", stricter contrast
 - **Why.** The "Hearth" palette (warm cream paper, terracotta accent,
   tinted near-black, orange glows) is the look AI design tools produce by

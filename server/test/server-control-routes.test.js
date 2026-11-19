@@ -28,7 +28,7 @@ jsonStore.createJsonStore = (_name, defaultValue) => {
 };
 
 const profiles = require('../services/profiles');
-profiles.get = (id) => ({ default: { id: 'default', name: 'admin', isAdmin: true }, kid: { id: 'kid', name: 'Kid', isAdmin: false } }[id] || null);
+profiles.get = (id) => ({ default: { id: 'default', name: 'admin', isAdmin: true }, kid: { id: 'kid', name: 'Kid', isAdmin: false }, kids: { id: 'kids', name: 'Kids', isAdmin: false, kids: true } }[id] || null);
 profiles.toPublic = (p) => (p ? { id: p.id, name: p.name, isAdmin: p.isAdmin } : null);
 
 const authService = require('../services/authService');

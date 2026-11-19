@@ -6,9 +6,10 @@
 const profiles = require('../services/profiles');
 
 function isAdminProfile(profileId) {
+  // A profile that doesn't exist (deleted, or a stale token) is never admin —
+  // not even when it is called "default".
   const profile = profiles.get(profileId || 'default');
-  if (!profile) return (profileId || 'default') === 'default';
-  return Boolean(profile.isAdmin);
+  return Boolean(profile?.isAdmin);
 }
 
 function requireAdmin(req, res, next) {

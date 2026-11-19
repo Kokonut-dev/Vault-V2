@@ -10,6 +10,7 @@ const trash = require('../services/trash');
 const stats = require('../services/stats');
 const events = require('../services/events');
 const logger = require('../utils/logger');
+const profiles = require('../services/profiles');
 
 // ---------------------------------------------------------------------------
 // Watchlist
@@ -17,10 +18,10 @@ const logger = require('../utils/logger');
 router.get('/watchlist', (req, res) => {
   const profileId = req.profileId || 'default';
   const entries = extras.getWatchlist().filter(w => (w.profileId || 'default') === profileId);
-  const items = entries.map(e => {
+  const items = profiles.filterItems(profileId, entries.map(e => {
     const item = libraryService.getById(e.itemId);
     return item ? { ...item, addedAtWatchlist: e.addedAt } : null;
-  }).filter(Boolean);
+  }).filter(Boolean));
   res.json({ items, total: items.length });
 });
 
@@ -37,19 +38,20 @@ router.delete('/watchlist/:id', (req, res) => {
 // ---------------------------------------------------------------------------
 // Collections
 // ---------------------------------------------------------------------------
-function expandCollection(collection) {
+function expandCollection(collection, profileId = 'default') {
   if (!collection) return null;
-  const items = (collection.items || []).map(id => libraryService.getById(id)).filter(Boolean);
+  // Collections are shared; an age-limited profile sees only its part.
+  const items = profiles.filterItems(profileId, (collection.items || []).map(id => libraryService.getById(id)).filter(Boolean));
   return { ...collection, items, itemIds: collection.items || [], count: items.length };
 }
 
 router.get('/collections', (req, res) => {
-  const collections = extras.getCollections().map(expandCollection);
+  const collections = extras.getCollections().map(c => expandCollection(c, req.profileId));
   res.json({ collections, total: collections.length });
 });
 
 router.get('/collections/:id', (req, res) => {
-  const collection = expandCollection(extras.getCollection(req.params.id));
+  const collection = expandCollection(extras.getCollection(req.params.id), req.profileId);
   if (!collection) return res.status(404).json({ error: 'Collection not found' });
   res.json(collection);
 });
@@ -58,7 +60,7 @@ router.post('/collections', (req, res) => {
   try {
     const collection = extras.createCollection(req.body || {});
     events.broadcast('collection:changed', { id: collection.id, action: 'create' });
-    res.json(expandCollection(collection));
+    res.json(expandCollection(collection, req.profileId));
   } catch (err) {
     logger.warn(`[Collections] create failed: ${err.message}`);
     res.status(400).json({ error: err.message });
@@ -68,7 +70,7 @@ router.post('/collections', (req, res) => {
 router.put('/collections/:id', (req, res) => {
   const updated = extras.updateCollection(req.params.id, req.body || {});
   if (!updated) return res.status(404).json({ error: 'Collection not found' });
-  res.json(expandCollection(updated));
+  res.json(expandCollection(updated, req.profileId));
 });
 
 router.delete('/collections/:id', (req, res) => {
@@ -81,13 +83,13 @@ router.post('/collections/:id/items', (req, res) => {
   const { itemId, itemIds } = req.body || {};
   const added = extras.addToCollection(req.params.id, itemIds || itemId);
   if (!added) return res.status(404).json({ error: 'Collection not found' });
-  res.json(expandCollection(added));
+  res.json(expandCollection(added, req.profileId));
 });
 
 router.delete('/collections/:id/items/:itemId', (req, res) => {
   const updated = extras.removeFromCollection(req.params.id, req.params.itemId);
   if (!updated) return res.status(404).json({ error: 'Collection not found' });
-  res.json(expandCollection(updated));
+  res.json(expandCollection(updated, req.profileId));
 });
 
 // ---------------------------------------------------------------------------

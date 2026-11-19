@@ -252,7 +252,7 @@ function addItem(item) {
 // `manualFields` are kept over the file's tags; see scanner.applyManualFields.
 const MANUAL_FIELDS = new Set([
   'title', 'artist', 'albumArtist', 'album', 'year', 'genre', 'track', 'disc',
-  'season', 'episode', 'description', 'tags',
+  'season', 'episode', 'description', 'tags', 'contentRating',
   'coverArtPath', 'posterPath', 'thumbnailPath',
 ]);
 
@@ -707,6 +707,44 @@ function forProfile(profileId) {
   };
 }
 
+/**
+ * Delete everything that belongs to one profile: favourites, history,
+ * playlists and watched marks. Used when a profile is deleted, so a new
+ * profile never inherits a stale folder and the "removed" promise in the UI
+ * is true. The `default` profile's data lives in the flat files; those are
+ * emptied rather than deleted.
+ */
+async function removeProfileData(profileId) {
+  if (!profileId || profileId === 'default') {
+    favourites = [];
+    history = [];
+    playlists = [];
+    saveFavouritesImmediate();
+    saveHistoryImmediate();
+    savePlaylistsImmediate();
+    watchedStore.set({});
+    await Promise.all([...pendingWrites, watchedStore.flush()].map(p => Promise.resolve(p).catch(() => {})));
+    return true;
+  }
+  const safeId = String(profileId).replace(/[^a-zA-Z0-9_-]/g, '');
+  if (!safeId) return false;
+  // Settle pending debounced writes first, so none of them recreates the
+  // folder after it has been removed.
+  const pending = [];
+  for (const kind of Object.keys(SCOPED_KINDS)) {
+    const key = `${profileId}:${kind}`;
+    const store = scopedStores.get(key);
+    if (store) {
+      pending.push(store.flush());
+      scopedStores.delete(key);
+    }
+  }
+  await Promise.all(pending.map(p => Promise.resolve(p).catch(() => {})));
+  const { DATA_DIR } = require('../utils/jsonStore');
+  if (DATA_DIR) await fs.remove(path.join(DATA_DIR, 'profiles', safeId)).catch(() => {});
+  return true;
+}
+
 // ---------------------------------------------------------------------------
 // Query helper (filters + pagination + sorting) shared by /api/library and the
 // live views. Sorting always works on a copy (F-14).
@@ -779,6 +817,7 @@ module.exports = {
   setWatched,
   getWatchedMap,
   forProfile,
+  removeProfileData,
   queryWith,
   flushScoped,
   getFavourites,
