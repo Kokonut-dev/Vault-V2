@@ -4,6 +4,23 @@
 import { getApiBaseUrl } from './config.js';
 import { store } from './store.js';
 
+/**
+ * The server stamps API responses with the client build it currently ships
+ * (X-Vault-Build); index.html recorded the build this tab loaded
+ * (window.__VAULT_BUILD__). When they differ the server was updated while this
+ * tab was open, and its already-loaded modules may misread the new API, so
+ * offer a reload once (pwa.js shows the "Update available" toast).
+ */
+let buildNoticeSent = false;
+function noticeServerBuild(res) {
+  if (buildNoticeSent || typeof window === 'undefined') return;
+  const mine = window.__VAULT_BUILD__;
+  const theirs = res?.headers?.get?.('x-vault-build');
+  if (!mine || !theirs || mine === theirs) return;
+  buildNoticeSent = true;
+  window.dispatchEvent(new CustomEvent('vault:update-available', { detail: { reason: 'server-build', from: mine, to: theirs } }));
+}
+
 // Audio the browser plays as-is; everything else goes through the server's
 // audio converter (WMA, AIFF, APE, ALAC…). Safari can't do Ogg/FLAC on old
 // versions — those fall back to the converter on the first media error.
@@ -157,6 +174,7 @@ class ApiClient {
     for (let attempt = 0; attempt <= maxRetries; attempt++) {
       try {
         const res = await fetch(url, fetchOptions);
+        noticeServerBuild(res);
 
         if (res.status === 401) {
           const data = await res.json().catch(() => ({}));

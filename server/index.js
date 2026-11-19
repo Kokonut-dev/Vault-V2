@@ -19,6 +19,7 @@ const morgan = require('morgan');
 const path = require('path');
 const fs = require('fs-extra');
 const { resolveNestedAsset } = require('./utils/spaAssets');
+const clientBuild = require('./utils/clientBuild');
 const https = require('https');
 
 const { loadConfig, getConfig } = require('./config');
@@ -120,6 +121,14 @@ app.use(morgan(
 
 // Rate limiters
 const { generalLimiter, authLimiter, authFloodLimiter, uploadLimiter } = createRateLimiters();
+// Lets an open tab notice that the server now ships a different client build
+// (docs/js/api.js compares it with window.__VAULT_BUILD__ and offers a reload).
+app.use(['/api', '/rest'], (req, res, next) => {
+  try {
+    res.setHeader('X-Vault-Build', clientBuild.buildId(path.join(__dirname, '../docs')));
+  } catch { /* no client on disk */ }
+  next();
+});
 app.use('/api/', generalLimiter);
 // Auth limiters apply ONLY to the credential-checking endpoints
 // (login/grid/second-factor). Mounting them on all of /api/auth/ used to
@@ -307,22 +316,8 @@ app.get('/api/events/public', (req, res) => {
 // Serve static frontend (same origin as API — required for playback without mixed-content)
 const docsPath = path.join(__dirname, '../docs');
 if (fs.existsSync(docsPath)) {
-  app.use(express.static(docsPath, {
-    index: 'index.html',
-    fallthrough: true,
-    setHeaders: (res, filePath) => {
-      const name = path.basename(filePath);
-      // Service worker + runtime config + HTML must always revalidate so
-      // deploys take effect immediately and SW updates are detected.
-      if (name === 'sw.js' || name === 'config.js' || /\.(html|json|webmanifest)$/i.test(name)) {
-        res.setHeader('Cache-Control', 'no-cache');
-        return;
-      }
-      // Everything else: 1h guaranteed-fresh, then serve stale while a
-      // background revalidation runs (fast repeat loads, never minutes stale).
-      res.setHeader('Cache-Control', 'public, max-age=3600, stale-while-revalidate=604800');
-    },
-  }));
+  // index.html + build-pinned modules + plain static files (utils/clientBuild.js).
+  clientBuild.mountClient(app, docsPath);
   logger.info(`Serving static frontend from ${docsPath}`);
 }
 
@@ -345,9 +340,7 @@ if (fs.existsSync(docsPath)) {
     const assetFile = resolveNestedAsset(docsPath, req.path);
     if (assetFile === false) return res.status(404).end();
     if (assetFile) return res.sendFile(assetFile);
-    res.sendFile(path.join(docsPath, 'index.html'), (err) => {
-      if (err) next(err);
-    });
+    clientBuild.sendIndex(docsPath, req, res, next);
   });
 }
 
