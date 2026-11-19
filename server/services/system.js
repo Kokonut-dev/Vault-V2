@@ -139,9 +139,11 @@ async function diskUsage() {
 
 /**
  * Free/used space of every filesystem that holds media or Vault's own data.
- * Folders on the same filesystem collapse into one entry (matched by size and
- * free space, which is what `statfs` reports for a shared volume). A folder
- * that doesn't exist yet is measured at its nearest existing parent.
+ * Folders on the same filesystem collapse into one entry, matched by device
+ * id (`st_dev`). Matching on size + free space didn't work: free space moves
+ * between two `statfs` calls while anything is writing, so one disk showed up
+ * several times. A folder that doesn't exist yet is measured at its nearest
+ * existing parent.
  */
 async function volumeUsage() {
   let mediaPaths = {};
@@ -159,16 +161,18 @@ async function volumeUsage() {
     // eslint-disable-next-line no-await-in-loop
     while (!(await fs.pathExists(dir)) && path.dirname(dir) !== dir) dir = path.dirname(dir);
     let stat;
+    let device;
     try {
       // eslint-disable-next-line no-await-in-loop
-      stat = await require('fs').promises.statfs(dir);
+      [stat, device] = await Promise.all([require('fs').promises.statfs(dir), fs.stat(dir).then(st => st.dev)]);
     } catch {
       continue; // statfs unsupported on this platform / path unreadable
     }
     const total = Number(stat.blocks) * Number(stat.bsize);
     const free = Number(stat.bavail) * Number(stat.bsize);
     if (!total) continue;
-    const key = `${total}:${free}`;
+    // st_dev is 0 on some platforms/filesystems; fall back to the total size.
+    const key = device ? `dev:${device}` : `size:${total}`;
     const existing = volumes.find(v => v.key === key);
     if (existing) {
       if (!existing.labels.includes(target.label)) existing.labels.push(target.label);

@@ -2,6 +2,29 @@
 
 ## [3.0.0] — in progress (branch `arena/0deefe55-vault-v2`)
 
+### Fixed — browsers kept running the old app after a server update
+- After updating, the Server page still showed "0", "0 B", "Unknown" and
+  "0 rows". The server was new, but the browser was still running the old
+  page code from its HTTP cache. JS files were sent with `max-age=3600,
+  stale-while-revalidate=604800`, and views load on demand from fixed URLs,
+  so an old view could linger for up to a week, talking to the new API.
+- `index.html` now carries an import map that pins every module to the
+  current build: `./js/…` → `/b/<build>/js/…`, where the build id is a hash of
+  the client files. Relative imports inside modules stay under that prefix,
+  so the whole app comes from one build. A new build means new URLs, which
+  no cache can hold. The pinned files are cached as `immutable`, so repeat
+  loads are faster too. Checked in Chromium: every module comes from the
+  pinned path, none twice, and a stale copy at the old URL is never used.
+- Plain JS/CSS/HTML (browsers without import maps, direct requests) are sent
+  `no-cache`, revalidated with a cheap 304. Fonts and images keep the longer
+  cache.
+- API responses carry `X-Vault-Build`. If the server is updated while a tab
+  is open, the tab shows the existing "Update available — Refresh" toast
+  instead of silently mixing versions.
+- Server page → Storage listed one disk several times. Folders are now
+  grouped by device id instead of by free space, which changes between two
+  measurements while anything is writing.
+
 ### Fixed — the Server page (sidebar → Server)
 - The page read field names the server never sent, so it showed a library of
   0, "0 B" free disk, "never" scanned and "No health checks reported" whatever

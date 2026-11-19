@@ -324,3 +324,24 @@ test('no caller treats confirmDialog’s result as a boolean', () => {
   walk(root);
   assert.deepEqual(offenders, []);
 });
+
+test('a server build different from the tab’s offers a reload once', async () => {
+  const dom = setupDom();
+  try {
+    window.__VAULT_BUILD__ = 'aaaaaaaaaaaa';
+    let build = 'aaaaaaaaaaaa';
+    globalThis.fetch = async () => new Response('{"jobs":[]}', { status: 200, headers: { 'Content-Type': 'application/json', 'X-Vault-Build': build } });
+    const { api } = await import(docs('api.js'));
+    const seen = [];
+    window.addEventListener('vault:update-available', (e) => seen.push(e.detail));
+    await api.request('/api/system/jobs', { retry: false });
+    assert.equal(seen.length, 0, 'same build: no prompt');
+    build = 'bbbbbbbbbbbb';
+    await api.request('/api/system/jobs?x=1', { retry: false });
+    await api.request('/api/system/jobs?x=2', { retry: false });
+    assert.equal(seen.length, 1, 'prompted exactly once');
+    assert.deepEqual(seen[0], { reason: 'server-build', from: 'aaaaaaaaaaaa', to: 'bbbbbbbbbbbb' });
+  } finally {
+    dom.window.close();
+  }
+});

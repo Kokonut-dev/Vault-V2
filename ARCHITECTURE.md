@@ -259,6 +259,7 @@ Vault-V2/
 │   │   ├── music/
 │   │   └── videos/
 │   └── utils/
+│       ├── clientBuild.js          # Serves the web client pinned to one build (import map, /b/<build>/)
 │       ├── fileUtils.js
 │       ├── logger.js
 │       ├── keepAwake.js            # Stop idle sleep while running (caffeinate & co.)
