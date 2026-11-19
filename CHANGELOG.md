@@ -2,6 +2,99 @@
 
 ## [3.0.0] — in progress (branch `arena/0deefe55-vault-v2`)
 
+### Security — every way of sharing access explains its protections, and the missing ones were added
+Tests: `server/test/security-hardening.test.js`, `server/test/security-ui.test.js`.
+Details for users: README → *Security*.
+
+- **"How this is protected" panels** (new `docs/js/components/securityNotes.js`)
+  wherever Vault hands out access: the *Same Wi-Fi* and *Anywhere* tabs, the
+  sign-in QR panel, approving a waiting device, transfer download links and
+  Subsonic. Each line describes something the server really enforces.
+- **A brand-new server can't be claimed by someone else on your network.**
+  Setup and transfer import from any device other than the server computer
+  need the *setup code* printed in the server window (also written to
+  `server/data/setup-code.txt` with owner-only permissions; deleted once setup
+  is done). Wrong codes count towards the setup lockout. The wizard asks for
+  it on the *Connect* step (`services/setupGuard.js`, `utils/clientAddress.js`).
+- **`/api/setup` once set up:** `/status` no longer shows the username, media
+  folders or port to strangers. `/test` (which checked whether folders exist)
+  and re-running `/complete` now need a signed-in **admin**. Before, any valid
+  token was enough, including a kids' profile token.
+- **`/api/health`** only returns `ok` and the version. Library counts and
+  uptime are for signed-in devices (`routes/health.js`).
+- **Pairing:**
+  - opening a `/pair?code=` link while signed in no longer approves it on the
+    spot. A confirmation shows where the waiting device is (this computer /
+    your network / the internet);
+  - waiting codes made without signing in are capped at 3 per address and 20
+    in total, so nobody can fill the code space and catch a mistyped approval;
+  - codes are always unique;
+  - the QR base URL must be `http(s)` with no embedded credentials.
+- **Subsonic** never accepts the main Vault password, since that let a
+  password alone skip the grid / authenticator step. It is off until a
+  Subsonic password is set. Wrong passwords now lock that device out (new
+  `subsonic` lockout stage). `ping` and `getLicense` check credentials, as
+  apps expect, and comparisons are constant-time.
+- **Remote access turns itself off** after 8 hours by default (1, 4, 8,
+  24 hours or never; `remoteAccess.autoStopHours`). People who had chosen
+  *turn on with the server* keep "never" until they pick something else. The
+  tab shows when it will switch off, recommends an authenticator app when
+  none is set up, and `/api/remote` reports a `security` summary.
+- **Behind the tunnel, visitors are told apart:** `trust proxy` is set to
+  `loopback`, so lockouts and the devices list use the real visitor address
+  rather than `127.0.0.1` for everyone. Forwarding headers from other devices
+  are still ignored. Sessions record `remote: true` and get a *Remote access*
+  badge in Settings → Devices.
+- **Transfer download links work for one download** (HEAD checks don't use
+  them up; a link whose download failed to start can be retried).
+- CORS: documented why unlisted origins are allowed. Vault authenticates with
+  an `Authorization` header and never cookies. Added `X-Vault-Setup-Code` to
+  the allowed headers.
+- Service worker cache bumped to `vault-v2-shell-v13`.
+
+### Added — a new Home screen and a landing page for the project
+Tests: `server/test/home-ui.test.js`, `server/test/landing-page.test.js`.
+
+- **Home, redesigned** (`docs/js/views/home.js`, styles in the new
+  `docs/css/home.css`). From the top:
+  - a header with the date, a greeting and a one-line summary of the library
+    ("1,204 songs · 48 films · 6 shows"), plus *Surprise me*;
+  - the hero resumes what you were in the middle of, or shows the newest film;
+  - a tile for each library you have (Films, TV shows, Music, Audiobooks,
+    Podcasts, Comics, Videos) with its count. TV shows are counted per show,
+    not per episode;
+  - rows: *Continue watching*, *Next up in your shows*, *Jump back into
+    music*, *More like …*, then one *New films / New episodes / New music / …*
+    row per type, newest first, so each row has one artwork shape. Episodes
+    show one per show and songs one per album. Then *Your favourites* and
+    *Top rated*. Every row scrolls sideways, has back/forward buttons and a
+    *See all* link;
+  - *Your week*: time played this week, split into watching and listening,
+    with a bar for each day;
+  - an empty library gets a welcome with three steps (add files and scan,
+    upload, open Vault on your phone). A profile that isn't an admin is told
+    to ask whoever runs the Vault. A small library (under 20 titles) gets one
+    mixed *Recently added* row and keeps the getting-started tips.
+- **Fixed on Home:**
+  - the page re-draws when the library, history or favourites arrive after
+    the first paint, so it no longer shows as empty until you navigate away;
+  - *Random pick* is replaced by *Surprise me*. Shuffling it used to update
+    the wrong element and leave *Details* opening the old title;
+  - episode cards show the show's name ("The Lanterns · S1 · E2 · Pilot")
+    instead of a bare "Episode 2";
+  - every inline style is gone.
+- **Landing page** at `landing.html` (on GitHub Pages:
+  https://kokonut-dev.github.io/Vault-V2/landing.html). It explains what Vault
+  is and has features, screenshots, a live preview of the six themes, how it
+  works, install steps for Node.js and Docker with copy buttons, and links to
+  GitHub. It loads the app's theme tokens and fonts and makes no requests to
+  other sites.
+  - A first-time visitor to the hosted app on GitHub Pages lands there once.
+    That only happens with no sign-in and no server chosen, and never on a
+    self-hosted server, a deep link or a pairing link. *Open Vault* goes
+    straight to the app.
+  - The sign-in screen links to it.
+
 ### Added — type in the right details when the automatic ones are wrong
 Tests: `server/test/manual-metadata.test.js` (dialog: `edit-details-ui.test.js`).
 

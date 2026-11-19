@@ -239,6 +239,8 @@ test('Subsonic browses as the chosen profile, with its age limits', async () => 
   const authService = require('../services/authService');
   const origValidate = authService.validateCredentials;
   authService.validateCredentials = (u, p) => u === 'admin' && p === 'pw';
+  // Subsonic only takes its own password (never the main one).
+  require('../services/subsonic').setSubsonicPassword('pw', 'admin');
   for (const name of ['clean', 'explicit']) fs.writeFileSync(path.join(TMP, `${name}.mp3`), 'x');
   libraryService.addItem({ id: 'clean', type: 'music', title: 'Clean song', album: 'A', artist: 'X', path: path.join(TMP, 'clean.mp3'), contentRating: '6' });
   libraryService.addItem({ id: 'explicit', type: 'music', title: 'Explicit song', album: 'B', artist: 'X', path: path.join(TMP, 'explicit.mp3'), contentRating: '18' });

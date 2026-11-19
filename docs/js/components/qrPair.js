@@ -9,6 +9,8 @@ import { api } from '../api.js';
 import { icon } from '../utils/icons.js';
 import { toast } from './toast.js';
 import { escapeHtml } from '../utils/format.js';
+import { createModal } from './modal.js';
+import { securityNotes } from './securityNotes.js';
 
 let qrModule = null;
 async function loadQr() {
@@ -79,8 +81,9 @@ export async function renderPairingPanel(container) {
     </div>
     <details>
       <summary class="row-meta">Can’t scan? Type the code instead</summary>
-      <p class="row-meta">On the other device open <code>${window.location.origin}/pair</code> and enter the 6 digits above.</p>
+      <p class="row-meta">On the other device open <code>${escapeHtml(window.location.origin)}/pair</code> and enter the 6 digits above.</p>
     </details>
+    ${securityNotes('pair')}
   `;
 
   let code = '';
@@ -100,7 +103,7 @@ export async function renderPairingPanel(container) {
       codeHost.textContent = code.split('').join(' ') || '······';
       stateEl.textContent = '';
       const ok = await renderQr(qrHost, url);
-      if (!ok) qrHost.innerHTML = `<code class="row-meta">${url}</code>`;
+      if (!ok) qrHost.innerHTML = `<code class="row-meta">${escapeHtml(url)}</code>`;
       clearInterval(pollTimer);
       pollTimer = setInterval(poll, 3000);
     } catch (err) {
@@ -138,15 +141,71 @@ export async function renderPairingPanel(container) {
   await refresh();
 }
 
+/** Who is asking, in words: "a device on your home network (192.168.1.5)". */
+export function describeRequester(requester) {
+  if (!requester) return '';
+  const ip = requester.ip ? ` (${escapeHtml(String(requester.ip).replace(/^::ffff:/, ''))})` : '';
+  switch (requester.network) {
+    case 'this computer': return `This code was made on <strong>the computer running Vault</strong>${ip}.`;
+    case 'your network': return `This code was made by <strong>a device on your home network</strong>${ip}.`;
+    case 'internet': return `This code was made by <strong>a device on the internet</strong>${ip}. If you aren’t setting up a device of your own somewhere else right now, don’t approve it.`;
+    default: return '';
+  }
+}
+
+/**
+ * Ask before letting another device in. A signed-in person opening a
+ * /pair?code= link someone sent them used to approve it on the spot, which
+ * would sign the sender's device in as them.
+ */
+export function confirmApproval(code, requester = null) {
+  return new Promise((resolve) => {
+    let settled = false;
+    const settle = (value) => { if (!settled) { settled = true; resolve(value); } };
+    const who = describeRequester(requester);
+    const { backdrop, close } = createModal({
+      title: 'Let this device sign in?',
+      content: `
+        <div class="pair-approve">
+          <p class="setting-help">A device is waiting to sign in to your Vault with this code:</p>
+          <div class="pair-code" aria-label="Pairing code">${escapeHtml(String(code).split('').join(' '))}</div>
+          ${who ? `<p class="pair-requester">${who}</p>` : ''}
+          ${securityNotes('approve', { open: true, title: 'Before you approve' })}
+          <div class="settings-actions" style="justify-content:flex-end; margin-top:16px;">
+            <button type="button" class="btn btn-secondary" data-pair="cancel">Don’t approve</button>
+            <button type="button" class="btn btn-primary" data-pair="ok">Approve device</button>
+          </div>
+        </div>`,
+      onClose: () => settle(false),
+    });
+    backdrop.querySelector('[data-pair="cancel"]').addEventListener('click', () => { settle(false); close(); });
+    backdrop.querySelector('[data-pair="ok"]').addEventListener('click', () => { settle(true); close(); });
+    backdrop.querySelector('[data-pair="cancel"]').focus();
+  });
+}
+
 /**
  * /pair?code=123456 or the /pair form. Signed out: redeem the code shown on
  * a signed-in device and sign in. Signed in: approve a code shown by a
- * device that is waiting (TV flow).
+ * device that is waiting (TV flow) — always after an explicit confirmation.
  */
 export async function joinWithPairingCode(code, name = 'Paired device') {
   const clean = String(code).replace(/\D/g, '');
   try {
     if (localStorage.getItem('vault_token')) {
+      let requester = null;
+      try {
+        const state = await api.pairingState(clean);
+        if (state?.status === 'expired' || state?.status === 'used') {
+          toast.error('That code expired or was already used — make a new one');
+          return false;
+        }
+        requester = state?.requester || null;
+      } catch { /* older server: still ask */ }
+      if (!(await confirmApproval(clean, requester))) {
+        toast.info('Not approved — the other device stays signed out');
+        return false;
+      }
       await api.approvePairing({ code: clean, deviceLabel: name });
       toast.success('Device approved — it will sign in in a moment');
       return true;
@@ -166,4 +225,4 @@ export async function joinWithPairingCode(code, name = 'Paired device') {
   return false;
 }
 
-export default { renderQr, renderPairingPanel, joinWithPairingCode };
+export default { renderQr, renderPairingPanel, joinWithPairingCode, confirmApproval, describeRequester };

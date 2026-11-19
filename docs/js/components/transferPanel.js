@@ -10,6 +10,7 @@ import { escapeHtml, formatBytes } from '../utils/format.js';
 import { confirmDialog } from './confirmDialog.js';
 import { waitForServer, waitForServerDown } from '../utils/serverLauncher.js';
 import { fieldError, clearFieldError } from '../views/settings/ui.js';
+import { securityNotes } from './securityNotes.js';
 
 const n = (value) => Number(value || 0).toLocaleString();
 const PHASES = {
@@ -325,7 +326,8 @@ export function mountExport(container) {
       <div class="transfer-option">
         <div class="transfer-option-text">
           <p class="setting-label">Download as a .zip</p>
-          <p class="setting-help">Saves one file to the device you’re using. To put it straight onto the new computer, open Vault there and press Download — or copy the link and open it on that device (works for 2 hours).</p>
+          <p class="setting-help">Saves one file to the device you’re using. To put it straight onto the new computer, open Vault there and press Download — or copy the link and open it on that device (one download, within 2 hours).</p>
+          ${securityNotes('transfer')}
         </div>
         <div class="settings-actions is-inline">
           <button type="button" class="btn btn-primary btn-sm" id="tx-download">${icon('download', { size: 14 })}<span>Download</span></button>
@@ -406,7 +408,8 @@ export function mountExport(container) {
       let copied = false;
       try { await navigator.clipboard.writeText(link.url); copied = true; } catch { /* insecure context */ }
       report.innerHTML = `<div class="settings-callout is-info">${icon('link', { size: 15 })}<div>
-          <p>${copied ? 'Link copied.' : 'Copy this link:'} Open it on the new computer to download the package there. It works for 2 hours, and only while this server is running.</p>
+          <p>${copied ? 'Link copied.' : 'Copy this link:'} Open it on the new computer to download the package there. It works for one download within 2 hours, and only while this server is running.</p>
+          <p>${icon('alert-triangle', { size: 14, className: 'icon icon-inline' })} It contains your settings and sign-in details — don’t send it to anyone else or post it anywhere.</p>
           <p><input class="form-input" readonly value="${escapeHtml(link.url)}" aria-label="Download link"></p>
         </div></div>`;
       const field = report.querySelector('input');

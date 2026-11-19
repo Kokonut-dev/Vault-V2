@@ -308,6 +308,14 @@ export class OnboardingManager {
       toast.info('This server is already set up. Sign in, then use Settings → Move to another server.');
       return;
     }
+    // From another device an import needs the setup code too (it creates the account).
+    if (this.setupStatus?.setupCodeRequired && !api.getSetupCode()) {
+      this.importAfterConnect = true;
+      this.currentStep = 2;
+      this.renderStep();
+      toast.info('Enter the setup code from the Vault server window — the import opens right after');
+      return;
+    }
     let mountImport;
     try {
       ({ mountImport } = await import('./components/transferPanel.js'));
@@ -362,12 +370,13 @@ export class OnboardingManager {
           </div>
 
           <div id="ob-connection-status"></div>
+          <div id="ob-setup-code-box">${this.renderSetupCode()}</div>
 
           ${needsSetup !== null ? `
             <div class="${needsSetup ? 'onboarding-success' : 'onboarding-error'}" style="margin-top:8px;">
               ${needsSetup
           ? `${icon('check-circle', { size: 14, className: 'icon icon-inline' })} Server reachable — <strong>setup required</strong>. No config.json found, you'll create it next.`
-          : `${icon('alert-triangle', { size: 14, className: 'icon icon-inline' })} Server already configured (user: ${this.setupStatus.current?.username || 'unknown'}). You can skip to login or re-configure.`}
+          : `${icon('alert-triangle', { size: 14, className: 'icon icon-inline' })} Server already configured. Skip to sign in, or sign in as an admin to re-configure.`}
             </div>
           ` : `
             <div class="onboarding-hint" style="margin-top:8px;">
@@ -387,6 +396,24 @@ export class OnboardingManager {
         </div>
       </div>
     `;
+  }
+
+  /**
+   * A brand-new server only lets *another* device set it up with the code
+   * printed in the server window (someone else on your Wi-Fi could
+   * otherwise claim it first). On the server computer itself it's skipped.
+   */
+  renderSetupCode() {
+    const st = this.setupStatus;
+    if (!st || !st.needsSetup || !st.setupCodeRequired) return '';
+    return `
+      <div class="onboarding-input-group" style="margin-top:12px;">
+        <label class="onboarding-label" for="ob-setup-code">Setup code</label>
+        <input type="text" class="onboarding-input" id="ob-setup-code" autocomplete="one-time-code" autocapitalize="characters" spellcheck="false" maxlength="12" placeholder="ABCD-EFGH" value="${escapeHtml(api.getSetupCode())}" aria-describedby="ob-setup-code-help">
+        <div class="onboarding-hint" id="ob-setup-code-help">
+          ${icon('shield', { size: 13, className: 'icon icon-inline' })} You’re setting Vault up from another device, so it asks for the code shown in the Vault server window (also in <code>server/data/setup-code.txt</code>). This stops anyone else on your network from claiming a new server before you do.
+        </div>
+      </div>`;
   }
 
   bindServerStep() {
@@ -453,7 +480,7 @@ export class OnboardingManager {
       this.isConnected = true;
       statusEl.innerHTML = `
         <div class="connection-test success">
-          ${icon('check-circle', { size: 14, className: 'icon icon-inline' })} Connected — ${health.library?.total || 0} items, v${health.version || '2.0.0'}
+          ${icon('check-circle', { size: 14, className: 'icon icon-inline' })} Connected — Vault v${escapeHtml(health.version || '3.0.0')}
           ${setupStatus ? `<br><span style="margin-left:16px;">Setup: ${setupStatus.needsSetup ? 'required' : 'complete'}</span>` : ''}
         </div>
       `;
@@ -464,7 +491,10 @@ export class OnboardingManager {
         existingBox.className = setupStatus.needsSetup ? 'onboarding-success' : 'onboarding-error';
         existingBox.innerHTML = setupStatus.needsSetup
           ? `${icon('check-circle', { size: 14, className: 'icon icon-inline' })} Server reachable — <strong>setup required</strong>. No config.json found, you'll create it next.`
-          : `${icon('alert-triangle', { size: 14, className: 'icon icon-inline' })} Server already configured (user: ${setupStatus.current?.username || 'unknown'}). You can skip to login or re-configure.`;
+          : `${icon('alert-triangle', { size: 14, className: 'icon icon-inline' })} Server already configured. Skip to sign in, or sign in as an admin to re-configure.`;
+
+        const codeBox = document.getElementById('ob-setup-code-box');
+        if (codeBox) codeBox.innerHTML = this.renderSetupCode();
 
         // Show skip button
         const skipBtn = document.getElementById('onboarding-skip');
@@ -878,6 +908,7 @@ export class OnboardingManager {
           return;
         }
       }
+      if (!(await this.confirmSetupCode())) return;
       if (this.importAfterConnect) {
         this.importAfterConnect = false;
         this.currentStep = 3;
@@ -904,6 +935,30 @@ export class OnboardingManager {
     } else {
       // Final step — complete setup
       await this.completeSetup();
+    }
+  }
+
+  /** Step 2 → 3: check the setup code with the server before going on. */
+  async confirmSetupCode() {
+    const st = this.setupStatus;
+    if (!st || !st.needsSetup || !st.setupCodeRequired) return true;
+    const input = document.getElementById('ob-setup-code');
+    const value = (input?.value || '').trim();
+    if (!value) {
+      toast.error('Enter the setup code shown in the Vault server window');
+      input?.focus();
+      return false;
+    }
+    try {
+      api.setSetupCode(value);
+      await api.checkSetupCode(value);
+      return true;
+    } catch (err) {
+      api.setSetupCode('');
+      toast.error(err.message || 'That setup code didn’t work');
+      input?.focus();
+      input?.select();
+      return false;
     }
   }
 
@@ -951,6 +1006,7 @@ export class OnboardingManager {
       };
 
       const result = await api.completeSetup(payload);
+      api.setSetupCode(''); // spent: the server forgets it too
 
       if (statusEl) {
         statusEl.innerHTML = `

@@ -22,7 +22,9 @@ let attempts = new Map();
 // completed login clears every budget, and neither step's failures can
 // lock the other step. (A password holder also can't reset the grid
 // budget by re-submitting the password, so grid guessing stays capped.)
-const STAGES = ['password', 'second', 'setup'];
+// 'subsonic': wrong passwords from Subsonic music apps (own budget, so a
+// misconfigured app can't lock you out of the sign-in screen).
+const STAGES = ['password', 'second', 'setup', 'subsonic'];
 
 function stageKey(ip, stage) {
   return `${ip}|${stage}`;

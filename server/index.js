@@ -58,6 +58,12 @@ libraryService.init();
 
 // Express app
 const app = express();
+// Only a proxy on this computer (Vault's own Cloudflare tunnel, or one the
+// owner runs) may say who the visitor really is. Without this every remote
+// visitor looked like 127.0.0.1, so per-IP lockouts and the signed-in
+// devices list couldn't tell them apart. Forwarding headers sent by devices
+// on the network are still ignored.
+app.set('trust proxy', 'loopback');
 
 // Middleware
 // Content-Security-Policy: previously disabled while the docs claimed CSP
@@ -156,21 +162,9 @@ fs.ensureDirSync(path.join(__dirname, 'media/videos'));
 fs.ensureDirSync(path.join(__dirname, 'uploads'));
 
 // Public routes (no auth)
-app.get('/api/health', (req, res) => {
-  const stats = libraryService.getStats();
-  res.json({
-    status: 'ok',
-    version: require('./package.json').version || '3.0.0',
-    uptime: process.uptime(),
-    library: {
-      total: stats.totalItems,
-      movies: stats.totalMovies,
-      music: stats.totalMusic,
-      videos: stats.totalVideos,
-    },
-    timestamp: new Date().toISOString(),
-  });
-});
+// Strangers only learn that a Vault answers here; library size and uptime
+// are for signed-in devices (routes/health.js).
+app.use('/api/health', require('./routes/health'));
 
 // Move to another server: export/import. Does its own auth per route — the
 // .zip download uses a short-lived link (so it can be opened on another
@@ -419,6 +413,13 @@ function onListenError(err) {
 }
 
 async function onServerStart() {
+  // Brand-new server: print the code other devices need to set it up.
+  try {
+    const cfg = fs.readJsonSync(require('./config').CONFIG_PATH, { throws: false });
+    if (!cfg?.auth?.passwordHash) require('./services/setupGuard').announce(logger);
+  } catch { /* no config yet */
+    require('./services/setupGuard').announce(logger);
+  }
   // Keep the computer from idle-sleeping (screen lock → sleep a few minutes
   // later → every device loses the server). Released when this process ends.
   if (keepAwakeEnabled()) {

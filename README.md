@@ -5,6 +5,7 @@
 You run a small server on your own computer and open the app in your browser. Your files never leave your house.
 
 - **App:** https://kokonut-dev.github.io/Vault-V2/ — or `http://localhost:4000`, served by your own server
+- **What it looks like:** https://kokonut-dev.github.io/Vault-V2/landing.html — features, screenshots and themes on one page
 - **Runs on:** Linux, macOS and Windows (or Docker)
 - **Needs:** Node.js 20+, git, and ffmpeg + ffprobe (bundled automatically on most systems) — full list in [Requirements and dependencies](#requirements-and-dependencies)
 
@@ -201,6 +202,8 @@ The first time you open Vault, a 6-step wizard appears:
 
 You're signed in automatically. Next time: username + password, then your 8 squares.
 
+**Setting up from another device** (a headless server, a NAS or Docker)? The wizard asks for a **setup code**. It's printed in the server window when Vault starts, and saved in `server/data/setup-code.txt` (with Docker: `docker compose logs vault`). This stops anyone else on your network from claiming a brand-new server before you do. On the computer running Vault, no code is needed.
+
 ---
 
 ## Keep it running
@@ -300,7 +303,7 @@ For private files, add an API key or OAuth client ID in **Settings → Links & i
 
 ## Daily use
 
-- **Home** — continue watching, recently added, picks
+- **Home** — pick up where you left off, next episodes, a tile per library, what's new per type, favourites and your week; a new library gets a step-by-step welcome
 - **Movies & Series, TV Shows, Music, Artists, Audiobooks, Videos, Podcasts, Comics** — grid or list, sort and filter
 - **Live TV & DVR** — M3U/IPTV channels, played through the server. Add as many channel lists as you like (**Settings → Live TV → More channel lists**), each with its own guide and a streams-at-once limit so you never go over a provider's connection limit. Channels are grouped by list, and you can filter and search them.
 - **My List, Playlists, Favourites, History** — your collections and where you left off
@@ -335,9 +338,51 @@ If the phone can't connect, the dialog explains why. Usually Vault is set to *th
 **From anywhere** (mobile data, work, a friend's house)
 1. Pick **Anywhere** → **Turn on remote access**.
 2. The first time, Vault downloads Cloudflare's small tunnel program (checksum-verified, about 40 MB) and gives you a private `https://…trycloudflare.com` address with its own QR code.
-3. Your password and grid still protect Vault. Turn it off from the same place. You can also have it start with the server.
+3. Your password and grid still protect Vault. It **turns itself off after 8 hours** (choose 1, 4, 8, 24 hours or never), or turn it off from the same place. You can also have it start with the server.
+
+Every sharing screen has a **How this is protected** panel. The full list is under [Security](#security).
 
 Prefer your own setup? `cloudflared tunnel --url http://localhost:4000`, Tailscale and ngrok all work. For a trusted local HTTPS certificate, use `npm run generate-cert` in `server/` (see *Mixed content* below).
+
+---
+
+## Security
+
+Vault is built so that using it doesn't open up your home network. Here is what it does, and what it can't promise.
+
+**What Vault never does**
+- It never opens ports on your router. From the internet, your home network looks the same as before. The one exception is the optional torrent downloader: it has a *UPnP / NAT-PMP* setting that can open its own port. It's off by default, so leave it off unless you really need it.
+- It only answers on its own port (4000). It gives no access to your other devices, your router or files outside your media folders.
+- The **Anywhere** address doesn't change that. This computer connects *out* to Cloudflare, so your home IP address stays hidden.
+
+**Who can get in**
+- **Sign-in always needs two steps:** your password, then your grid pattern (or an authenticator code, if you turn that on in **Settings → Security**). Recovery codes are there if you lose your phone.
+- **Guessing doesn't work.** After 5 wrong tries, that device is locked out for 15 minutes. Each stage counts separately: password, second step, setup code and Subsonic. Behind the tunnel, each visitor is counted by their own address, not as one shared one.
+- **Every device is listed** in **Settings → Devices**, with its address and a *Remote access* badge if it came in through the Anywhere address. Sign any device out there; changing your password signs out every other device.
+- **Profiles keep their limits.** A kids' profile can't change server settings, turn on remote access or add a device with more rights than it has.
+
+**Sharing access**
+
+| What | Protection |
+|---|---|
+| Sign-in QR code / 6-digit code | Works once, expires after 5 minutes, signs in only as *your* profile. Wrong codes are throttled per device and for the whole server. |
+| A TV asking to be approved | You always see a confirmation with where the device is (this computer, your network or the internet). Opening a pairing link someone sent you never approves it by itself. At most 3 waiting codes per address and 20 in total, so nobody can flood the code space. |
+| Same Wi-Fi address | Only works inside your home network, and devices still have to sign in. It's plain `http://`, so avoid it on public Wi-Fi (use Anywhere, or `npm run generate-cert` for HTTPS). |
+| Anywhere (Cloudflare tunnel) | Uses `https`, with a random address that changes each time. Turns itself off after 8 hours by default. Admins only. |
+| Transfer download link | Admins only, works for one download, expires after 2 hours. It contains your settings, so keep it to yourself. |
+| Subsonic apps | Off until you set a separate Subsonic password. Your Vault password is never accepted there, because Subsonic can't ask for the second step. Wrong passwords lock that device out. |
+| A brand-new server | Only the computer running it can set it up without the setup code. Another device needs the code printed in the server window. The same applies to importing a transfer package. |
+
+**Behind the scenes:** strangers get very little from the server. `/api/health` only returns `ok` and the version, and `/api/setup/status` shows no username or folders. Sign-in tokens are tied to a device and can be revoked. Media links carry read-only tokens that expire, and those are blanked out in the logs. The browser app sends a strict Content-Security-Policy, refuses to be framed, and sends no referrer. Vault doesn't use cookies, so other websites can't act as you.
+
+**What no app can promise.** Vault can't make an absolute guarantee, and neither can any other app. What you do matters too:
+1. Use a **strong, unique password** and turn on an **authenticator app** (Settings → Security).
+2. Leave **Anywhere** off when you don't need it, or keep the automatic switch-off.
+3. Check **Settings → Devices** now and then, and sign out anything you don't recognise.
+4. Keep Vault, Node.js and your computer updated.
+5. Want a private link that only your own devices can open, with no public address at all? Use [Tailscale](https://tailscale.com) instead of the Anywhere tab. Cloudflare carries tunnel traffic and could technically read it.
+
+Found a security problem? Please open a private security advisory on GitHub (**Security → Report a vulnerability**) rather than a public issue.
 
 ---
 

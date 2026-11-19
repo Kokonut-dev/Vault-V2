@@ -1,0 +1,490 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <title>Vault — your own Netflix and Spotify, on your own computer</title>
+  <meta name="description" content="Vault is a free, open-source media server you run at home. Films, shows, music, audiobooks and podcasts in a beautiful app on every screen — no cloud, no tracking, no subscriptions.">
+  <meta name="theme-color" content="#161719">
+  <meta property="og:title" content="Vault — your own Netflix and Spotify, on your own computer">
+  <meta property="og:description" content="A free, open-source media server you run at home. No cloud, no tracking, no subscriptions.">
+  <meta property="og:type" content="website">
+  <meta property="og:image" content="./landing/home-dark.jpg">
+  <link rel="icon" type="image/svg+xml" href="./favicon.svg">
+  <script>
+    (function () {
+      try {
+        var t = localStorage.getItem('vault_theme')
+          || (window.matchMedia && matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark');
+        if (/^(dark|light|warm|cold|midnight|white)$/.test(t)) document.documentElement.setAttribute('data-theme', t);
+        // Seen once: the app on GitHub Pages stops sending first-time visitors here.
+        localStorage.setItem('vault_seen_landing', '1');
+      } catch (e) { /* storage blocked */ }
+    })();
+  </script>
+  <!-- Theme tokens + self-hosted fonts shared with the app; the rest is inline. -->
+  <link rel="preload" href="./fonts/figtree-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="preload" href="./fonts/fraunces-latin-full-normal.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="./css/variables.css">
+  <link rel="stylesheet" href="./css/fonts.css">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; }
+    html { scroll-behavior: smooth; -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }
+    @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } *, *::before, *::after { animation: none !important; transition: none !important; } }
+    body {
+      margin: 0;
+      font-family: var(--font-sans);
+      font-size: 1rem;
+      line-height: 1.6;
+      color: var(--text-primary);
+      background: var(--bg-primary);
+    }
+    img { max-width: 100%; height: auto; display: block; }
+    a { color: var(--accent-text); text-underline-offset: 3px; }
+    h1, h2, h3 { margin: 0; line-height: 1.12; text-wrap: balance; }
+    p { margin: 0; }
+    code, pre { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+    :focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 3px; border-radius: 6px; }
+    .wrap { width: min(1160px, 100% - 40px); margin-inline: auto; }
+    .display {
+      font-family: var(--font-display);
+      font-variation-settings: var(--display-soft);
+      font-optical-sizing: auto;
+      font-weight: var(--fw-display);
+      letter-spacing: var(--tracking-display);
+    }
+    .overline {
+      font-size: var(--text-xs);
+      font-weight: var(--fw-strong);
+      letter-spacing: var(--tracking-overline);
+      text-transform: uppercase;
+      color: var(--accent-text);
+    }
+    .muted { color: var(--text-secondary); }
+    .skip { position: absolute; left: 12px; top: -60px; padding: 10px 14px; background: var(--accent-solid); color: var(--on-accent); border-radius: 10px; z-index: 10; }
+    .skip:focus { top: 12px; }
+
+    /* Buttons */
+    .btn {
+      display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+      min-height: 46px; padding: 0 20px; border-radius: 999px;
+      font: inherit; font-weight: var(--fw-strong); text-decoration: none; white-space: nowrap;
+      border: 1px solid var(--border-control); color: var(--text-primary); background: var(--surface-raised);
+      cursor: pointer; transition: background .15s ease, border-color .15s ease, transform .15s ease;
+    }
+    .btn:hover { background: var(--surface-elevated); border-color: var(--text-secondary); }
+    .btn-primary { background: var(--accent-solid); color: var(--on-accent); border-color: var(--accent-solid); }
+    .btn-primary:hover { background: var(--btn-accent-end, var(--accent-solid)); border-color: var(--btn-accent-end, var(--accent-solid)); color: var(--on-accent); }
+    .btn svg { flex-shrink: 0; }
+    .btn-sm { min-height: 36px; padding: 0 14px; font-size: var(--text-sm); }
+
+    /* Header */
+    .top { position: sticky; top: 0; z-index: 5; background: color-mix(in srgb, var(--bg-primary) 86%, transparent); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); border-bottom: 1px solid var(--border-subtle); }
+    .top-inner { display: flex; align-items: center; gap: 24px; min-height: 68px; }
+    .brand { display: inline-flex; align-items: center; gap: 10px; color: var(--text-primary); text-decoration: none; font-size: 1.35rem; }
+    .brand-tile { fill: var(--accent-solid); }
+    .brand-arch { fill: var(--on-accent); }
+    .top nav { margin-left: auto; }
+    .top nav ul { display: flex; gap: 4px; list-style: none; margin: 0; padding: 0; }
+    .top nav a { display: inline-block; padding: 8px 12px; border-radius: 999px; color: var(--text-secondary); text-decoration: none; font-weight: var(--fw-medium); }
+    .top nav a:hover { color: var(--text-primary); background: var(--surface-raised); }
+
+    /* Hero */
+    .hero { padding: clamp(48px, 9vw, 104px) 0 0; overflow: hidden; position: relative; }
+    .hero::before {
+      content: ''; position: absolute; inset: -20% -10% auto; height: 760px; z-index: -1; pointer-events: none;
+      background: radial-gradient(50% 50% at 50% 30%, var(--accent-muted), transparent 70%);
+    }
+    .hero-copy { display: grid; justify-items: center; text-align: center; gap: 20px; max-width: 820px; margin-inline: auto; }
+    .hero h1 { font-size: clamp(2.5rem, 1.2rem + 5.2vw, 5rem); line-height: 1.02; }
+    .hero h1 em { font-style: italic; color: var(--accent-text); }
+    .lede { font-size: clamp(1.0625rem, 1rem + .4vw, 1.3125rem); color: var(--text-secondary); max-width: 60ch; }
+    .hero-actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 12px; margin-top: 8px; }
+    .pills { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px 18px; list-style: none; padding: 0; margin: 4px 0 0; color: var(--text-secondary); font-size: var(--text-sm); }
+    .pills li { display: inline-flex; align-items: center; gap: 6px; }
+    .pills svg { color: var(--accent-text); }
+
+    .stage { position: relative; margin: clamp(40px, 6vw, 72px) auto 0; max-width: 1080px; padding-bottom: 40px; }
+    .frame {
+      border-radius: 18px; overflow: hidden; background: var(--surface-raised);
+      border: 1px solid var(--border-strong);
+      box-shadow: 0 40px 100px -40px rgb(0 0 0 / .55), 0 0 0 1px rgb(0 0 0 / .04);
+    }
+    .frame-bar { display: flex; align-items: center; gap: 7px; padding: 10px 14px; border-bottom: 1px solid var(--border-subtle); }
+    .frame-bar span { width: 11px; height: 11px; border-radius: 50%; background: var(--border-strong); }
+    .frame-bar small { margin-left: 12px; font-size: var(--text-xs); color: var(--text-secondary); }
+    .phone {
+      position: absolute; right: -24px; bottom: 0; width: clamp(150px, 20%, 220px);
+      border-radius: 30px; overflow: hidden; border: 6px solid #0d0d0e;
+      box-shadow: 0 30px 70px -20px rgb(0 0 0 / .6);
+    }
+    @media (max-width: 1180px) { .phone { right: 8px; } }
+    @media (max-width: 640px) { .phone { display: none; } .frame-bar small { display: none; } }
+
+    /* Sections */
+    section.block { padding: clamp(64px, 9vw, 112px) 0; }
+    section.alt { background: var(--bg-secondary); border-block: 1px solid var(--border-subtle); }
+    .section-head { display: grid; gap: 12px; max-width: 680px; margin-bottom: clamp(32px, 5vw, 56px); }
+    .section-head h2 { font-size: clamp(2rem, 1.3rem + 2.4vw, 3rem); }
+    .section-head p { font-size: var(--text-md); color: var(--text-secondary); }
+    .center { margin-inline: auto; text-align: center; justify-items: center; }
+
+    /* Features */
+    .features { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 320px), 1fr)); gap: 16px; list-style: none; margin: 0; padding: 0; }
+    .feature { display: grid; gap: 10px; align-content: start; padding: 26px; border-radius: 20px; background: var(--surface-raised); border: 1px solid var(--border-subtle); }
+    .feature-icon { display: inline-flex; align-items: center; justify-content: center; width: 44px; height: 44px; border-radius: 12px; background: var(--accent-muted); color: var(--accent-text); margin-bottom: 6px; }
+    .feature h3 { font-size: 1.25rem; }
+    .feature p { color: var(--text-secondary); font-size: .975rem; }
+
+    /* Gallery */
+    .gallery { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 24px; align-items: start; }
+    .shot { margin: 0; display: grid; gap: 12px; }
+    .shot figcaption { font-size: var(--text-sm); color: var(--text-secondary); }
+    .shot figcaption strong { color: var(--text-primary); font-weight: var(--fw-strong); }
+    @media (max-width: 860px) { .gallery { grid-template-columns: 1fr; } }
+    .theme-band {
+      display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.3fr); gap: 24px; align-items: center;
+      margin-top: 40px; padding: 28px; border-radius: 20px; background: var(--surface-raised); border: 1px solid var(--border-subtle);
+    }
+    .theme-band h3 { font-size: 1.35rem; margin-bottom: 8px; }
+    @media (max-width: 860px) { .theme-band { grid-template-columns: 1fr; } }
+
+    /* Themes */
+    .themes { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 10px; }
+    @media (max-width: 860px) { .themes { justify-content: flex-start; } }
+    .theme-btn { display: inline-flex; align-items: center; gap: 10px; padding: 8px 16px 8px 8px; border-radius: 999px; border: 1px solid var(--border-control); background: var(--surface-raised); color: var(--text-primary); font: inherit; font-weight: var(--fw-medium); cursor: pointer; }
+    .theme-btn[aria-pressed="true"] { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
+    .theme-swatch { display: inline-flex; width: 30px; height: 30px; border-radius: 50%; overflow: hidden; border: 1px solid var(--border-strong); }
+    .theme-swatch i { flex: 1; }
+    .theme-mode { color: var(--text-secondary); font-size: var(--text-xs); }
+
+    /* How it works */
+    .steps { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; list-style: none; padding: 0; margin: 0; counter-reset: step; }
+    .step { position: relative; padding: 28px 26px; border-radius: 20px; background: var(--surface-raised); border: 1px solid var(--border-subtle); display: grid; gap: 10px; align-content: start; }
+    .step-n { display: inline-flex; align-items: center; justify-content: center; width: 36px; height: 36px; border-radius: 50%; background: var(--accent-solid); color: var(--on-accent); font-weight: var(--fw-strong); }
+    .step h3 { font-size: 1.2rem; }
+    .step p { color: var(--text-secondary); font-size: .975rem; }
+    @media (max-width: 860px) { .steps { grid-template-columns: 1fr; } }
+
+    /* Install */
+    .install { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); gap: 20px; align-items: start; }
+    @media (max-width: 900px) { .install { grid-template-columns: 1fr; } }
+    .tabs { display: inline-flex; gap: 4px; padding: 4px; border-radius: 999px; background: var(--surface-sunken); border: 1px solid var(--border-control); margin-bottom: 14px; }
+    .tab { padding: 8px 16px; border-radius: 999px; border: 0; background: transparent; color: var(--text-secondary); font: inherit; font-weight: var(--fw-strong); cursor: pointer; }
+    .tab[aria-selected="true"] { background: var(--accent-solid); color: var(--on-accent); }
+    .code { position: relative; border-radius: 18px; background: var(--surface-sunken); border: 1px solid var(--border-subtle); }
+    .code pre { margin: 0; padding: 22px 22px 22px; overflow-x: auto; font-size: .92rem; line-height: 1.9; color: var(--text-primary); }
+    .code .c { color: var(--text-secondary); }
+    .code .p { color: var(--accent-text); user-select: none; }
+    .copy { position: absolute; top: 12px; right: 12px; }
+    .after { margin-top: 14px; color: var(--text-secondary); font-size: .975rem; }
+    .needs { display: grid; gap: 14px; padding: 26px; border-radius: 20px; background: var(--surface-raised); border: 1px solid var(--border-subtle); }
+    .needs h3 { font-size: 1.2rem; }
+    .needs ul { margin: 0; padding: 0; list-style: none; display: grid; gap: 10px; }
+    .needs li { display: grid; grid-template-columns: auto 1fr; gap: 10px; color: var(--text-secondary); }
+    .needs li strong { color: var(--text-primary); }
+    .needs li svg { color: var(--accent-text); margin-top: 4px; }
+
+    /* CTA + footer */
+    .cta { text-align: center; display: grid; gap: 18px; justify-items: center; }
+    .cta h2 { font-size: clamp(2rem, 1.3rem + 2.4vw, 3rem); }
+    footer { padding: 32px 0 48px; border-top: 1px solid var(--border-subtle); color: var(--text-secondary); font-size: var(--text-sm); }
+    .foot { display: flex; flex-wrap: wrap; gap: 12px 24px; align-items: center; justify-content: space-between; }
+    .foot ul { display: flex; flex-wrap: wrap; gap: 4px 18px; list-style: none; margin: 0; padding: 0; }
+
+    @media (max-width: 760px) {
+      .top nav { display: none; }
+      .top .btn { margin-left: auto; }
+    }
+    .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+  </style>
+</head>
+<body>
+  <a class="skip" href="#main">Skip to content</a>
+
+  <header class="top">
+    <div class="wrap top-inner">
+      <a class="brand display" href="./landing.html" aria-label="Vault home">
+        <svg width="34" height="34" viewBox="0 0 64 64" aria-hidden="true"><rect class="brand-tile" width="64" height="64" rx="16"/><path class="brand-arch" fill-rule="evenodd" d="M14 54V32a18 18 0 0 1 36 0v22Zm13.5-24v16.5L41 38.25Z"/></svg>
+        Vault
+      </a>
+      <nav aria-label="Page sections">
+        <ul>
+          <li><a href="#features">Features</a></li>
+          <li><a href="#screenshots">Screenshots</a></li>
+          <li><a href="#how">How it works</a></li>
+          <li><a href="#install">Install</a></li>
+          <li><a href="https://github.com/Kokonut-dev/Vault-V2">GitHub</a></li>
+        </ul>
+      </nav>
+      <a class="btn btn-sm btn-primary" href="./?app=1" data-open-app>Open Vault</a>
+    </div>
+  </header>
+
+  <main id="main">
+    <section class="hero" aria-labelledby="hero-title">
+      <div class="wrap">
+        <div class="hero-copy">
+          <p class="overline">Free · Open source · Self-hosted</p>
+          <h1 class="display" id="hero-title">Your own Netflix and Spotify, <em>on your own computer.</em></h1>
+          <p class="lede">Vault turns the films, shows, music, audiobooks and podcasts on your drives into a beautiful app for every screen in the house. Your files never leave home.</p>
+          <div class="hero-actions">
+            <a class="btn btn-primary" href="#install">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M5 21h14"/></svg>
+              Install Vault
+            </a>
+            <a class="btn" href="https://github.com/Kokonut-dev/Vault-V2">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 .5a11.5 11.5 0 0 0-3.64 22.41c.58.1.79-.25.79-.56v-2c-3.2.7-3.88-1.37-3.88-1.37-.53-1.33-1.28-1.69-1.28-1.69-1.05-.71.08-.7.08-.7 1.16.08 1.77 1.19 1.77 1.19 1.03 1.77 2.7 1.26 3.36.96.1-.75.4-1.26.73-1.55-2.55-.29-5.24-1.28-5.24-5.68 0-1.26.45-2.28 1.19-3.09-.12-.29-.52-1.46.11-3.05 0 0 .97-.31 3.17 1.18a11 11 0 0 1 5.77 0c2.2-1.49 3.17-1.18 3.17-1.18.63 1.59.23 2.76.11 3.05.74.81 1.19 1.83 1.19 3.09 0 4.41-2.69 5.39-5.25 5.67.41.36.78 1.06.78 2.14v3.17c0 .31.21.67.8.56A11.5 11.5 0 0 0 12 .5Z"/></svg>
+              View on GitHub
+            </a>
+          </div>
+          <ul class="pills">
+            <li><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>No cloud</li>
+            <li><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>No tracking</li>
+            <li><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>No subscriptions</li>
+            <li><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>Linux, macOS, Windows &amp; Docker</li>
+          </ul>
+        </div>
+
+        <div class="stage">
+          <div class="frame">
+            <div class="frame-bar" aria-hidden="true"><span></span><span></span><span></span><small>localhost:4000</small></div>
+            <img src="./landing/home-dark.jpg" width="1440" height="900" alt="The Vault home screen: a greeting, a large “Continue watching” banner for a film, shortcuts to Films, TV shows, Music, Audiobooks and Videos, and a row of titles in progress.">
+          </div>
+          <img class="phone" src="./landing/home-mobile.jpg" width="780" height="1688" alt="The same home screen on a phone, in the Sepia theme." loading="lazy">
+        </div>
+      </div>
+    </section>
+
+    <section class="block" id="features" aria-labelledby="features-title">
+      <div class="wrap">
+        <div class="section-head">
+          <p class="overline">Features</p>
+          <h2 class="display" id="features-title">Everything you'd pay three subscriptions for.</h2>
+          <p>Point Vault at your folders. It finds new files on its own, reads their tags and artwork, and gives each kind of media the player it deserves.</p>
+        </div>
+        <ul class="features">
+          <li class="feature">
+            <span class="feature-icon" aria-hidden="true"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="18" rx="2"/><path d="M7 3v18M17 3v18M2 9h5M2 15h5M17 9h5M17 15h5"/></svg></span>
+            <h3 class="display">A library that keeps itself tidy</h3>
+            <p>Watches your folders and adds new files automatically. Posters, album art, seasons and episodes, typo-tolerant search — and when a tag is wrong, edit it once and it stays fixed.</p>
+          </li>
+          <li class="feature">
+            <span class="feature-icon" aria-hidden="true"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="14" rx="2"/><path d="m10 8 5 3-5 3Z"/><path d="M8 21h8"/></svg></span>
+            <h3 class="display">A proper video player</h3>
+            <p>Timeline previews, subtitles (SRT, VTT, ASS), skip intro, next-episode countdown, Picture-in-Picture and speed control. Formats your browser can't play are converted on the fly.</p>
+          </li>
+          <li class="feature">
+            <span class="feature-icon" aria-hidden="true"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg></span>
+            <h3 class="display">Music that sounds right</h3>
+            <p>Gapless playback, crossfade, a 10-band equaliser with presets, lyrics, a full-screen Now Playing and lock-screen controls on your phone.</p>
+          </li>
+          <li class="feature">
+            <span class="feature-icon" aria-hidden="true"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 14h3a2 2 0 0 1 2 2v3a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-7a9 9 0 0 1 18 0v7a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3"/></svg></span>
+            <h3 class="display">Books, podcasts and comics too</h3>
+            <p>Audiobooks remember your place, podcasts update from their feeds, and comics open in a reader. Live TV &amp; DVR from your IPTV lists, if you have them.</p>
+          </li>
+          <li class="feature">
+            <span class="feature-icon" aria-hidden="true"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg></span>
+            <h3 class="display">For the whole household</h3>
+            <p>Profiles with their own history and favourites, watch-together rooms with SyncPlay, listening stats, and an installable app for phones, tablets and TVs.</p>
+          </li>
+          <li class="feature">
+            <span class="feature-icon" aria-hidden="true"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z"/><path d="m9 12 2 2 4-4"/></svg></span>
+            <h3 class="display">Private, and locked tight</h3>
+            <p>Everything streams straight from your computer. Sign-in takes a password plus an 8-of-16 picture grid, with lockouts, rate limits and short-lived tokens.</p>
+          </li>
+        </ul>
+      </div>
+    </section>
+
+    <section class="block alt" id="screenshots" aria-labelledby="shots-title">
+      <div class="wrap">
+        <div class="section-head">
+          <p class="overline">Screenshots</p>
+          <h2 class="display" id="shots-title">Made to feel premium, on every screen.</h2>
+          <p>Neutral chrome so your artwork keeps its own colours, one calm accent, and a layout that fits a phone as well as a TV.</p>
+        </div>
+        <div class="gallery">
+          <figure class="shot">
+            <div class="frame"><img src="./landing/music-dark.jpg" width="1440" height="900" alt="The Music library as a grid of album covers, with filters for tracks, artists, albums and genres, and Play all and Shuffle buttons." loading="lazy"></div>
+            <figcaption><strong>Music.</strong> Browse by track, artist, album or genre — then press play and keep browsing.</figcaption>
+          </figure>
+          <figure class="shot">
+            <div class="frame"><img src="./landing/welcome-light.jpg" width="1440" height="900" alt="The welcome screen of a brand-new Vault, in the light Stone theme, with three steps: add files to your media folders, upload from this device, and get Vault on your phone and TV." loading="lazy"></div>
+            <figcaption><strong>A friendly start.</strong> A new Vault walks you through adding media and reaching it from your phone.</figcaption>
+          </figure>
+        </div>
+        <div class="theme-band">
+          <div>
+            <h3 class="display">Six themes, all easy on the eyes</h3>
+            <p class="muted">Dark, light, sepia and true-black for OLED screens — every one tested for <abbr title="Web Content Accessibility Guidelines">WCAG</abbr> AAA contrast. Try them on this page; Vault opens in the one you pick.</p>
+          </div>
+          <div class="themes" role="group" aria-label="Preview a theme" id="theme-picker"></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="block" id="how" aria-labelledby="how-title">
+      <div class="wrap">
+        <div class="section-head">
+          <p class="overline">How it works</p>
+          <h2 class="display" id="how-title">A small server at home. The app anywhere.</h2>
+          <p>The app holds no data of its own. It talks to the Vault server on your computer, which streams your files straight to the screen you're watching on. Nothing is uploaded anywhere.</p>
+        </div>
+        <ol class="steps">
+          <li class="step">
+            <span class="step-n" aria-hidden="true">1</span>
+            <h3 class="display">Run Vault on your computer</h3>
+            <p>One command installs it. Keep it running in the background on a desktop, a laptop that stays on, a NAS or a mini PC.</p>
+          </li>
+          <li class="step">
+            <span class="step-n" aria-hidden="true">2</span>
+            <h3 class="display">Pick your folders</h3>
+            <p>A setup wizard asks where your films, shows and music live and sets up your sign-in. Vault indexes everything and fetches artwork.</p>
+          </li>
+          <li class="step">
+            <span class="step-n" aria-hidden="true">3</span>
+            <h3 class="display">Watch on any screen</h3>
+            <p>Open it in a browser on your Wi-Fi, or scan a QR code on your phone. Switch on remote access for a private HTTPS address when you're away.</p>
+          </li>
+        </ol>
+      </div>
+    </section>
+
+    <section class="block alt" id="install" aria-labelledby="install-title">
+      <div class="wrap">
+        <div class="section-head">
+          <p class="overline">Install</p>
+          <h2 class="display" id="install-title">Up and running in about five minutes.</h2>
+          <p>Copy these into a terminal. When it says Vault is running, open <a href="http://localhost:4000">http://localhost:4000</a> and the setup wizard takes it from there.</p>
+        </div>
+        <div class="install">
+          <div>
+            <div class="tabs" role="tablist" aria-label="Install method">
+              <button class="tab" type="button" role="tab" id="tab-node" aria-controls="panel-node" aria-selected="true">Node.js</button>
+              <button class="tab" type="button" role="tab" id="tab-docker" aria-controls="panel-docker" aria-selected="false" tabindex="-1">Docker</button>
+            </div>
+            <div class="code" role="tabpanel" id="panel-node" aria-labelledby="tab-node">
+              <pre><code><span class="p">$ </span>git clone https://github.com/Kokonut-dev/Vault-V2.git
+<span class="p">$ </span>cd Vault-V2
+<span class="p">$ </span>npm install
+<span class="p">$ </span>npm start
+<span class="c"># then open http://localhost:4000</span></code></pre>
+              <button class="btn btn-sm copy" type="button" data-copy="git clone https://github.com/Kokonut-dev/Vault-V2.git&#10;cd Vault-V2&#10;npm install&#10;npm start">Copy</button>
+            </div>
+            <div class="code" role="tabpanel" id="panel-docker" aria-labelledby="tab-docker" hidden>
+              <pre><code><span class="p">$ </span>git clone https://github.com/Kokonut-dev/Vault-V2.git
+<span class="p">$ </span>cd Vault-V2
+<span class="p">$ </span>docker compose up -d --build
+<span class="c"># then open http://localhost:4000</span></code></pre>
+              <button class="btn btn-sm copy" type="button" data-copy="git clone https://github.com/Kokonut-dev/Vault-V2.git&#10;cd Vault-V2&#10;docker compose up -d --build">Copy</button>
+            </div>
+            <p class="after">Updating later is <code>git pull</code>, <code>npm install</code> and a restart. The <a href="https://github.com/Kokonut-dev/Vault-V2#install">full guide</a> covers keeping Vault running after a restart, moving to a new computer and troubleshooting.</p>
+          </div>
+          <aside class="needs" aria-labelledby="needs-title">
+            <h3 class="display" id="needs-title">What you need</h3>
+            <ul>
+              <li><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg><span><strong>Node.js 20 or newer</strong> — the current LTS is recommended.</span></li>
+              <li><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg><span><strong>git</strong> — to download Vault and update it.</span></li>
+              <li><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg><span><strong>ffmpeg</strong> — downloaded for you by <code>npm install</code> on most systems.</span></li>
+              <li><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg><span><strong>About 300 MB</strong> of disk, plus room for your media.</span></li>
+            </ul>
+            <p class="muted">Already running Vault? <a href="./?app=1" data-open-app>Open the app</a> and connect to your server.</p>
+          </aside>
+        </div>
+      </div>
+    </section>
+
+    <section class="block" aria-labelledby="cta-title">
+      <div class="wrap cta">
+        <h2 class="display" id="cta-title">Your collection deserves better than a folder.</h2>
+        <p class="lede">Free and open source under the MIT licence.</p>
+        <div class="hero-actions">
+          <a class="btn btn-primary" href="#install">Install Vault</a>
+          <a class="btn" href="./?app=1" data-open-app>Open the app</a>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <div class="wrap foot">
+      <p>Vault · MIT licence · Made for people who still own their media.</p>
+      <ul>
+        <li><a href="https://github.com/Kokonut-dev/Vault-V2">GitHub</a></li>
+        <li><a href="https://github.com/Kokonut-dev/Vault-V2#features">Documentation</a></li>
+        <li><a href="https://github.com/Kokonut-dev/Vault-V2/issues">Report a problem</a></li>
+        <li><a href="https://github.com/Kokonut-dev/Vault-V2/blob/main/CHANGELOG.md">Changelog</a></li>
+      </ul>
+    </div>
+  </footer>
+
+  <script>
+    (function () {
+      // Theme preview — the same six themes as the app; the choice carries over.
+      var THEMES = [
+        ['dark', 'Graphite', 'Dark', ['#161719', '#26282A', '#93BFF0']],
+        ['cold', 'Dusk', 'Dark', ['#11181F', '#222A31', '#8ECED1']],
+        ['midnight', 'Ember', 'OLED', ['#000000', '#1B1917', '#EAC07F']],
+        ['white', 'Daylight', 'Light', ['#FFFFFF', '#F1F3F5', '#175098']],
+        ['light', 'Stone', 'Light', ['#F4F2EF', '#FDFBF9', '#005360']],
+        ['warm', 'Sepia', 'Light', ['#F6EBDA', '#FCF3E4', '#294875']]
+      ];
+      var root = document.documentElement;
+      var picker = document.getElementById('theme-picker');
+      function sync() {
+        var current = root.getAttribute('data-theme');
+        picker.querySelectorAll('button').forEach(function (b) { b.setAttribute('aria-pressed', String(b.dataset.theme === current)); });
+        var meta = document.querySelector('meta[name="theme-color"]');
+        var t = THEMES.find(function (x) { return x[0] === current; });
+        if (meta && t) meta.setAttribute('content', t[3][0]);
+      }
+      THEMES.forEach(function (t) {
+        var b = document.createElement('button');
+        b.type = 'button';
+        b.className = 'theme-btn';
+        b.dataset.theme = t[0];
+        b.innerHTML = '<span class="theme-swatch" aria-hidden="true"><i style="background:' + t[3][0] + '"></i><i style="background:' + t[3][1] + '"></i><i style="background:' + t[3][2] + '"></i></span><span>' + t[1] + ' <span class="theme-mode">' + t[2] + '</span></span>';
+        b.addEventListener('click', function () {
+          root.setAttribute('data-theme', t[0]);
+          try { localStorage.setItem('vault_theme', t[0]); } catch (e) {}
+          sync();
+        });
+        picker.appendChild(b);
+      });
+      sync();
+
+      // Install tabs (arrow keys move between them).
+      var tabs = Array.prototype.slice.call(document.querySelectorAll('[role="tab"]'));
+      function select(tab) {
+        tabs.forEach(function (t) {
+          var on = t === tab;
+          t.setAttribute('aria-selected', String(on));
+          t.tabIndex = on ? 0 : -1;
+          document.getElementById(t.getAttribute('aria-controls')).hidden = !on;
+        });
+      }
+      tabs.forEach(function (tab, i) {
+        tab.addEventListener('click', function () { select(tab); });
+        tab.addEventListener('keydown', function (e) {
+          if (e.key !== 'ArrowRight' && e.key !== 'ArrowLeft') return;
+          var next = tabs[(i + (e.key === 'ArrowRight' ? 1 : tabs.length - 1)) % tabs.length];
+          select(next);
+          next.focus();
+        });
+      });
+
+      // Copy buttons.
+      document.querySelectorAll('[data-copy]').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+          var text = btn.getAttribute('data-copy');
+          var done = function () { btn.textContent = 'Copied'; setTimeout(function () { btn.textContent = 'Copy'; }, 1600); };
+          if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text).then(done, function () { btn.textContent = 'Select and copy'; });
+          else btn.textContent = 'Select and copy';
+        });
+      });
+    })();
+  </script>
+</body>
+</html>

@@ -37,6 +37,8 @@ function create({ username, profileId = 'default', req, remember = false, label 
     device: label || describeDevice(ua),
     userAgent: ua.slice(0, 300),
     ip: req?.ip || req?.connection?.remoteAddress || 'unknown',
+    // Signed in through the Cloudflare tunnel (or another proxy on this computer).
+    remote: req ? require('../utils/clientAddress').cameThroughProxy(req) : false,
     remember: !!remember,
     createdAt: new Date().toISOString(),
     lastSeen: new Date().toISOString(),
