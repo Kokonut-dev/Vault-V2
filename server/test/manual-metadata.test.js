@@ -86,7 +86,15 @@ async function setup(t) {
     const listening = app.listen(0, '127.0.0.1', () => resolve(listening));
   });
   const baseUrl = `http://127.0.0.1:${server.address().port}`;
-  const token = jwt.sign({ profileId: 'default' }, jwtSecret, { expiresIn: '5m' });
+  // Tokens must belong to a device session; a stub session keeps this test
+  // away from the real sessions store.
+  const sessions = require('../services/sessions');
+  const realSessions = { isValid: sessions.isValid, touch: sessions.touch, get: sessions.get };
+  sessions.isValid = (sid) => sid === 'test-session' || realSessions.isValid(sid);
+  sessions.touch = (sid) => (sid === 'test-session' ? null : realSessions.touch(sid));
+  sessions.get = (sid) => (sid === 'test-session' ? { id: sid, profileId: 'default' } : realSessions.get(sid));
+  t.after(() => Object.assign(sessions, realSessions));
+  const token = jwt.sign({ profileId: 'default', sid: 'test-session' }, jwtSecret, { expiresIn: '5m' });
   const created = { ids: new Set(), files: new Set() };
 
   t.after(async () => {

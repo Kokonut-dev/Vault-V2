@@ -8,6 +8,7 @@
 import { api } from '../api.js';
 import { icon } from '../utils/icons.js';
 import { toast } from './toast.js';
+import { escapeHtml } from '../utils/format.js';
 
 let qrModule = null;
 async function loadQr() {
@@ -52,7 +53,7 @@ export async function renderQr(container, text, { size = 220 } = {}) {
     host.dataset.qrReady = 'true';
     return true;
   } catch (err) {
-    host.innerHTML = `<div class="empty-state"><div class="empty-state-message">QR library unavailable: ${err.message}</div></div>`;
+    host.innerHTML = `<div class="empty-state"><div class="empty-state-message">QR library unavailable: ${escapeHtml(err.message)}</div></div>`;
     return false;
   }
 }
@@ -105,7 +106,7 @@ export async function renderPairingPanel(container) {
     } catch (err) {
       code = '';
       codeHost.textContent = '······';
-      qrHost.innerHTML = `<div class="empty-state"><div class="empty-state-message">${err.message}</div></div>`;
+      qrHost.innerHTML = `<div class="empty-state"><div class="empty-state-message">${escapeHtml(err.message)}</div></div>`;
     }
   }
 

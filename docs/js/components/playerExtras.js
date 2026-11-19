@@ -8,7 +8,7 @@
 import { activeMedia, pauseActive } from '../utils/activeMedia.js';
 import { api } from '../api.js';
 import { icon } from '../utils/icons.js';
-import { formatTime } from '../utils/format.js';
+import { formatTime, escapeHtml } from '../utils/format.js';
 import { toast } from './toast.js';
 import { modal } from './modal.js';
 
@@ -199,7 +199,7 @@ export async function openBookmarks(item, onSeek) {
   backdrop.innerHTML = `
     <div class="modal" role="dialog" aria-modal="true" aria-label="Bookmarks">
       <div class="modal-header">
-        <div class="modal-title">${icon('bookmark', { size: 16 })}<span>Bookmarks — ${item.title}</span></div>
+        <div class="modal-title">${icon('bookmark', { size: 16 })}<span>Bookmarks — ${escapeHtml(item.title)}</span></div>
         <button class="modal-close" aria-label="Close">${icon('x', { size: 16 })}</button>
       </div>
       <div class="modal-body">

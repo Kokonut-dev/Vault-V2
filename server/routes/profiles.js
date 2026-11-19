@@ -71,8 +71,12 @@ router.put('/:id', (req, res) => {
     }
     // Changing or removing your own PIN needs the current one: otherwise
     // anyone handed an unlocked device could lock its owner out.
-    if (body.pin !== undefined && profiles.hasPin(self) && !profiles.checkPin(self, body.currentPin)) {
-      return res.status(403).json({ error: body.currentPin ? 'That PIN isn’t right' : 'Enter the current PIN to change it', code: 'PROFILE_PIN_REQUIRED' });
+    if (body.pin !== undefined && profiles.hasPin(self)) {
+      const check = profiles.verifyPin(self, body.currentPin);
+      if (!check.ok) {
+        const { status, body: error } = profiles.pinFailure(check, { missing: 'Enter the current PIN to change it' });
+        return res.status(status).json(error);
+      }
     }
   }
   try {
@@ -111,10 +115,14 @@ router.post('/:id/switch', (req, res) => {
   const profile = profiles.get(req.params.id);
   if (!profile) return res.status(404).json({ error: 'Profile not found', code: 'NOT_FOUND' });
 
-  if (profiles.hasPin(req.params.id) && !profiles.checkPin(req.params.id, req.body?.pin)) {
-    // 403, not 401: the client treats any 401 as an expired session and
-    // signs the user out, and a mistyped PIN must not do that.
-    return res.status(403).json({ error: req.body?.pin ? 'That PIN isn’t right' : 'Profile PIN required', code: 'PROFILE_PIN_REQUIRED' });
+  if (profiles.hasPin(req.params.id)) {
+    // 403 (or 429 when locked), not 401: the client treats any 401 as an
+    // expired session and signs the user out, and a mistyped PIN must not.
+    const check = profiles.verifyPin(req.params.id, req.body?.pin);
+    if (!check.ok) {
+      const { status, body } = profiles.pinFailure(check);
+      return res.status(status).json(body);
+    }
   }
 
   const authService = require('../services/authService');

@@ -7,41 +7,52 @@ const logger = require('../utils/logger');
 const links = require('../services/links');
 const { validateUrl } = require('../utils/safeFetch');
 const { requireAdmin, isAdminProfile } = require('../middleware/requireAdmin');
+const crypto = require('crypto');
+const sessions = require('../services/sessions');
+const authService = require('../services/authService');
+
+const SERVER_VERSION = require('../package.json').version;
+
+/** The settings a browser may see — never secrets (JWT secret, password hash, tokens). */
+function safeSettings(config) {
+  return {
+    server: {
+      port: config.server.port,
+      host: config.server.host,
+    },
+    media: {
+      paths: config.media.paths,
+      maxUploadSizeMB: config.media.maxUploadSizeMB,
+      thumbnail: config.media.thumbnail,
+      transcoding: {
+        enabled: config.media.transcoding.enabled,
+        cacheMaxSizeMB: config.media.transcoding.cacheMaxSizeMB,
+      },
+    },
+    auth: {
+      username: config.auth.username,
+      sessionTimeout: config.auth.sessionTimeout,
+      gridOrderMatters: config.auth.gridOrderMatters,
+      maxAttempts: config.auth.maxAttempts,
+      lockoutDurationMinutes: config.auth.lockoutDurationMinutes,
+    },
+    cors: config.cors,
+    version: SERVER_VERSION,
+  };
+}
 
 router.get('/', (req, res) => {
   try {
-    const config = getConfig();
-    // Return safe settings (no secrets)
-    res.json({
-      server: {
-        port: config.server.port,
-        host: config.server.host,
-      },
-      media: {
-        paths: config.media.paths,
-        maxUploadSizeMB: config.media.maxUploadSizeMB,
-        thumbnail: config.media.thumbnail,
-        transcoding: {
-          enabled: config.media.transcoding.enabled,
-          cacheMaxSizeMB: config.media.transcoding.cacheMaxSizeMB,
-        },
-      },
-      auth: {
-        username: config.auth.username,
-        sessionTimeout: config.auth.sessionTimeout,
-        gridOrderMatters: config.auth.gridOrderMatters,
-        maxAttempts: config.auth.maxAttempts,
-        lockoutDurationMinutes: config.auth.lockoutDurationMinutes,
-      },
-      cors: config.cors,
-      version: '2.0.0',
-    });
+    res.json(safeSettings(getConfig()));
   } catch (err) {
     res.status(500).json({ error: 'Failed to fetch settings' });
   }
 });
 
-router.put('/', (req, res) => {
+// Server-wide settings: admin profiles only. (This used to be open to every
+// profile — including Kids profiles — and answered with the raw config,
+// JWT secret and password hash included.)
+router.put('/', requireAdmin, (req, res) => {
   try {
     const config = getConfig();
     const { auth, cors } = req.body;
@@ -138,9 +149,8 @@ router.put('/', (req, res) => {
       }
     }
 
-    if (req.body.notifications && typeof req.body.notifications === 'object') {
-      config.notifications = { ...config.notifications, ...req.body.notifications };
-    }
+    // Notification targets are not taken here: PUT /notifications validates
+    // each link (SSRF guard) and keeps the secrets write-only.
     if (req.body.metadata && typeof req.body.metadata === 'object') {
       config.metadata = { ...config.metadata, ...req.body.metadata };
       if (req.body.metadata.providers) {
@@ -164,7 +174,7 @@ router.put('/', (req, res) => {
     saveConfig(config);
     logger.info('Settings updated');
 
-    res.json({ message: 'Settings updated', settings: config });
+    res.json({ message: 'Settings updated', settings: safeSettings(config) });
   } catch (err) {
     logger.error('Failed to update settings:', err.message);
     res.status(500).json({ error: 'Failed to update settings', details: err.message });
@@ -263,10 +273,17 @@ router.post('/notifications/test', requireAdmin, async (req, res) => {
   });
 });
 
-router.put('/credentials', (req, res) => {
+// The account's sign-in details: admin profiles only, like every other
+// server-wide setting.
+router.put('/credentials', requireAdmin, (req, res) => {
   try {
     const config = getConfig();
-    const { currentPassword, newUsername, newPassword, newGridPattern } = req.body;
+    const { currentPassword, newUsername, newPassword, newGridPattern } = req.body || {};
+    if ((currentPassword !== undefined && typeof currentPassword !== 'string')
+      || (newPassword !== undefined && newPassword !== null && typeof newPassword !== 'string')
+      || (newUsername !== undefined && newUsername !== null && typeof newUsername !== 'string')) {
+      return res.status(400).json({ error: 'Invalid credentials payload', code: 'INVALID' });
+    }
 
     if (!currentPassword) {
       return res.status(400).json({ error: 'Enter your current password to make changes', code: 'PASSWORD_REQUIRED', fields: { currentPassword: 'Enter your current password to make changes' } });
@@ -310,10 +327,27 @@ router.put('/credentials', (req, res) => {
       return res.status(400).json({ error: 'No changes provided' });
     }
 
+    // A new password or grid ends every other sign-in: other devices'
+    // sessions are revoked and the token-signing secret is rotated, so tokens
+    // issued before the change (or forged with a leaked secret) stop working.
+    // This device gets a fresh token for its own session.
+    const secretsChanged = Boolean(newPassword || newGridPattern);
+    if (secretsChanged) config.auth.jwtSecret = crypto.randomBytes(64).toString('hex');
     saveConfig(config);
     logger.info('Credentials updated');
 
-    res.json({ message: 'Credentials updated successfully' });
+    let token;
+    let signedOut = 0;
+    if (secretsChanged) {
+      signedOut = sessions.revokeOthers(req.user?.sid);
+      token = authService.generateAccessToken(config.auth.username, {
+        sid: req.user?.sid,
+        profileId: req.profileId || 'default',
+        remember: !!req.user?.remember,
+      });
+    }
+
+    res.json({ message: 'Credentials updated successfully', token, signedOut });
   } catch (err) {
     logger.error('Failed to update credentials:', err.message);
     res.status(500).json({ error: 'Failed to update credentials', details: err.message });

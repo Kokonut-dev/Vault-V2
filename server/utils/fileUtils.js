@@ -177,6 +177,44 @@ function writeJsonAtomic(filePath, data) {
 }
 
 /**
+ * Read a JSON data file for a store. A missing file gives `fallback`. A file
+ * that can't be parsed — or isn't the expected shape (array vs object) — is
+ * moved aside to `<file>.corrupt-<timestamp>` before `fallback` is used, so
+ * the next save can't overwrite the only copy of the user's data with an
+ * empty list. (Before, a single bad byte meant the whole history, playlists
+ * or library were silently replaced.)
+ *
+ * @param {string} filePath
+ * @param {*} fallback value used when the file is missing or unreadable
+ * @param {{ onCorrupt?: (info: { file: string, backup: string|null, error: string }) => void }} [options]
+ */
+function readJsonOrQuarantine(filePath, fallback, options = {}) {
+  if (!fs.existsSync(filePath)) return fallback;
+  let error;
+  try {
+    const value = fs.readJsonSync(filePath);
+    const wantArray = Array.isArray(fallback);
+    const okShape = wantArray ? Array.isArray(value)
+      : (fallback && typeof fallback === 'object') ? (value && typeof value === 'object' && !Array.isArray(value))
+        : true;
+    if (okShape) return value;
+    error = `expected ${wantArray ? 'a list' : 'an object'}`;
+  } catch (err) {
+    error = err.message;
+  }
+  let backup = `${filePath}.corrupt-${new Date().toISOString().replace(/[:.]/g, '-')}`;
+  try {
+    fs.moveSync(filePath, backup, { overwrite: false });
+  } catch {
+    backup = null;
+  }
+  const info = { file: filePath, backup, error };
+  if (options.onCorrupt) options.onCorrupt(info);
+  else console.error(`[Data] ${path.basename(filePath)} is unreadable (${error}); ${backup ? `kept a copy at ${backup}` : 'could not move it aside'} and started fresh.`);
+  return fallback;
+}
+
+/**
  * Wait for every in-flight atomic write (any module) to settle.
  * Called from libraryService.flush() on shutdown so nothing is lost.
  */
@@ -254,4 +292,5 @@ module.exports = {
   writeJsonAtomic,
   flushWrites,
   sendFileWithRange,
+  readJsonOrQuarantine,
 };

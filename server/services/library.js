@@ -2,7 +2,7 @@ const fs = require('fs-extra');
 const path = require('path');
 const { getConfig } = require('../config');
 const logger = require('../utils/logger');
-const { writeJsonAtomic } = require('../utils/fileUtils');
+const { writeJsonAtomic, readJsonOrQuarantine } = require('../utils/fileUtils');
 const { createJsonStore } = require('../utils/jsonStore');
 
 const LIBRARY_PATH = path.join(__dirname, '../data/library.json');
@@ -19,7 +19,11 @@ let history = [];
 // Indexes
 let idMap = new Map(); // id -> item
 let pathMap = new Map(); // path -> item (addItem used to find by path too)
-let typeIndex = { movie: [], music: [], video: [] };
+// Prototype-free, so a request for type "__proto__" or "constructor" (it
+// comes straight from the query string) finds nothing instead of
+// Object.prototype — that used to crash /api/library/search with a 500.
+const newTypeIndex = () => Object.assign(Object.create(null), { movie: [], music: [], video: [] });
+let typeIndex = newTypeIndex();
 let genreSet = new Set();
 
 // Debounced save timers
@@ -59,7 +63,7 @@ function mirrorSqlite(action, value) {
 
 function rebuildIndexes() {
   idMap.clear();
-  typeIndex = { movie: [], music: [], video: [] };
+  typeIndex = newTypeIndex();
   genreSet.clear();
   pathMap.clear();
   genreDirty = false;
@@ -75,18 +79,17 @@ function rebuildIndexes() {
   }
 }
 
+function logCorrupt({ file, backup, error }) {
+  logger.error(`${path.basename(file)} is unreadable (${error}); ${backup ? `a copy was kept at ${backup}` : 'it could not be moved aside'}. Starting with an empty list.`);
+}
+
 function loadLibrary() {
-  try {
-    if (fs.existsSync(LIBRARY_PATH)) {
-      library = fs.readJsonSync(LIBRARY_PATH);
-      logger.info(`Loaded ${library.length} items from library`);
-    } else {
-      library = [];
-      logger.info('No existing library, starting fresh');
-    }
-  } catch (err) {
-    logger.warn('Failed to load library:', err.message);
+  if (fs.existsSync(LIBRARY_PATH)) {
+    library = readJsonOrQuarantine(LIBRARY_PATH, [], { onCorrupt: logCorrupt });
+    logger.info(`Loaded ${library.length} items from library`);
+  } else {
     library = [];
+    logger.info('No existing library, starting fresh');
   }
   rebuildIndexes();
   return library;
@@ -108,15 +111,7 @@ function saveLibrary() {
 }
 
 function loadFavourites() {
-  try {
-    if (fs.existsSync(FAVOURITES_PATH)) {
-      favourites = fs.readJsonSync(FAVOURITES_PATH);
-    } else {
-      favourites = [];
-    }
-  } catch {
-    favourites = [];
-  }
+  favourites = readJsonOrQuarantine(FAVOURITES_PATH, [], { onCorrupt: logCorrupt });
   return favourites;
 }
 
@@ -133,15 +128,7 @@ function saveFavourites() {
 }
 
 function loadPlaylists() {
-  try {
-    if (fs.existsSync(PLAYLISTS_PATH)) {
-      playlists = fs.readJsonSync(PLAYLISTS_PATH);
-    } else {
-      playlists = [];
-    }
-  } catch {
-    playlists = [];
-  }
+  playlists = readJsonOrQuarantine(PLAYLISTS_PATH, [], { onCorrupt: logCorrupt });
   return playlists;
 }
 
@@ -158,15 +145,7 @@ function savePlaylists() {
 }
 
 function loadHistory() {
-  try {
-    if (fs.existsSync(HISTORY_PATH)) {
-      history = fs.readJsonSync(HISTORY_PATH);
-    } else {
-      history = [];
-    }
-  } catch {
-    history = [];
-  }
+  history = readJsonOrQuarantine(HISTORY_PATH, [], { onCorrupt: logCorrupt });
   return history;
 }
 

@@ -13,8 +13,8 @@ const clients = new Set();
  * client receives — the unauthenticated stream uses it to see job progress
  * only, never library contents.
  */
-function addClient(res, { filter } = {}) {
-  const client = { res, filter: typeof filter === 'function' ? filter : null, id: Math.random().toString(36).slice(2) };
+function addClient(res, { filter, sid = null } = {}) {
+  const client = { res, filter: typeof filter === 'function' ? filter : null, sid, id: Math.random().toString(36).slice(2) };
   clients.add(client);
   return client;
 }
@@ -33,6 +33,27 @@ function broadcast(event, data = {}) {
       clients.delete(client);
     }
   }
+}
+
+/**
+ * Send an event only to the SSE streams of the given device sessions (e.g.
+ * the members of a SyncPlay room) instead of every signed-in browser.
+ */
+function sendToSessions(sids, event, data = {}) {
+  const wanted = new Set([...(sids || [])].filter(Boolean));
+  if (!wanted.size) return 0;
+  const payload = `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
+  let sent = 0;
+  for (const client of clients) {
+    if (!client.sid || !wanted.has(client.sid)) continue;
+    try {
+      client.res.write(payload);
+      sent++;
+    } catch {
+      clients.delete(client);
+    }
+  }
+  return sent;
 }
 
 function clientCount() {
@@ -109,6 +130,7 @@ module.exports = {
   addClient,
   removeClient,
   broadcast,
+  sendToSessions,
   clientCount,
   jobStart,
   jobProgress,

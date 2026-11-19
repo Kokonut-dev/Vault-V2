@@ -26,6 +26,7 @@ import { icon } from './utils/icons.js';
 import { router } from './router.js';
 import { initScrollHints } from './utils/scrollHints.js';
 import { formatTime } from './utils/format.js';
+import { getSyncSession, setSyncSession, clearSyncSession } from './utils/syncplaySession.js';
 
 // ---------------------------------------------------------------------------
 // Multi-select (batch operations on cards)
@@ -322,40 +323,118 @@ function initAmbient() {
 }
 
 // ---------------------------------------------------------------------------
-// SyncPlay follower — guests snap to the host's clock
+// SyncPlay — the host publishes play/pause/seek, guests follow
 // ---------------------------------------------------------------------------
-const syncplayState = { roomId: null, memberId: null, last: null };
+// (Before: nothing ever published the host's playback, guests read `paused`
+// from events that carry `playing`, a position of 0 was ignored, and the
+// member credentials were read from the wrong place, so rooms never synced.)
+const SYNC_TICK_MS = 5000;
+const syncplay = { itemId: null, timer: null, opening: null };
 
-function activeMedia() {
-  return activeMediaElement();
+const syncMedia = () => activeMediaElement();
+
+/** Seek/nudge/play/pause the local player to match the room. */
+async function followRoom({ itemId, playing, position }) {
+  if (itemId && itemId !== syncplay.itemId) {
+    if (syncplay.opening === itemId) return;
+    syncplay.opening = itemId;
+    try {
+      const item = await api.getItem(itemId);
+      syncplay.itemId = itemId;
+      window.dispatchEvent(new CustomEvent('vault:open-video', { detail: { item: item?.item || item } }));
+      toast.info('Following the host');
+    } catch { /* not visible to this profile */ } finally {
+      syncplay.opening = null;
+    }
+    return;
+  }
+  const media = syncMedia();
+  if (!media || media.readyState < 1) return;
+  const target = Number(position);
+  if (Number.isFinite(target)) {
+    const drift = media.currentTime - target;
+    if (Math.abs(drift) > 2.5) {
+      media.currentTime = Math.max(0, target);
+    } else if (Math.abs(drift) > 0.75) {
+      media.playbackRate = drift > 0 ? 0.96 : 1.04;
+      setTimeout(() => { media.playbackRate = 1; }, 1500);
+    }
+  }
+  if (playing === false && !media.paused) media.pause();
+  if (playing === true && media.paused) media.play().catch(() => {});
 }
 
-function applySyncState(data) {
-  if (!syncplayState.roomId || !data || data.roomId !== syncplayState.roomId) return;
-  const media = activeMedia();
-  if (!media || !data.position) return;
-  const drift = media.currentTime - data.position;
-  if (Math.abs(drift) > 2.5) {
-    media.currentTime = data.position;
-    toast.info('Resynced with the host');
-  } else if (Math.abs(drift) > 0.75) {
-    media.playbackRate = drift > 0 ? 0.96 : 1.04;
-    setTimeout(() => { media.playbackRate = 1; }, 1200);
+function publishHostState() {
+  const s = getSyncSession();
+  const media = syncMedia();
+  if (!s?.host || !media) return;
+  api.syncPlayState(s.roomId, s.token, { playing: !media.paused, position: media.currentTime }).catch(handleSyncError);
+}
+
+function handleSyncError(err) {
+  // The room closed or this member was dropped: stop syncing.
+  if (err?.status === 404 || err?.code === 'NOT_A_MEMBER') clearSyncSession();
+}
+
+async function syncTick() {
+  const s = getSyncSession();
+  if (!s) return;
+  const media = syncMedia();
+  if (s.host) {
+    if (media) publishHostState();
+    else api.getRoom(s.roomId, s.token).catch(handleSyncError); // stay "seen"
+    return;
   }
-  if (data.paused && !media.paused) media.pause();
-  if (!data.paused && media.paused) media.play().catch(() => {});
+  try {
+    const reply = await api.syncPlayState(s.roomId, s.token, { position: media ? media.currentTime : 0 });
+    if (reply.role === 'host') {
+      // The host left and this device took over.
+      setSyncSession({ ...s, host: true });
+      toast.info('You are now the host of the watch party');
+      return;
+    }
+    if (media || reply.itemId) followRoom({ itemId: reply.itemId, playing: reply.playing, position: reply.action === 'ok' ? undefined : reply.expected });
+  } catch (err) {
+    handleSyncError(err);
+  }
+}
+
+function onHostMediaEvent(event) {
+  const s = getSyncSession();
+  if (!s?.host || event.target !== syncMedia()) return;
+  publishHostState();
 }
 
 export function initSyncPlayFollower() {
-  window.addEventListener('vault:syncplay-state', event => applySyncState(event.detail));
-  window.addEventListener('vault:syncplay-joined', (event) => {
-    syncplayState.roomId = event.detail?.roomId || null;
-    syncplayState.memberId = event.detail?.memberId || null;
+  // Host commands arrive over SSE (only to this room's devices).
+  window.addEventListener('vault:syncplay-state', (event) => {
+    const s = getSyncSession();
+    const data = event.detail;
+    if (!s || s.host || !data || data.roomId !== s.roomId) return;
+    followRoom(data);
   });
-  window.addEventListener('vault:syncplay-left', () => {
-    syncplayState.roomId = null;
-    syncplayState.memberId = null;
-  });
+
+  // Media events don't bubble, but they can be caught on the way down.
+  for (const type of ['play', 'pause', 'seeked']) document.addEventListener(type, onHostMediaEvent, true);
+
+  // The item being played: the host tells the room when it changes.
+  const onItem = (event) => {
+    const item = event.detail?.item;
+    if (!item?.id || item.id === syncplay.itemId || item.external || item.live) return;
+    syncplay.itemId = item.id;
+    const s = getSyncSession();
+    // Then the real position straight away (setItem starts the room at 0).
+    if (s?.host) api.syncPlayItem(s.roomId, s.token, item.id).then(publishHostState, handleSyncError);
+  };
+  window.addEventListener('vault:timeupdate', onItem);
+  window.addEventListener('vault:track-changed', onItem);
+
+  const start = () => {
+    clearInterval(syncplay.timer);
+    syncplay.timer = getSyncSession() ? setInterval(syncTick, SYNC_TICK_MS) : null;
+  };
+  window.addEventListener('vault:syncplay-session', start);
+  start();
 }
 
 // ---------------------------------------------------------------------------

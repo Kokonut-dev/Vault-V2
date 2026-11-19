@@ -2,6 +2,70 @@
 
 ## [3.0.0] — in progress (branch `arena/0deefe55-vault-v2`)
 
+### Fixed — bug run (data layer and authorization)
+A review of the data layer (JSON stores, the optional SQLite index, the
+scanner) and of who can call what, plus an automated sweep of all 224 routes.
+Each fix has a reproducing test in `server/test/bugrun.test.js` (SyncPlay page:
+`syncplay-ui.test.js`).
+
+- **Critical: settings leaked the signing secret.** `PUT /api/settings`
+  had no admin check and returned the raw config, JWT secret and password
+  hash included, so any profile (Kids too) could forge tokens.
+  It is admin-only now and returns the same safe shape as `GET`.
+  `PUT /api/settings/credentials` is admin-only too.
+  Notification targets can only be set through `PUT /api/settings/notifications`,
+  which checks the links.
+- **Changing the password signs other devices out.** A new password or grid
+  revokes other sessions and replaces the token-signing secret; this device
+  gets a new token. Tokens that don't belong to a device session are refused.
+- **Kids and other non-admin profiles can't destroy things.** Emptying,
+  purging, restoring or listing the trash, clearing the transcode/HLS caches,
+  managing podcast feeds (the server fetches their URLs) and Live TV
+  recordings are admin-only. Profiles with an age limit can't upload, edit
+  collections or write intro/outro markers (shared by the whole series).
+  Markers, watched, listens and bookmarks give 404 for items above the
+  profile's age limit.
+- **Profile PINs lock after 5 wrong guesses** (30 s, doubling up to 15 min;
+  `429 PROFILE_PIN_LOCKED`), for switching, signing in and changing a PIN.
+- **An unmounted drive no longer empties the library.** A scan (and the
+  file watcher) used to remove every item whose file was missing, so an
+  offline drive or NAS lost all its items with their history,
+  favourites and playlist entries. Items under a library folder that is
+  missing, unreadable or empty are kept until it is back.
+- **A corrupt data file is kept, not replaced.** A JSON store that can't be
+  read is moved to `<file>.corrupt-<time>` before Vault starts that list
+  fresh; before, the next save overwrote it with an empty list. Failed saves
+  are logged. `config.json` is written atomically.
+- **Settings that were lost on save.** `saveConfig` dropped the Google Drive
+  (`integrations`) and Remote access (`remoteAccess`) settings, so "keep
+  remote access on" never stuck.
+- **SQLite index.** It now applies the library and rating filters,
+  matches genres exactly (no `LIKE` wildcards), sorts titles without regard
+  to case, and checks page numbers. Searches and the watched filter use the
+  in-memory path so results match. `library.db` is no longer created in
+  JSON mode (by deleting an item or opening System → Index), and a missing
+  `data/` folder no longer turns the index off until restart.
+- **Subtitles.** The subtitle route only serves `.vtt/.srt/.ass/.ssa` files
+  from the item's own folder. Before, it served any file next to the
+  video, and a folder `Movie2` counted as inside `Movie`.
+- **SyncPlay works.** The host was refused (403) when changing the item, the
+  page read the room code and member id from the wrong place (chat gave
+  404 and leaving failed), nothing sent the host's playback to guests, and
+  guests read `paused` from events that carry `playing`. Members get a
+  private token (member ids are public). Room events go only to the
+  room's devices. Chat is for members only. Room passwords are hashed, codes
+  are random and unambiguous, the host role passes on when the host leaves,
+  and active members aren't dropped after 60 s.
+- **Stored XSS in dialogs.** Dialog titles, prompt labels, messages and
+  placeholders were inserted as HTML. Media titles and profile names are now
+  always shown as text (`createModal`/`promptModal` escape them). The
+  bookmarks dialog title and QR pairing errors too.
+- **Fuzzer 500s.** `?type=__proto__` on search, downloading from an unknown
+  podcast feed (now 404), and a Google Drive import without a link (now 400).
+- **Smaller fixes.** CBR comic pages are extracted without blocking the
+  server (and time out). The token blacklist drops expired tokens. Subtitle
+  streams handle read errors. `body-parser`/`qs` updated (`npm audit`).
+
 ### Fixed — profiles
 Profiles were mostly cosmetic: the "active profile" was one server-wide
 value, so switching on one device switched every device, and age limits,

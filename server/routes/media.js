@@ -251,14 +251,25 @@ router.get('/subtitle/:id/:subtitleId', (req, res) => {
   }
 
   let subtitlePath = null;
+  // Only subtitle files are ever served from here. (The direct lookup below
+  // used to hand out *any* file next to the media file — .nfo files, other
+  // videos, stray notes — as text/plain.)
+  const SUBTITLE_EXT = /\.(vtt|srt|ass|ssa)$/i;
+  // "Inside dir" with a separator, so /media/Movie doesn't also allow
+  // /media/Movie2/…
+  const inside = (file, dir) => {
+    const base = path.resolve(dir);
+    const resolved = path.resolve(file);
+    return resolved.startsWith(base.endsWith(path.sep) ? base : base + path.sep);
+  };
 
   if (item.subtitles && Array.isArray(item.subtitles)) {
-    const sub = item.subtitles.find(s => s.id === subtitleId || (s.path && s.path.includes(subtitleId)));
+    // Exact id or file name (a substring match let "a" pick any subtitle).
+    const sub = item.subtitles.find(s => s.id === subtitleId || (s.path && path.basename(s.path) === subtitleId));
     if (sub && sub.path) {
       // Ensure subtitle path is inside same directory as media file (prevent traversal)
       const mediaDir = path.dirname(item.path);
-      const resolved = path.resolve(sub.path);
-      if (resolved.startsWith(path.resolve(mediaDir)) || resolved.startsWith(path.resolve(__dirname, '../cache'))) {
+      if (SUBTITLE_EXT.test(sub.path) && (inside(sub.path, mediaDir) || inside(sub.path, path.resolve(__dirname, '../cache')))) {
         subtitlePath = sub.path;
       }
     }
@@ -274,9 +285,8 @@ router.get('/subtitle/:id/:subtitleId', (req, res) => {
       path.join(dir, subtitleId),
     ];
     for (const p of possible) {
-      const resolved = path.resolve(p);
-      // Must be inside media dir
-      if (!resolved.startsWith(path.resolve(dir))) continue;
+      // Must be a subtitle file inside the media dir
+      if (!SUBTITLE_EXT.test(p) || !inside(p, dir)) continue;
       if (fs.existsSync(p)) {
         subtitlePath = p;
         break;
@@ -292,7 +302,7 @@ router.get('/subtitle/:id/:subtitleId', (req, res) => {
 
   if (ext === '.vtt') {
     res.setHeader('Content-Type', 'text/vtt');
-    fs.createReadStream(subtitlePath).pipe(res);
+    streamFile(subtitlePath, res);
   } else if (ext === '.srt') {
     // Convert SRT to VTT on the fly (simple conversion)
     try {
@@ -307,9 +317,19 @@ router.get('/subtitle/:id/:subtitleId', (req, res) => {
   } else {
     // For ASS/SSA, try to serve as is or convert via ffmpeg if available
     res.setHeader('Content-Type', 'text/plain');
-    fs.createReadStream(subtitlePath).pipe(res);
+    streamFile(subtitlePath, res);
   }
 });
+
+/** Pipe a file, ending the response cleanly if the read fails mid-way. */
+function streamFile(file, res) {
+  fs.createReadStream(file)
+    .on('error', (err) => {
+      if (!res.headersSent) res.status(500).json({ error: 'Could not read file' });
+      else res.destroy(err);
+    })
+    .pipe(res);
+}
 
 router.get('/info/:id', async (req, res) => {
   const item = libraryService.getById(req.params.id);

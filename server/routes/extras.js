@@ -11,6 +11,11 @@ const stats = require('../services/stats');
 const events = require('../services/events');
 const logger = require('../utils/logger');
 const profiles = require('../services/profiles');
+const { itemParam, blockRestricted } = require('../middleware/profileAccess');
+const { requireAdmin } = require('../middleware/requireAdmin');
+
+/** Age-limit check for routes keyed by a library item id (404 when hidden). */
+const visibleItem = (key = 'id') => (req, res, next) => itemParam(req, res, next, req.params[key] ?? req.body?.itemId);
 
 // ---------------------------------------------------------------------------
 // Watchlist
@@ -25,7 +30,7 @@ router.get('/watchlist', (req, res) => {
   res.json({ items, total: items.length });
 });
 
-router.post('/watchlist/:id', (req, res) => {
+router.post('/watchlist/:id', visibleItem(), (req, res) => {
   const added = extras.addToWatchlist(req.params.id, req.profileId || 'default');
   res.json({ itemId: req.params.id, inWatchlist: true, added });
 });
@@ -56,7 +61,7 @@ router.get('/collections/:id', (req, res) => {
   res.json(collection);
 });
 
-router.post('/collections', (req, res) => {
+router.post('/collections', blockRestricted, (req, res) => {
   try {
     const collection = extras.createCollection(req.body || {});
     events.broadcast('collection:changed', { id: collection.id, action: 'create' });
@@ -67,26 +72,26 @@ router.post('/collections', (req, res) => {
   }
 });
 
-router.put('/collections/:id', (req, res) => {
+router.put('/collections/:id', blockRestricted, (req, res) => {
   const updated = extras.updateCollection(req.params.id, req.body || {});
   if (!updated) return res.status(404).json({ error: 'Collection not found' });
   res.json(expandCollection(updated, req.profileId));
 });
 
-router.delete('/collections/:id', (req, res) => {
+router.delete('/collections/:id', blockRestricted, (req, res) => {
   const ok = extras.deleteCollection(req.params.id);
   if (!ok) return res.status(404).json({ error: 'Collection not found' });
   res.json({ message: 'Collection deleted', id: req.params.id });
 });
 
-router.post('/collections/:id/items', (req, res) => {
+router.post('/collections/:id/items', blockRestricted, (req, res) => {
   const { itemId, itemIds } = req.body || {};
   const added = extras.addToCollection(req.params.id, itemIds || itemId);
   if (!added) return res.status(404).json({ error: 'Collection not found' });
   res.json(expandCollection(added, req.profileId));
 });
 
-router.delete('/collections/:id/items/:itemId', (req, res) => {
+router.delete('/collections/:id/items/:itemId', blockRestricted, (req, res) => {
   const updated = extras.removeFromCollection(req.params.id, req.params.itemId);
   if (!updated) return res.status(404).json({ error: 'Collection not found' });
   res.json(expandCollection(updated, req.profileId));
@@ -95,7 +100,7 @@ router.delete('/collections/:id/items/:itemId', (req, res) => {
 // ---------------------------------------------------------------------------
 // Markers (intro / outro / chapters) — manual edits always win
 // ---------------------------------------------------------------------------
-router.get('/markers/:id', (req, res) => {
+router.get('/markers/:id', visibleItem(), (req, res) => {
   const item = libraryService.getById(req.params.id);
   const markers = extras.getMarkers(req.params.id);
   res.json({
@@ -106,7 +111,8 @@ router.get('/markers/:id', (req, res) => {
   });
 });
 
-router.put('/markers/:id', (req, res) => {
+// Markers are shared by every profile (and copied to the whole series).
+router.put('/markers/:id', blockRestricted, visibleItem(), (req, res) => {
   const { intro, outro, chapters, source = 'manual' } = req.body || {};
   const patch = {};
   if (intro !== undefined) patch.intro = intro;
@@ -129,10 +135,15 @@ router.put('/markers/:id', (req, res) => {
 // ---------------------------------------------------------------------------
 router.get('/bookmarks', (req, res) => {
   const itemId = req.query.itemId;
-  res.json({ bookmarks: extras.getBookmarks(itemId) });
+  // Only bookmarks on items this profile may see.
+  const bookmarks = extras.getBookmarks(itemId).filter((b) => {
+    const item = libraryService.getById(b.itemId);
+    return !item || profiles.canAccess(req.profileId || 'default', item);
+  });
+  res.json({ bookmarks });
 });
 
-router.post('/bookmarks', (req, res) => {
+router.post('/bookmarks', visibleItem(), (req, res) => {
   const { itemId, time, label } = req.body || {};
   if (!itemId) return res.status(400).json({ error: 'itemId required' });
   res.json(extras.addBookmark({ itemId, time, label }));
@@ -147,7 +158,7 @@ router.delete('/bookmarks/:id', (req, res) => {
 // ---------------------------------------------------------------------------
 // Watched state
 // ---------------------------------------------------------------------------
-router.post('/watched/:id', (req, res) => {
+router.post('/watched/:id', visibleItem(), (req, res) => {
   const profileId = req.profileId || 'default';
   const watched = req.body?.watched !== false;
   const result = libraryService.setWatched(req.params.id, watched, profileId);
@@ -164,7 +175,7 @@ router.get('/watched', (req, res) => {
 // ---------------------------------------------------------------------------
 // Listening / watching stats
 // ---------------------------------------------------------------------------
-router.post('/listens', (req, res) => {
+router.post('/listens', visibleItem(), (req, res) => {
   const { itemId, seconds } = req.body || {};
   if (!itemId) return res.status(400).json({ error: 'itemId required' });
   const result = extras.recordListen(itemId, seconds);
@@ -178,11 +189,12 @@ router.get('/stats/recap', (req, res) => {
 // ---------------------------------------------------------------------------
 // Trash (undo-able deletes)
 // ---------------------------------------------------------------------------
-router.get('/trash', (req, res) => {
+// The trash holds deleted files of every library: admin profiles only.
+router.get('/trash', requireAdmin, (req, res) => {
   res.json({ items: trash.list(), total: trash.list().length });
 });
 
-router.post('/trash/:id/restore', async (req, res) => {
+router.post('/trash/:id/restore', requireAdmin, async (req, res) => {
   const restored = await trash.restore(req.params.id);
   if (!restored) return res.status(404).json({ error: 'Trash entry not found' });
   try {
@@ -193,13 +205,13 @@ router.post('/trash/:id/restore', async (req, res) => {
   res.json({ message: 'Restored', ...restored });
 });
 
-router.delete('/trash/:id', async (req, res) => {
+router.delete('/trash/:id', requireAdmin, async (req, res) => {
   const ok = await trash.purge(req.params.id);
   if (!ok) return res.status(404).json({ error: 'Trash entry not found' });
   res.json({ message: 'Permanently deleted', id: req.params.id });
 });
 
-router.delete('/trash', async (req, res) => {
+router.delete('/trash', requireAdmin, async (req, res) => {
   const removed = await trash.empty();
   res.json({ message: `Emptied trash (${removed} files)`, removed });
 });

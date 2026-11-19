@@ -32,21 +32,27 @@ function loadBlacklist() {
   try {
     if (fs.existsSync(BLACKLIST_PATH)) {
       const data = fs.readJsonSync(BLACKLIST_PATH);
-      blacklist = new Set(data);
-      // Clean expired tokens
-      const now = Date.now();
-      for (const tokenData of blacklist) {
-        try {
-          if (typeof tokenData === 'string') continue; // old format
-          if (tokenData.exp && tokenData.exp * 1000 < now) {
-            blacklist.delete(tokenData);
-          }
-        } catch {}
-      }
+      blacklist = new Set(Array.isArray(data) ? data.filter(t => typeof t === 'string') : []);
+      // Expired tokens are rejected anyway; keeping them only grew the file
+      // (and every lookup) forever — the old cleanup skipped every entry.
+      if (pruneBlacklist()) saveBlacklist();
     }
   } catch (err) {
     console.warn('[Auth] Failed to load blacklist:', err.message);
   }
+}
+
+/** Drop tokens whose own expiry has passed. Returns how many were dropped. */
+function pruneBlacklist(now = Date.now()) {
+  let dropped = 0;
+  for (const token of blacklist) {
+    const exp = jwt.decode(token)?.exp;
+    if (!exp || exp * 1000 < now) {
+      blacklist.delete(token);
+      dropped++;
+    }
+  }
+  return dropped;
 }
 
 function saveBlacklist() {
@@ -92,12 +98,18 @@ function authMiddleware(req, res, next) {
       return res.status(401).json({ error: 'Grid challenge required', code: 'GRID_REQUIRED' });
     }
 
+    // Every token Vault issues belongs to a device session. One without a
+    // session can't be signed out or revoked, so it is never accepted (it is
+    // either from a very old version — sign in again — or forged).
+    if (!decoded.sid) {
+      return res.status(401).json({ error: 'Please sign in again', code: 'TOKEN_REVOKED' });
+    }
     // Per-device sessions: a revoked session invalidates its tokens even though
     // the JWT itself is still cryptographically valid.
-    if (decoded.sid && !sessions.isValid(decoded.sid)) {
+    if (!sessions.isValid(decoded.sid)) {
       return res.status(401).json({ error: 'Session revoked', code: 'TOKEN_REVOKED' });
     }
-    if (decoded.sid) sessions.touch(decoded.sid);
+    sessions.touch(decoded.sid);
 
     if (decoded.scope === 'media') {
       const allowed = (req.method === 'GET' || req.method === 'HEAD')
@@ -145,7 +157,7 @@ function optionalAuthMiddleware(req, res, next) {
       req.user = null;
       return next();
     }
-    if (decoded.sid && !sessions.isValid(decoded.sid)) {
+    if (!decoded.sid || !sessions.isValid(decoded.sid)) {
       req.user = null;
       return next();
     }
@@ -168,7 +180,7 @@ function blacklistToken(token) {
     const config = getConfig();
     const decoded = jwt.decode(token);
     const exp = decoded ? decoded.exp : Math.floor(Date.now() / 1000) + 86400;
-    // Store with expiry for cleanup
+    pruneBlacklist();
     blacklist.add(token);
     saveBlacklist();
 

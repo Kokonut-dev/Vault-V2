@@ -26,6 +26,7 @@ server/bin/
 
 # Server config (contains secrets)
 server/config.json
+server/config.json.tmp
 server/.env
 
 # OS

@@ -12,7 +12,7 @@
  */
 const fs = require('fs-extra');
 const path = require('path');
-const { writeJsonAtomic } = require('./fileUtils');
+const { writeJsonAtomic, readJsonOrQuarantine } = require('./fileUtils');
 
 const DATA_DIR = path.join(__dirname, '..', 'data');
 
@@ -31,15 +31,8 @@ function createJsonStore(fileName, defaultValue, options = {}) {
 
   function load() {
     if (data !== null) return data;
-    try {
-      if (fs.existsSync(filePath)) {
-        data = fs.readJsonSync(filePath);
-      } else {
-        data = clone(defaultValue);
-      }
-    } catch {
-      data = clone(defaultValue);
-    }
+    // A corrupt file is moved aside (never silently overwritten).
+    data = readJsonOrQuarantine(filePath, clone(defaultValue));
     return data;
   }
 
@@ -49,7 +42,10 @@ function createJsonStore(fileName, defaultValue, options = {}) {
       clearTimeout(timer);
       timer = null;
     }
-    inFlight = writeJsonAtomic(filePath, data).catch(() => {});
+    inFlight = writeJsonAtomic(filePath, data).catch((err) => {
+      // Don't crash on a full disk — but don't hide it either.
+      console.error(`[Data] Could not save ${fileName}: ${err.message}`);
+    });
     return inFlight;
   }
 

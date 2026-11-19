@@ -326,11 +326,12 @@ test('deleting a profile signs its devices out and removes its data', async () =
   assert.equal(ghost.status, 401);
 
   // A sid-less token for a profile that no longer exists is refused too,
-  // rather than falling back to (admin) "default".
+  // rather than falling back to (admin) "default". (Since the bug run every
+  // sid-less token is refused outright.)
   const stale = authService.generateAccessToken('owner', { profileId: 'p_kid' });
   const refused = await call('GET', '/api/whoami', { token: stale });
   assert.equal(refused.status, 401);
-  assert.equal(refused.body.code, 'PROFILE_REMOVED');
+  assert.ok(['PROFILE_REMOVED', 'TOKEN_REVOKED'].includes(refused.body.code));
 });
 
 test('a missing "default" profile is never treated as admin', () => {

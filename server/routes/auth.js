@@ -148,12 +148,15 @@ function completeLogin(req, res, decoded) {
   const { profile } = resolveLoginProfile(req, decoded);
   const resolvedProfile = profile.id;
 
-  if (profile.pinHash && !profiles.checkPin(profile.id, profilePin)) {
+  const pinCheck = profile.pinHash ? profiles.verifyPin(profile.id, profilePin) : { ok: true };
+  if (!pinCheck.ok) {
     authService.recordFailedAttempt(ip, 'second');
     res.locals.countAsAuthFailure = true;
     // 403, like /api/profiles/:id/switch — the client must stay on the
     // sign-in screen and ask again, not treat it as an expired session.
-    return res.status(403).json({ error: 'That PIN isn’t right', code: 'PROFILE_PIN_REQUIRED', profile: profiles.toPublic(profile) });
+    // 429 once that profile is locked after too many wrong PINs.
+    const { status, body } = profiles.pinFailure({ ...pinCheck, wrong: true });
+    return res.status(status).json({ ...body, profile: profiles.toPublic(profile) });
   }
 
   // Fully authenticated — restore both stages' budgets.
@@ -278,7 +281,7 @@ router.get('/verify', (req, res) => {
   if (isTokenBlacklisted(token)) {
     return res.status(401).json({ valid: false, error: 'Token revoked', code: 'TOKEN_REVOKED' });
   }
-  if (decoded.sid && !sessions.isValid(decoded.sid)) {
+  if (!decoded.sid || !sessions.isValid(decoded.sid) || decoded.scope === 'media') {
     return res.status(401).json({ valid: false, error: 'Session revoked', code: 'TOKEN_REVOKED' });
   }
 

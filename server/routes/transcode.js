@@ -1,5 +1,6 @@
 const express = require('express');
 const router = express.Router();
+const { requireAdmin } = require('../middleware/requireAdmin');
 const fs = require('fs-extra');
 const path = require('path');
 const libraryService = require('../services/library');
@@ -59,7 +60,7 @@ router.get('/hls/:id/:variant/:file', (req, res) => {
 
 router.get('/hls/status', (req, res) => res.json(hls.status()));
 
-router.delete('/hls/cache', async (req, res) => {
+router.delete('/hls/cache', requireAdmin, async (req, res) => {
   const removed = await hls.clearCache();
   res.json({ message: `Cleared ${removed} HLS session(s)`, removed });
 });
@@ -91,7 +92,7 @@ router.get('/:id', (req, res) => {
   transcoderService.transcodeStream(item.path, res, { quality, format, audioCodec });
 });
 
-router.delete('/cache', async (req, res) => {
+router.delete('/cache', requireAdmin, async (req, res) => {
   try {
     const { getConfig } = require('../config');
     const config = getConfig();

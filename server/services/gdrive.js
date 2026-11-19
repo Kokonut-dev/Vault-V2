@@ -396,7 +396,12 @@ const MAX_DEPTH = 6;
  * @returns {Promise<{kind, id, name, mode, items: Array, truncated: boolean}>}
  */
 async function inspect(link, { accessToken } = {}) {
+  // A missing link crashed on `target.kind` (500); it's a bad request.
+  if (link == null || (typeof link !== 'string' && typeof link !== 'object') || link === '') {
+    throw new DriveError('Paste a Google Drive link', 'INVALID_LINK');
+  }
   const target = typeof link === 'string' ? parseDriveLink(link) : link;
+  if (!target || !target.kind || !target.id) throw new DriveError('That isn’t a Google Drive file or folder link', 'INVALID_LINK');
   const auth = apiAuth({ accessToken });
   const out = { kind: target.kind, id: target.id, name: null, mode: auth ? auth.mode : 'public', items: [], truncated: false };
 

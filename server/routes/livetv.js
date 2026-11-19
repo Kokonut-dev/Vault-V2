@@ -97,7 +97,7 @@ router.get('/recordings', (req, res) => {
   res.json({ recordings: livetv.listRecordings() });
 });
 
-router.post('/recordings', async (req, res) => {
+router.post('/recordings', requireAdmin, async (req, res) => {
   try {
     const { channelUrl, title, durationSeconds, channelId, startAt } = req.body || {};
     if (!channelUrl && !channelId) return res.status(400).json({ error: 'channelId required' });
@@ -114,13 +114,13 @@ router.post('/recordings', async (req, res) => {
   }
 });
 
-router.post('/recordings/:id/stop', (req, res) => {
+router.post('/recordings/:id/stop', requireAdmin, (req, res) => {
   const ok = livetv.stopRecording(req.params.id);
   if (!ok) return res.status(404).json({ error: 'Recording not active' });
   res.json({ message: 'Recording stopped', id: req.params.id });
 });
 
-router.delete('/recordings/:id', async (req, res) => {
+router.delete('/recordings/:id', requireAdmin, async (req, res) => {
   const ok = await livetv.deleteRecording(req.params.id);
   if (!ok) return res.status(404).json({ error: 'Recording not found' });
   res.json({ message: 'Recording deleted', id: req.params.id });

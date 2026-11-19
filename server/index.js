@@ -187,7 +187,8 @@ app.use('/api/auth', require('./routes/auth'));
 app.use('/api/library', authMiddleware, require('./routes/library'));
 app.use('/api/media', authMiddleware, require('./routes/media'));
 app.use('/api/transcode', authMiddleware, require('./routes/transcode'));
-app.use('/api/upload', authMiddleware, require('./routes/upload'));
+// Uploads add files to the library, which age-limited profiles can't change.
+app.use('/api/upload', authMiddleware, require('./middleware/profileAccess').blockRestricted, require('./routes/upload'));
 const playlistsRouter = require('./routes/playlists');
 app.use('/api/playlists', authMiddleware, playlistsRouter);
 // Favourites and history are handled via /api/playlists/favourites and /api/playlists/history
@@ -281,7 +282,9 @@ app.get('/api/events', authMiddleware, (req, res) => {
   // Without this the stream only ever carried `connected` + `ping`: nothing
   // was registered with the bus, so broadcasts (library changes, job
   // progress, imports, remote-access state) never reached the browser.
-  const client = events.addClient(res);
+  // Tagged with the device session so room-scoped events (SyncPlay) can be
+  // delivered to just the devices in the room.
+  const client = events.addClient(res, { sid: req.user?.sid || null });
 
   const interval = setInterval(() => {
     sendEvent('ping', { timestamp: Date.now() });

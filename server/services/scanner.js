@@ -522,6 +522,33 @@ function getLastScan() {
   return last && last.at ? last : null;
 }
 
+/**
+ * Is a library folder actually there? A drive that isn't mounted (or a NAS
+ * share that's offline) shows up as a missing, unreadable or — because Vault
+ * re-creates its media folders — empty folder. Removing "missing" items under
+ * such a root would wipe the whole library section, with its watch history,
+ * favourites and playlists, so those items are kept until the folder is back.
+ */
+async function rootOnline(root) {
+  try {
+    const entries = await fs.readdir(root);
+    return entries.length > 0;
+  } catch {
+    return false;
+  }
+}
+
+function isUnder(filePath, root) {
+  const rel = path.relative(path.resolve(root), path.resolve(filePath));
+  return rel === '' || (!!rel && !rel.startsWith('..') && !path.isAbsolute(rel));
+}
+
+/** Of `roots`, the ones that are offline (see rootOnline). */
+async function offlineRoots(roots) {
+  const flags = await Promise.all(roots.map(rootOnline));
+  return roots.filter((_, i) => !flags[i]);
+}
+
 async function scanAll() {
   if (isScanning) {
     logger.warn('Scan already in progress, skipping');
@@ -551,27 +578,40 @@ async function scanAll() {
       }
     }
 
-    // Remove items whose files no longer exist (batched)
+    // Remove items whose files no longer exist (batched) — except under a
+    // library folder that is offline (unmounted drive), see rootOnline().
+    const offline = await offlineRoots([...new Set(libraries.flatMap(l => l.paths))]);
+    const keptUnder = new Map(); // offline root -> items kept
     const existing = libraryService.getAll();
     let removed = 0;
+    let kept = 0;
     const checks = await Promise.all(existing.map(async item => {
       const exists = await fs.pathExists(item.path);
       return { item, exists };
     }));
     for (const { item, exists } of checks) {
-      if (!exists) {
-        libraryService.removeItem(item.id);
-        removed++;
+      if (exists) continue;
+      const offlineRoot = offline.find(root => isUnder(item.path, root));
+      if (offlineRoot) {
+        kept++;
+        keptUnder.set(offlineRoot, (keptUnder.get(offlineRoot) || 0) + 1);
+        continue;
       }
+      libraryService.removeItem(item.id);
+      removed++;
     }
 
-    const elapsed = ((Date.now() - startTime) / 1000).toFixed(2);
-    logger.info(`Scan complete: ${allResults.length} items, ${removed} removed, ${elapsed}s`);
-    events.jobFinish(jobId, 'done', { scanned: allResults.length, removed });
-    events.broadcast('library:changed', { scanned: allResults.length, removed, reason: 'scan' });
-    recordScan({ status: 'done', scanned: allResults.length, removed, elapsed: Number(elapsed) });
+    // (Only folders that actually have items: an empty new library is fine.)
+    for (const [root, count] of keptUnder) logger.warn(`Library folder is missing or empty — kept its ${count} item(s) until it is back: ${root}`);
 
-    return { scanned: allResults.length, removed, elapsed };
+    const elapsed = ((Date.now() - startTime) / 1000).toFixed(2);
+    logger.info(`Scan complete: ${allResults.length} items, ${removed} removed${kept ? `, ${kept} kept (folder offline)` : ''}, ${elapsed}s`);
+    events.jobFinish(jobId, 'done', { scanned: allResults.length, removed, kept });
+    events.broadcast('library:changed', { scanned: allResults.length, removed, reason: 'scan' });
+    const offlineWithItems = [...keptUnder.keys()];
+    recordScan({ status: 'done', scanned: allResults.length, removed, kept, offline: offlineWithItems, elapsed: Number(elapsed) });
+
+    return { scanned: allResults.length, removed, kept, offline: offlineWithItems, elapsed };
   } catch (err) {
     logger.error('Scan failed:', err.message);
     // Without this the job stayed "running" in the Jobs tab forever.
@@ -654,10 +694,19 @@ function startWatcher() {
       const item = await scanFile(filePath);
       if (item) events.broadcast('library:changed', { reason: 'change', id: item.id });
     })
-    .on('unlink', (filePath) => {
-      logger.info(`File removed: ${filePath}`);
+    .on('unlink', async (filePath) => {
       const id = generateId(filePath);
       const item = libraryService.getById(id);
+      if (!item) return;
+      // A drive being unmounted fires "unlink" for every file on it: keep
+      // the items while their library folder is offline (the next scan
+      // removes them for real once the folder is back without them).
+      const root = paths.find(p => isUnder(filePath, p));
+      if (root && !(await rootOnline(root))) {
+        logger.warn(`File gone but its library folder is offline, keeping it: ${filePath}`);
+        return;
+      }
+      logger.info(`File removed: ${filePath}`);
       libraryService.removeItem(id);
       events.broadcast('library:changed', { reason: 'remove', id, title: item?.title });
     })
@@ -693,4 +742,6 @@ module.exports = {
   detectSilences,
   refreshArtworkInDir,
   applyManualFields,
+  rootOnline,
+  isUnder,
 };

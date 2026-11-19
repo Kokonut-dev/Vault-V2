@@ -23,7 +23,8 @@ const { requireAdmin } = require('../middleware/requireAdmin');
 // Anything that changes the server — and the reads that expose its internals
 // (logs, backup archives, Subsonic settings) — is for admins. A kids' profile
 // could otherwise restore an old backup over everyone's library.
-const ADMIN_READS = /^\/(logs|backups|subsonic)(\/|$)/;
+// The trash lists deleted files from every library (and every profile).
+const ADMIN_READS = /^\/(logs|backups|subsonic|trash)(\/|$)/;
 router.use((req, res, next) => {
   if (req.method === 'GET' || req.method === 'HEAD') {
     return ADMIN_READS.test(req.path) ? requireAdmin(req, res, next) : next();
