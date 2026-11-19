@@ -9,6 +9,7 @@ import { api } from '../api.js';
 import { store } from '../store.js';
 import { copyText } from '../utils/clipboard.js';
 import { confirmDialog } from './confirmDialog.js';
+import { canEditDetails } from './editDetails.js';
 
 let menuEl = null;
 let openFor = null;
@@ -113,6 +114,9 @@ function buildItems(item, extra = []) {
   base.push({ label: item.watched ? 'Mark as unwatched' : 'Mark as watched', icon: 'check', action: () => toggleWatched(item) });
   base.push({ separator: true });
   base.push({ label: 'Copy file path', icon: 'copy', action: async () => { await copyText(item.path); toast.success('Path copied'); } });
+  if (canEditDetails()) {
+    base.push({ label: 'Edit details', icon: 'pencil', action: () => window.dispatchEvent(new CustomEvent('vault:edit-details', { detail: { item } })) });
+  }
   base.push({ label: 'Fix metadata', icon: 'search', action: () => window.dispatchEvent(new CustomEvent('vault:match-metadata', { detail: { item } })) });
   base.push({
     label: 'Download file',

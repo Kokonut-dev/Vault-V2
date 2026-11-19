@@ -67,7 +67,7 @@ async function openAudiobook(item) {
         <button class="modal-close" aria-label="Close">${icon('x', { size: 16 })}</button>
       </div>
       <div class="modal-body">
-        <div class="row-meta">${escapeHtml(item.author || item.artist || '')} ${item.year ? `· ${item.year}` : ''} ${item.duration ? `· ${formatTime(item.duration)}` : ''}</div>
+        <div class="row-meta">${escapeHtml(item.author || item.artist || '')}${item.narrator ? ` · read by ${escapeHtml(item.narrator)}` : ''} ${item.year ? `· ${item.year}` : ''} ${item.duration ? `· ${formatTime(item.duration)}` : ''}</div>
         <div class="page-actions" style="display:flex; gap:8px; flex-wrap:wrap; margin:12px 0">
           <button class="btn btn-primary btn-sm" id="ab-play">${icon('play', { size: 14 })}<span>Play</span></button>
           <button class="btn btn-secondary btn-sm" id="ab-marks">${icon('bookmark', { size: 14 })}<span>Bookmarks</span></button>

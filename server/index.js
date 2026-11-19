@@ -240,7 +240,9 @@ agentRouter.post('/apply/:id', profileAccess.blockRestricted, async (req, res) =
     const { patch, details } = await agentService.applyMatch(item, req.body?.match || {}, {
       downloadArtwork: req.body?.downloadArtwork !== false,
     });
-    const updated = libraryService.updateItem(item.id, patch);
+    // A match the user picked is a hand choice too: keep it over rescans
+    // (otherwise touching the file put the file-name title back).
+    const updated = libraryService.updateItem(item.id, patch, { manual: true });
     events.broadcast('library:changed', { reason: 'metadata', id: item.id, title: updated.title });
     res.json({ item: updated, match: details });
   } catch (err) {

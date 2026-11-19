@@ -2,6 +2,46 @@
 
 ## [3.0.0] — in progress (branch `arena/0deefe55-vault-v2`)
 
+### Added — type in the right details when the automatic ones are wrong
+Tests: `server/test/manual-metadata.test.js` (dialog: `edit-details-ui.test.js`).
+
+- **Edit details for every media type.** The *Edit details* button on a detail
+  page (and *Edit details* in every item's right-click menu, which also covers
+  comics, audiobooks and podcasts) opens a form with the fields that type uses:
+  - songs: title, artist, album artist, album, track and disc number, year,
+    genre, composer and cover art;
+  - films and episodes: title, year, genre, description, tags and rating, plus
+    show, season and episode. A typed show name groups the episode under that
+    show on the Shows page. Clearing season and episode files a misdetected
+    film back under Films;
+  - audiobooks: author, narrator, book series and part;
+  - podcasts: show and host;
+  - comics: series, issue and author.
+
+  Only fields you change are saved. They are kept when the library is
+  rescanned, and an online match you pick is now kept too.
+- **Revert to the file.** A field you typed in shows *Edited* with a *Revert*
+  button that reads the file's own value again (tags, file name or folder
+  artwork). *Revert all to file* does every field at once; rating, description
+  and tags have no file value, so they stay. API:
+  `POST /api/library/:id/metadata/reset` with an optional `{ fields: [...] }`.
+  It returns 409 `FILE_MISSING` when the file is gone.
+- **Edit album** now also sets album artist, artist, year and genre on every
+  track. A field the tracks disagree on shows *Mixed* and is left alone unless
+  you type in it. The album header shows the album artist when one is set.
+- **Checks next to the field.** A wrong year, track, disc, season or episode,
+  or an empty title, is shown next to that field and nothing is saved. The API
+  returns 400 `INVALID_METADATA` with a `fields` map. An empty number field
+  clears the value.
+
+### Fixed
+- Edited titles, artists and albums were saved HTML-escaped: "Rock & Roll"
+  showed up as `Rock &amp; Roll` and "AC/DC" as `AC&#x2F;DC`. Edits are
+  now stored as plain text. A value saved the old way shows correctly in the
+  dialog and is fixed when you save.
+- Saving a single item's details now tells other open tabs and devices, the
+  same way album edits already did.
+
 ### Added — watch parties from the player, moved files keep their history
 Tests: `server/test/features.test.js` (player control: `syncplay-ui.test.js`).
 

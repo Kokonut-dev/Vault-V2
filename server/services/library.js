@@ -234,6 +234,7 @@ const MANUAL_FIELDS = new Set([
   'title', 'artist', 'albumArtist', 'album', 'year', 'genre', 'track', 'disc',
   'season', 'episode', 'description', 'tags', 'contentRating',
   'coverArtPath', 'posterPath', 'thumbnailPath',
+  'composer', 'author', 'narrator', 'series', 'issue', 'seriesTitle', 'seriesKey',
 ]);
 
 /**

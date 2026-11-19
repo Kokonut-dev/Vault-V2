@@ -434,7 +434,7 @@ ffmpeg or ffprobe is missing or can't run. Check which ones Vault picked (see [f
 
 ## Features
 
-**Library** — watches your folders and adds new files automatically; reads tags and cover art (artist, album, year, genre) and video details; generates thumbnails; fuzzy, typo-tolerant search; sorting and filters; metadata editing; trash with restore.
+**Library** — watches your folders and adds new files automatically; reads tags and cover art (artist, album, year, genre) and video details; generates thumbnails; fuzzy, typo-tolerant search; sorting and filters; metadata editing (type in the right title, artist, album, year, show/season/episode… per media type, kept over rescans, with revert to the file’s values); trash with restore.
 
 **Video player** — custom controls, thumbnail previews on the timeline, speed 0.25×–2×, theatre mode, Picture-in-Picture, subtitles (SRT/VTT/ASS), skip intro, next-episode countdown. It converts unsupported formats on the fly and seeks instantly via range requests.
 

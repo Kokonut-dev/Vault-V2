@@ -10,36 +10,8 @@ import { renderMediaList } from '../components/mediaList.js';
 import { makeReorderable } from '../components/reorderableList.js';
 import { copyText } from '../utils/clipboard.js';
 import { icon, setIcon } from '../utils/icons.js';
-
-function isMissingCoverEndpoint(err) {
-  return err?.status === 404 && (
-    err.endpointNotFound === true
-    || /^not found$/i.test(err.message || '')
-    || /^request failed:\s*404$/i.test(err.message || '')
-  );
-}
-
-async function uploadAlbumCover(ids, cover) {
-  if (typeof api.uploadAlbumCover === 'function') return api.uploadAlbumCover(ids, cover);
-  let lastError;
-  for (const path of ['/api/library/albums/cover', '/api/library/cover']) {
-    const form = new FormData();
-    form.append('cover', cover);
-    form.append('ids', JSON.stringify(ids));
-    try {
-      return await api.request(path, { method: 'POST', body: form });
-    } catch (err) {
-      lastError = err;
-      if (!isMissingCoverEndpoint(err)) throw err;
-    }
-  }
-  const base = api.baseUrl || '';
-  const err = new Error(`Cover upload endpoints were not found (${base}/api/library/albums/cover, ${base}/api/library/cover). Check that the Server URL points to your Vault backend; if it does, update and restart the server, then try again.`);
-  err.code = 'COVER_UPLOAD_UNAVAILABLE';
-  err.path = lastError?.path || '/api/library/cover';
-  err.cause = lastError;
-  throw err;
-}
+import { uploadAlbumCover } from '../utils/coverUpload.js';
+import { openEditDetails, canEditDetails, decodeEntities } from '../components/editDetails.js';
 
 export async function renderDetail(container, id) {
   container.className = 'page';
@@ -108,6 +80,8 @@ function renderVideoDetail(container, item) {
       <div>
         <h1 style="font-size:32px; font-weight:800; line-height:1.1; margin-bottom:8px;">${escapeHtml(item.title)}</h1>
         <div style="display:flex; gap:12px; flex-wrap:wrap; margin-bottom:16px; font-size:13px; color:var(--text-secondary);">
+          ${item.seriesTitle ? `<span>${escapeHtml(item.seriesTitle)}</span>` : ''}
+          ${item.season != null || item.episode != null ? `<span>${[item.season != null ? `Season ${item.season}` : '', item.episode != null ? `Episode ${item.episode}` : ''].filter(Boolean).join(' · ')}</span>` : ''}
           ${item.year ? `<span>${item.year}</span>` : ''}
           ${item.genre ? `<span>${escapeHtml(item.genre)}</span>` : ''}
           ${item.duration ? `<span>${formatTime(item.duration)}</span>` : ''}
@@ -134,7 +108,7 @@ function renderVideoDetail(container, item) {
           <div style="background:rgba(var(--glass-tint),0.05); border-radius:12px; padding:16px;">
             <h3 style="font-weight:600; margin-bottom:12px;">Actions</h3>
             <div style="display:flex; gap:8px; flex-wrap:wrap;">
-              <button class="btn btn-secondary btn-sm" id="edit-btn">Edit Metadata</button>
+              ${canEditDetails() ? `<button class="btn btn-secondary btn-sm" id="edit-btn">${icon('pencil', { size: 14 })}<span>Edit details</span></button>` : ''}
               <button class="btn btn-secondary btn-sm" id="add-playlist">Add to Playlist</button>
               <button class="btn btn-secondary btn-sm" id="share-btn">Share</button>
               <button class="btn btn-ghost btn-sm" id="delete-btn" style="color:var(--error);">Delete</button>
@@ -185,7 +159,7 @@ function renderVideoDetail(container, item) {
     else toast.error('Could not copy the path');
   });
 
-  container.querySelector('#edit-btn').addEventListener('click', () => showEditModal(item));
+  container.querySelector('#edit-btn')?.addEventListener('click', () => showEditModal(item));
   container.querySelector('#add-playlist').addEventListener('click', () => showAddToPlaylist(item));
   container.querySelector('#delete-btn').addEventListener('click', async () => {
     const { confirmed, checked: deleteFile } = await confirmDialog({
@@ -220,8 +194,11 @@ function renderMusicDetail(container, item) {
   if (!albumTracks.length) albumTracks = [item];
   const isAlbumView = albumTracks.length > 1 || Boolean(item.album && item.album !== 'Unknown Album');
   const albumArtists = [...new Set(albumTracks.map(t => t.artist).filter(Boolean))];
+  // An album artist set on the tracks (tag or "Edit album") names the album;
+  // otherwise several track artists make it "Various Artists".
+  const albumArtistTags = [...new Set(albumTracks.map(t => t.albumArtist).filter(Boolean))];
   const byline = isAlbumView
-    ? (albumArtists.length > 1 ? 'Various Artists' : (albumArtists[0] || ''))
+    ? (albumArtistTags.length === 1 ? albumArtistTags[0] : albumArtists.length > 1 ? 'Various Artists' : (albumArtists[0] || ''))
     : (item.artist || '');
   const coverVersion = Math.max(
     item.updatedAt ? new Date(item.updatedAt).getTime() : 0,
@@ -255,9 +232,9 @@ function renderMusicDetail(container, item) {
           <button class="btn btn-primary" id="play-btn">${icon('play', { size: 18 })}<span>Play ${isAlbumView ? 'Album' : ''}</span></button>
           <button class="btn btn-secondary" id="shuffle-btn">${icon('shuffle', { size: 18 })}<span>Shuffle</span></button>
           <button class="btn btn-secondary" id="fav-btn" aria-label="${store.get('favourites').includes(item.id) ? 'Remove from favourites' : 'Add to favourites'}" aria-pressed="${store.get('favourites').includes(item.id)}">${icon(store.get('favourites').includes(item.id) ? 'heart-filled' : 'heart', { size: 18 })}</button>
-          ${isAlbumView ? '<button class="btn btn-secondary" id="edit-album-btn">Edit album</button>' : '<button class="btn btn-secondary" id="edit-track-btn">Edit track</button>'}
+          ${!canEditDetails() ? '' : isAlbumView ? `<button class="btn btn-secondary" id="edit-album-btn">${icon('pencil', { size: 16 })}<span>Edit album</span></button>` : `<button class="btn btn-secondary" id="edit-track-btn">${icon('pencil', { size: 16 })}<span>Edit details</span></button>`}
         </div>
-        ${isAlbumView ? '<p class="row-meta">Drag rows or use the ↑ ↓ buttons to reorder — new track numbers are saved for the whole album. “Edit” renames a single track.</p>' : ''}
+        ${isAlbumView ? '<p class="row-meta">Drag rows or use the ↑ ↓ buttons to reorder — new track numbers are saved for the whole album. “Edit” changes a single track’s details.</p>' : ''}
       </div>
     </div>
 
@@ -385,65 +362,52 @@ function renderMusicDetail(container, item) {
   });
 }
 
-/** Rename a single track (title, plus artist/album/year for context). */
+/** Edit one song's details (title, artist, album, track, year, cover…). */
 export function showTrackEditModal(track, onSaved) {
-  const backdrop = document.createElement('div');
-  backdrop.className = 'modal-backdrop active';
-  backdrop.innerHTML = `
-    <div class="modal">
-      <div class="modal-header"><div class="modal-title">Edit track</div><button class="modal-close" aria-label="Close dialog">${icon('x', { size: 16 })}</button></div>
-      <div class="modal-body">
-        <div class="form-group"><label class="form-label">Title</label><input type="text" class="form-input" id="track-title" value="${escapeHtml(track.title || '')}"></div>
-        <div class="form-group"><label class="form-label">Artist</label><input type="text" class="form-input" id="track-artist" value="${escapeHtml(track.artist || '')}"></div>
-        <div class="form-group"><label class="form-label">Track #</label><input type="number" class="form-input" id="track-num" min="0" value="${track.track || ''}"></div>
-        <div class="form-group"><label class="form-label">Cover art</label><input type="file" class="form-input" id="track-cover" accept="image/*"></div>
-      </div>
-      <div class="modal-footer"><button class="btn btn-secondary" id="track-cancel">Cancel</button><button class="btn btn-primary" id="track-save">Save</button></div>
-    </div>`;
-  document.body.appendChild(backdrop);
-  const close = () => backdrop.remove();
-  backdrop.querySelector('.modal-close').addEventListener('click', close);
-  backdrop.querySelector('#track-cancel').addEventListener('click', close);
-  backdrop.addEventListener('click', (e) => { if (e.target === backdrop) close(); });
-  backdrop.querySelector('#track-save').addEventListener('click', async () => {
-    const title = backdrop.querySelector('#track-title').value.trim();
-    const cover = backdrop.querySelector('#track-cover')?.files?.[0];
-    if (!title) { toast.error('Title is required'); return; }
-    try {
-      if (cover) {
-        const coverRes = await uploadAlbumCover([track.id], cover);
-        if (coverRes?.items?.[0]) {
-          Object.assign(track, coverRes.items[0]);
-        }
-      }
-      const updated = await api.updateItem(track.id, {
-        title,
-        artist: backdrop.querySelector('#track-artist').value.trim(),
-        track: parseInt(backdrop.querySelector('#track-num').value, 10) || 0,
-      });
-      Object.assign(track, updated);
-      toast.success('Track updated');
-      close();
-      await onSaved?.([track]);
-    } catch (err) { toast.error(err.message); }
-  });
+  return openEditDetails(track, { onSaved: async (updated) => { await onSaved?.([updated || track]); } });
 }
 
 /**
- * Edit an album after the fact: rename it (applied to every track) and/or
- * replace its cover art (also applied to every track, so all songs in the
- * album — grids, player, other album tracks — pick up the same artwork).
+ * Edit an album after the fact: its title, album artist, artist, year and
+ * genre are written to every track, and a new cover goes on every track too
+ * (so grids, the player and the other album tracks show the same artwork).
  * Albums intentionally have no description; descriptions are playlist-only.
  */
+const ALBUM_EDIT_FIELDS = [
+  { key: 'album', label: 'Album title', type: 'text', wide: true },
+  { key: 'albumArtist', label: 'Album artist', type: 'text' },
+  { key: 'artist', label: 'Artist (every track)', type: 'text' },
+  { key: 'year', label: 'Year', type: 'number', min: 1800, max: 2100 },
+  { key: 'genre', label: 'Genre', type: 'text' },
+];
+
+/** The value every track shares, or null when they differ. */
+function sharedValue(tracks, key) {
+  const values = [...new Set(tracks.map(t => (t[key] === undefined || t[key] === null ? '' : String(t[key]))))];
+  return values.length === 1 ? values[0] : null;
+}
+
 function showAlbumEditModal({ albumKey, tracks, onSaved }) {
+  const start = {};
+  for (const f of ALBUM_EDIT_FIELDS) {
+    start[f.key] = f.key === 'album' ? (albumKey === 'Unknown Album' ? '' : albumKey) : sharedValue(tracks, f.key);
+  }
   const backdrop = document.createElement('div');
   backdrop.className = 'modal-backdrop active';
   backdrop.innerHTML = `
-    <div class="modal">
+    <div class="modal edit-details-modal" role="dialog" aria-modal="true" aria-label="Edit album">
       <div class="modal-header"><div class="modal-title">Edit album</div><button class="modal-close" aria-label="Close dialog">${icon('x', { size: 16 })}</button></div>
       <div class="modal-body">
-        <div class="form-group"><label class="form-label">Album title</label><input type="text" class="form-input" id="album-title" value="${escapeHtml(albumKey === 'Unknown Album' ? '' : albumKey)}" placeholder="Unknown Album"></div>
-        <div class="form-group"><label class="form-label">Cover art (applies to all ${tracks.length} tracks)</label><input type="file" class="form-input" id="album-cover" accept="image/*"></div>
+        <p class="setting-help edit-details-intro">Changes apply to all ${plural(tracks.length, 'track')}. Fields marked “Mixed” differ between tracks — leave them empty to keep each track’s own value.</p>
+        <div class="edit-details-grid">
+          ${ALBUM_EDIT_FIELDS.map(f => `
+            <div class="form-group edit-field${f.wide ? ' is-wide' : ''}">
+              <label class="form-label" for="album-${f.key}">${escapeHtml(f.label)}</label>
+              <input type="${f.type}" class="form-input" id="album-${f.key}" autocomplete="off"${f.type === 'number' ? ` inputmode="numeric" min="${f.min}" max="${f.max}" step="1"` : ''}
+                value="${escapeHtml(decodeEntities(start[f.key] ?? ''))}" placeholder="${start[f.key] === null ? 'Mixed' : (f.key === 'album' ? 'Unknown Album' : '')}">
+            </div>`).join('')}
+          <div class="form-group edit-field is-wide"><label class="form-label" for="album-cover">Cover art (applies to all ${plural(tracks.length, 'track')})</label><input type="file" class="form-input" id="album-cover" accept="image/*"></div>
+        </div>
       </div>
       <div class="modal-footer"><button class="btn btn-secondary" id="album-cancel">Cancel</button><button class="btn btn-primary" id="album-save">Save</button></div>
     </div>`;
@@ -452,90 +416,61 @@ function showAlbumEditModal({ albumKey, tracks, onSaved }) {
   backdrop.querySelector('.modal-close').addEventListener('click', close);
   backdrop.querySelector('#album-cancel').addEventListener('click', close);
   backdrop.addEventListener('click', (e) => { if (e.target === backdrop) close(); });
-  backdrop.querySelector('#album-save').addEventListener('click', async () => {
+  const saveBtn = backdrop.querySelector('#album-save');
+  saveBtn.addEventListener('click', async () => {
     const ids = tracks.map(t => t.id);
-    const title = backdrop.querySelector('#album-title').value.trim();
     const cover = backdrop.querySelector('#album-cover').files?.[0];
-    if (!title && albumKey !== 'Unknown Album') { toast.error('Album title is required'); return; }
+    const changes = {};
+    for (const f of ALBUM_EDIT_FIELDS) {
+      const input = backdrop.querySelector(`#album-${f.key}`);
+      const value = input.value.trim();
+      const before = decodeEntities(start[f.key] ?? '');
+      // A mixed field left empty keeps every track's own value.
+      if (start[f.key] === null && !value) continue;
+      if (value === before) continue;
+      if (f.type === 'number') {
+        if (value && (!/^\d+$/.test(value) || Number(value) < f.min || Number(value) > f.max)) {
+          toast.error(`${f.label} must be a whole number from ${f.min} to ${f.max}`);
+          input.focus();
+          return;
+        }
+        changes[f.key] = value ? Number(value) : null;
+      } else {
+        changes[f.key] = value;
+      }
+    }
+    if (changes.album === '' && albumKey !== 'Unknown Album') { toast.error('Album title is required'); return; }
+    if (changes.album === '') delete changes.album;
+    if (!cover && !Object.keys(changes).length) { close(); return; }
+    saveBtn.disabled = true;
     try {
       let updated = tracks;
       if (cover) {
         const result = await uploadAlbumCover(ids, cover);
         if (result.items) updated = result.items;
       }
-      if (title && title !== albumKey) {
-        const result = typeof api.updateAlbumTitle === 'function'
-          ? await api.updateAlbumTitle(ids, title)
+      if (Object.keys(changes).length) {
+        const result = typeof api.updateAlbumMetadata === 'function'
+          ? await api.updateAlbumMetadata(ids, changes)
           : await api.request('/api/library/albums/metadata', {
             method: 'PUT',
-            body: JSON.stringify({ ids, album: title }),
+            body: JSON.stringify({ ids, ...changes }),
           });
         if (result.items) updated = result.items;
       }
       toast.success('Album updated');
       close();
       await onSaved?.(updated);
-    } catch (err) { toast.error(err.message); }
+    } catch (err) {
+      saveBtn.disabled = false;
+      toast.error(err.message);
+    }
   });
 }
 
-/** Age ratings decide what Kids profiles see, so only admins edit them. */
-function canEditAgeRating() {
-  return store.get('profile')?.isAdmin === true;
-}
-
 function showEditModal(item) {
-  const backdrop = document.createElement('div');
-  backdrop.className = 'modal-backdrop active';
-  backdrop.innerHTML = `
-    <div class="modal">
-      <div class="modal-header"><div class="modal-title">Edit Metadata</div><button class="modal-close" aria-label="Close dialog">${icon('x', { size: 16 })}</button></div>
-      <div class="modal-body">
-        <div class="form-group"><label class="form-label">Title</label><input type="text" class="form-input" id="edit-title" value="${escapeHtml(item.title)}"></div>
-        <div class="form-group"><label class="form-label">Genre</label><input type="text" class="form-input" id="edit-genre" value="${escapeHtml(item.genre || '')}"></div>
-        <div class="form-group"><label class="form-label">Year</label><input type="number" class="form-input" id="edit-year" value="${item.year || ''}"></div>
-        <div class="form-group"><label class="form-label">Description</label><textarea class="form-textarea" id="edit-desc">${escapeHtml(item.description || '')}</textarea></div>
-        <div class="form-group"><label class="form-label">Rating (0-5)</label><input type="number" class="form-input" id="edit-rating" min="0" max="5" step="0.5" value="${item.rating || 0}"></div>
-        ${canEditAgeRating() ? `<div class="form-group">
-          <label class="form-label" for="edit-content-rating">Age rating</label>
-          <input type="text" class="form-input" id="edit-content-rating" maxlength="24" autocomplete="off" placeholder="e.g. PG, 12, PG-13, 16" aria-describedby="edit-content-rating-help" value="${escapeHtml(item.contentRating || '')}">
-          <p class="setting-help" id="edit-content-rating-help">Used by profiles with an age limit (Kids profiles). Leave empty for unrated.</p>
-        </div>` : ''}
-      </div>
-      <div class="modal-footer"><button class="btn btn-secondary" id="edit-cancel">Cancel</button><button class="btn btn-primary" id="edit-save">Save</button></div>
-    </div>
-  `;
-  document.body.appendChild(backdrop);
-  
-  const close = () => backdrop.remove();
-  backdrop.querySelector('.modal-close').addEventListener('click', close);
-  backdrop.querySelector('#edit-cancel').addEventListener('click', close);
-  backdrop.addEventListener('click', (e) => { if (e.target === backdrop) close(); });
-  
-  backdrop.querySelector('#edit-save').addEventListener('click', async () => {
-    const updates = {
-      title: backdrop.querySelector('#edit-title').value.trim(),
-      genre: backdrop.querySelector('#edit-genre').value.trim(),
-      year: parseInt(backdrop.querySelector('#edit-year').value, 10) || undefined,
-      description: backdrop.querySelector('#edit-desc').value.trim(),
-      rating: parseFloat(backdrop.querySelector('#edit-rating').value) || 0,
-    };
-    const ageInput = backdrop.querySelector('#edit-content-rating');
-    if (ageInput && ageInput.value.trim() !== (item.contentRating || '')) updates.contentRating = ageInput.value.trim() || null;
-    
-    try {
-      await api.updateItem(item.id, updates);
-      toast.success('Metadata updated');
-      close();
-      // Refresh
-      const updated = await api.getItem(item.id);
-      Object.assign(item, updated);
-      renderDetail(document.getElementById('view-container'), item.id);
-      const data = await api.getLibrary({ limit: 1000 });
-      store.setLibrary(data.items || []);
-    } catch (err) {
-      toast.error(err.message);
-    }
+  openEditDetails(item, {
+    onSaved: () => renderDetail(document.getElementById('view-container'), item.id),
   });
 }
 
