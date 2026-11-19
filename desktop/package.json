@@ -1,0 +1,129 @@
+{
+  "name": "vault-desktop",
+  "productName": "Vault",
+  "version": "3.0.0",
+  "private": true,
+  "description": "Vault - your self-hosted media server as a desktop app",
+  "homepage": "https://github.com/Kokonut-dev/Vault-V2",
+  "author": {
+    "name": "Kokonut-dev",
+    "url": "https://github.com/Kokonut-dev"
+  },
+  "license": "MIT",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "icons": "node scripts/make-icons.js",
+    "stage": "node scripts/stage.js",
+    "dist": "node scripts/stage.js && electron-builder --publish never",
+    "dist:linux": "node scripts/stage.js --platform linux --arch x64 && electron-builder --linux --x64 --publish never",
+    "dist:win": "node scripts/stage.js --platform win32 --arch x64 && electron-builder --win --x64 --publish never",
+    "dist:mac-arm64": "node scripts/stage.js --platform darwin --arch arm64 && electron-builder --mac --arm64 --publish never",
+    "dist:mac-x64": "node scripts/stage.js --platform darwin --arch x64 && electron-builder --mac --x64 --publish never",
+    "test": "node --test test/"
+  },
+  "devDependencies": {
+    "electron": "^45.4.1",
+    "electron-builder": "^26.18.0"
+  },
+  "build": {
+    "appId": "dev.kokonut.vault",
+    "productName": "Vault",
+    "copyright": "Copyright © Kokonut-dev — MIT License",
+    "artifactName": "Vault-${version}-${os}-${arch}.${ext}",
+    "directories": {
+      "output": "dist",
+      "buildResources": "assets"
+    },
+    "files": [
+      "main.js",
+      "loading.html",
+      "assets/**",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "stage/vault",
+        "to": "vault"
+      }
+    ],
+    "asar": true,
+    "npmRebuild": false,
+    "electronLanguages": [
+      "en-US",
+      "en-GB",
+      "nl",
+      "de",
+      "fr",
+      "es",
+      "it",
+      "pt-BR",
+      "ja",
+      "zh-CN"
+    ],
+    "mac": {
+      "category": "public.app-category.entertainment",
+      "icon": "assets/icon-mac.png",
+      "target": [
+        "dmg",
+        "zip"
+      ],
+      "identity": "-",
+      "hardenedRuntime": false,
+      "extendInfo": {
+        "LSUIElement": false,
+        "NSLocalNetworkUsageDescription": "Vault serves your media to your phones, TVs and other computers on this network."
+      }
+    },
+    "dmg": {
+      "title": "Vault ${version}"
+    },
+    "win": {
+      "icon": "assets/icon.png",
+      "target": [
+        "nsis"
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Vault",
+      "deleteAppDataOnUninstall": false
+    },
+    "linux": {
+      "executableName": "vault",
+      "icon": "assets/icon.png",
+      "category": "AudioVideo",
+      "target": [
+        "AppImage",
+        "deb"
+      ],
+      "maintainer": "Kokonut-dev <https://github.com/Kokonut-dev/Vault-V2>",
+      "synopsis": "Self-hosted media server",
+      "description": "Vault streams your movies, music, audiobooks, podcasts and comics to every device in your home.",
+      "desktop": {
+        "entry": {
+          "Name": "Vault",
+          "Comment": "Your self-hosted media server",
+          "StartupWMClass": "Vault"
+        }
+      }
+    },
+    "deb": {
+      "depends": [
+        "libgtk-3-0",
+        "libnotify4",
+        "libnss3",
+        "libxss1",
+        "libxtst6",
+        "xdg-utils",
+        "libatspi2.0-0",
+        "libuuid1",
+        "libsecret-1-0"
+      ]
+    }
+  }
+}

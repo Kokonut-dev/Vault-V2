@@ -13,6 +13,7 @@
  */
 const fs = require('fs-extra');
 const path = require('path');
+const paths = require('../utils/paths');
 const { spawn } = require('child_process');
 const { getConfig, saveConfig } = require('../config');
 const logger = require('../utils/logger');
@@ -433,7 +434,7 @@ async function record({ channelUrl, title, durationSeconds = 3600, channelId = n
   }
   channelUrl = await require('./restream').assertPlayableUrl(channelUrl);
   const config = getConfig();
-  const videosDir = config.media.paths.videos || path.join(__dirname, '../media/videos');
+  const videosDir = config.media.paths.videos || paths.mediaDir('videos');
   const recordingsDir = path.join(videosDir, 'Recordings');
   await fs.ensureDir(recordingsDir);
 

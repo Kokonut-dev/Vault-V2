@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const fs = require('fs-extra');
 const path = require('path');
+const paths = require('../utils/paths');
 const mime = require('mime-types');
 const libraryService = require('../services/library');
 const metadataService = require('../services/metadata');
@@ -134,7 +135,7 @@ router.get('/thumbnail/:id', async (req, res) => {
     if (item.type === 'movie' || item.type === 'video') {
       const time = req.query.time ? parseFloat(req.query.time) : null;
       if (time !== null && !isNaN(time)) {
-        const outputPath = path.join(__dirname, '../cache/thumbnails', `${item.id}_t${time}.jpg`);
+        const outputPath = paths.cacheDir('thumbnails', `${item.id}_t${time}.jpg`);
         if (fs.existsSync(outputPath)) {
           thumbPath = outputPath;
         } else {
@@ -271,7 +272,7 @@ router.get('/subtitle/:id/:subtitleId', (req, res) => {
     if (sub && sub.path) {
       // Ensure subtitle path is inside same directory as media file (prevent traversal)
       const mediaDir = path.dirname(item.path);
-      if (SUBTITLE_EXT.test(sub.path) && (inside(sub.path, mediaDir) || inside(sub.path, path.resolve(__dirname, '../cache')))) {
+      if (SUBTITLE_EXT.test(sub.path) && (inside(sub.path, mediaDir) || inside(sub.path, paths.CACHE_DIR))) {
         subtitlePath = sub.path;
       }
     }

@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const multer = require('multer');
 const path = require('path');
+const paths = require('../utils/paths');
 const fs = require('fs-extra');
 const { getConfig } = require('../config');
 const { sanitizeFilename, safeRelativeParts, isValidMediaType } = require('../utils/validators');
@@ -253,7 +254,7 @@ router.post('/:type', (req, res) => {
       if (coverFile) {
         const coverExt = path.extname(coverFile.originalname || coverFile.path).toLowerCase();
         const coverName = `upload-${Date.now()}-${Math.random().toString(36).slice(2, 10)}${coverExt}`;
-        uploadedCoverPath = path.join(__dirname, '../cache/covers', coverName);
+        uploadedCoverPath = paths.cacheDir('covers', coverName);
         fs.ensureDirSync(path.dirname(uploadedCoverPath));
         fs.moveSync(coverFile.path, uploadedCoverPath, { overwrite: false });
       }

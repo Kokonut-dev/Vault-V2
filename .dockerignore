@@ -11,3 +11,4 @@ server/config.json
 server/.env
 *.log
 docs-copy
+desktop

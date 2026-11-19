@@ -1,0 +1,127 @@
+name: Desktop apps
+
+# Builds Vault for Linux (AppImage + deb), Windows (installer) and macOS
+# (Apple silicon + Intel, dmg + zip), smoke-tests each one, and uploads them
+# as workflow artifacts. Pushing a tag like v3.0.0 also attaches them to a
+# draft GitHub release.
+on:
+  workflow_dispatch:
+  push:
+    tags: ["v*"]
+  pull_request:
+    paths:
+      - "desktop/**"
+      - "server/launcher.js"
+      - "server/utils/paths.js"
+      - "server/utils/deps.js"
+      - "server/services/autostart.js"
+      - "server/package.json"
+      - "server/package-lock.json"
+      - ".github/workflows/desktop.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: desktop-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Linux x64
+            slug: linux-x64
+            os: ubuntu-latest
+            script: dist:linux
+            app: dist/linux-unpacked/vault
+            artifacts: |
+              desktop/dist/*.AppImage
+              desktop/dist/*.deb
+          - name: Windows x64
+            slug: windows-x64
+            os: windows-latest
+            script: dist:win
+            app: dist/win-unpacked/Vault.exe
+            artifacts: |
+              desktop/dist/*.exe
+          - name: macOS Apple silicon
+            slug: macos-arm64
+            os: macos-latest
+            script: dist:mac-arm64
+            app: dist/mac-arm64/Vault.app/Contents/MacOS/Vault
+            artifacts: |
+              desktop/dist/*.dmg
+              desktop/dist/*.zip
+          - name: macOS Intel
+            slug: macos-x64
+            os: macos-15-intel
+            script: dist:mac-x64
+            app: dist/mac/Vault.app/Contents/MacOS/Vault
+            artifacts: |
+              desktop/dist/*.dmg
+              desktop/dist/*.zip
+    defaults:
+      run:
+        working-directory: desktop
+        shell: bash
+    env:
+      # Unsigned builds: no certificate lookup (macOS is still ad-hoc signed).
+      CSC_IDENTITY_AUTO_DISCOVERY: "false"
+      # Fail the build rather than ship an app that can't make thumbnails.
+      VAULT_REQUIRE_FFMPEG: "1"
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install build tools
+        run: npm ci --no-audit --no-fund
+
+      - name: Build
+        run: npm run ${{ matrix.script }}
+
+      - name: Smoke test (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq xvfb > /dev/null
+          xvfb-run -a node scripts/smoke.js "${{ matrix.app }}"
+
+      - name: Smoke test
+        if: runner.os != 'Linux'
+        run: node scripts/smoke.js "${{ matrix.app }}"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: vault-${{ matrix.slug }}
+          path: ${{ matrix.artifacts }}
+          if-no-files-found: error
+          retention-days: 14
+
+  release:
+    name: Draft release
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: apps
+          merge-multiple: true
+      - name: Attach to a draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          ls -la apps
+          gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" > /dev/null 2>&1 \
+            || gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --draft --title "Vault $GITHUB_REF_NAME" --notes "Desktop apps for Linux, Windows and macOS. See desktop/README.md for install notes."
+          gh release upload "$GITHUB_REF_NAME" apps/* --repo "$GITHUB_REPOSITORY" --clobber

@@ -2,7 +2,10 @@ const fs = require('fs-extra');
 const path = require('path');
 const crypto = require('crypto');
 
-const CONFIG_PATH = path.join(__dirname, 'config.json');
+const paths = require('./utils/paths');
+
+// config.json lives in VAULT_HOME (server/ unless the desktop app moved it).
+const CONFIG_PATH = paths.CONFIG_PATH;
 const EXAMPLE_PATH = path.join(__dirname, 'config.example.json');
 
 const DEFAULT_CONFIG = {
@@ -42,12 +45,12 @@ const DEFAULT_CONFIG = {
   },
   media: {
     paths: {
-      movies: path.join(__dirname, 'media/movies'),
-      music: path.join(__dirname, 'media/music'),
-      videos: path.join(__dirname, 'media/videos'),
-      audiobooks: path.join(__dirname, 'media/audiobooks'),
-      podcasts: path.join(__dirname, 'media/podcasts'),
-      comics: path.join(__dirname, 'media/comics')
+      movies: paths.mediaDir('movies'),
+      music: paths.mediaDir('music'),
+      videos: paths.mediaDir('videos'),
+      audiobooks: paths.mediaDir('audiobooks'),
+      podcasts: paths.mediaDir('podcasts'),
+      comics: paths.mediaDir('comics')
     },
     // Named libraries (Plex/Jellyfin style). When empty, the `paths` above are
     // used as three implicit libraries.
@@ -71,7 +74,7 @@ const DEFAULT_CONFIG = {
     },
     transcoding: {
       enabled: true,
-      cacheDir: path.join(__dirname, 'cache/transcoded'),
+      cacheDir: paths.cacheDir('transcoded'),
       cacheMaxSizeMB: 5120,
       videoCodec: 'libx264',
       audioCodec: 'aac',
@@ -234,12 +237,12 @@ function loadConfig() {
   // Resolve relative media paths
   for (const key of Object.keys(config.media.paths)) {
     if (!path.isAbsolute(config.media.paths[key])) {
-      config.media.paths[key] = path.resolve(__dirname, config.media.paths[key]);
+      config.media.paths[key] = paths.resolveHome(config.media.paths[key]);
     }
   }
 
   if (!path.isAbsolute(config.media.transcoding.cacheDir)) {
-    config.media.transcoding.cacheDir = path.resolve(__dirname, config.media.transcoding.cacheDir);
+    config.media.transcoding.cacheDir = paths.resolveHome(config.media.transcoding.cacheDir);
   }
 
   return config;

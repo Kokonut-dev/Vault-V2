@@ -1,4 +1,5 @@
 const path = require('path');
+const paths = require('../utils/paths');
 const fs = require('fs-extra');
 // music-metadata is ESM-only (v8+). Load it with import() so the server also
 // starts on Node 18/20, where require() of an ES module throws. v8.x is also
@@ -60,7 +61,7 @@ async function extractAudioMetadata(filePath) {
     let coverArtPath = null;
     if (common.picture && common.picture.length > 0) {
       try {
-        const coverDir = path.join(__dirname, '../cache/covers');
+        const coverDir = paths.cacheDir('covers');
         fs.ensureDirSync(coverDir);
         const hash = require('crypto').createHash('md5').update(filePath).digest('hex');
         const pic = common.picture[0];

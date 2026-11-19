@@ -13,13 +13,22 @@
  * Every entry runs `node launcher.js --background`, plus `--no-server` when
  * the server should wait for the button instead of starting immediately.
  * Nothing needs admin rights; everything lives in the user's own profile.
+ *
+ * Inside the desktop app (VAULT_APP_EXECUTABLE is set to the app's own
+ * executable — or the AppImage file) the entry starts the app instead, with
+ * `--background` so it opens to the tray/menu bar without a window.
  */
 const os = require('os');
 const path = require('path');
 const fs = require('fs');
 const { execFile } = require('child_process');
 
+const paths = require('../utils/paths');
+
 const LAUNCHER = path.join(__dirname, '..', 'launcher.js');
+const APP_EXECUTABLE = process.env.VAULT_APP_EXECUTABLE ? path.resolve(process.env.VAULT_APP_EXECUTABLE) : null;
+// What an installed entry must contain to count as "ours".
+const MARKER = APP_EXECUTABLE || LAUNCHER;
 const LABEL = 'com.vault.launcher';
 
 function home() {
@@ -42,8 +51,11 @@ function inContainer() {
 }
 
 function launchArgs({ startServer }) {
-  return [process.execPath, LAUNCHER, '--background', ...(startServer ? [] : ['--no-server'])];
+  const program = APP_EXECUTABLE ? [APP_EXECUTABLE] : [process.execPath, LAUNCHER];
+  return [...program, '--background', ...(startServer ? [] : ['--no-server'])];
 }
+
+const WORKING_DIR = APP_EXECUTABLE ? path.dirname(APP_EXECUTABLE) : path.dirname(LAUNCHER);
 
 function quoteWin(arg) {
   return `""${arg.replace(/"/g, '')}""`;
@@ -73,7 +85,7 @@ function plan(platform = process.platform, opts = { startServer: false }) {
     };
   }
   if (platform === 'darwin') {
-    const logs = path.join(__dirname, '..', 'logs');
+    const logs = paths.LOGS_DIR;
     return {
       method: 'macOS Login Items (LaunchAgent)',
       files: [{
@@ -87,7 +99,7 @@ function plan(platform = process.platform, opts = { startServer: false }) {
   <array>
 ${argv.map(a => `    <string>${xmlEscape(a)}</string>`).join('\n')}
   </array>
-  <key>WorkingDirectory</key><string>${xmlEscape(path.dirname(LAUNCHER))}</string>
+  <key>WorkingDirectory</key><string>${xmlEscape(WORKING_DIR)}</string>
   <key>RunAtLoad</key><true/>
   <key>KeepAlive</key>
   <dict>
@@ -114,7 +126,7 @@ Type=Application
 Name=Vault Launcher
 Comment=Lets the Vault app start your media server
 Exec=${exec}
-Path=${path.dirname(LAUNCHER)}
+Path=${WORKING_DIR}
 Terminal=false
 NoDisplay=true
 X-GNOME-Autostart-enabled=true
@@ -137,7 +149,7 @@ function status() {
   let startServer = false;
   try {
     const content = fs.readFileSync(file, 'utf8');
-    installed = content.includes(LAUNCHER);
+    installed = content.includes(MARKER);
     startServer = readSettingsFrom(content).startServer;
   } catch { /* not installed */ }
   return { supported: true, installed, startServer, method: p.method, path: file, platform: process.platform };

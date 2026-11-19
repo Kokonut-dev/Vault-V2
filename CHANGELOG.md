@@ -2,6 +2,40 @@
 
 ## [3.0.0] — in progress (branch `arena/0deefe55-vault-v2`)
 
+### Desktop apps for Windows, macOS and Linux
+Tests: `server/test/desktop-app.test.js`; each built app is smoke-tested in CI
+(`desktop/scripts/smoke.js`, `.github/workflows/desktop.yml`). User guide:
+`desktop/README.md`.
+
+- **`desktop/`**: an Electron app that runs the Vault server with its built-in
+  Node and shows Vault in a window. Closing the window keeps the server
+  running from the tray / menu bar; *Quit Vault* stops it. Builds: AppImage +
+  deb (Linux x64), an NSIS installer (Windows x64), dmg + zip (macOS Apple
+  silicon and Intel), with ffmpeg/ffprobe bundled.
+- **The window is locked down:** sandboxed, no Node access or preload. It only
+  shows this computer's server (always `127.0.0.1`, so first-run setup there
+  needs no setup code while other devices still do). Other links open in the
+  browser. Permissions are limited to fullscreen, notifications and the
+  clipboard.
+- **`VAULT_HOME`** (new `server/utils/paths.js`): one switch that moves
+  everything Vault writes (config.json, data, cache, default media folders,
+  uploads, logs, downloaded cloudflared) out of `server/`. The app points it
+  at the per-user app-data folder, because an installed app's folder is
+  read-only. Unset, every path is exactly what it was. `VAULT_CONFIG_PATH`,
+  `VAULT_MEDIA_DIR` and `VAULT_DOCS_DIR` override single locations.
+- **Launcher:** with `VAULT_PACKAGED=1` it never runs npm (a damaged install
+  says "reinstall"). Over an IPC channel it tells the app when it's ready and
+  shuts the server down when the app quits *or dies*, including on Windows,
+  which has no signals.
+- **Start at sign-in** starts the app itself (`--background`, tray only) when
+  `VAULT_APP_EXECUTABLE` is set; it points at the AppImage file on Linux.
+- **Pairing QR on the server computer** now encodes the computer's network
+  address instead of `127.0.0.1`, which a phone can't reach.
+- **`ANDROID.md`**: an Android app is feasible with no server changes. It
+  opens to a QR scanner, and scanning a sign-in code shown by your own Vault
+  is the only way in. The document covers the design, Android 17's
+  local-network permission, background audio and effort (≈2–3 weeks for v1).
+
 ### Security — every way of sharing access explains its protections, and the missing ones were added
 Tests: `server/test/security-hardening.test.js`, `server/test/security-ui.test.js`.
 Details for users: README → *Security*.
