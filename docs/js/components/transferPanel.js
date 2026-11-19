@@ -277,7 +277,7 @@ export function mountImport(container, { setupMode = false } = {}) {
       }
     }
     if (!setupMode) {
-      const ok = await confirmDialog({
+      const { confirmed: ok } = await confirmDialog({
         title: 'Replace this server’s library?',
         message: `Your library, playlists, history, profiles and settings here are replaced by the ones in the package${inspected?.source?.hostname ? ` from ${inspected.source.hostname}` : ''}. The current ones are saved in server/backups first. Vault restarts when it’s done.`,
         confirmText: 'Import',

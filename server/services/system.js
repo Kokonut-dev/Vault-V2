@@ -137,11 +137,54 @@ async function diskUsage() {
   return memoReport('disk', 15000, diskUsageUncached);
 }
 
+/**
+ * Free/used space of every filesystem that holds media or Vault's own data.
+ * Folders on the same filesystem collapse into one entry (matched by size and
+ * free space, which is what `statfs` reports for a shared volume). A folder
+ * that doesn't exist yet is measured at its nearest existing parent.
+ */
+async function volumeUsage() {
+  let mediaPaths = {};
+  try {
+    mediaPaths = require('../config').getConfig().media?.paths || {};
+  } catch { /* config not loaded (tests) */ }
+  const targets = [
+    ...Object.entries(mediaPaths).map(([key, dir]) => ({ label: key, dir })),
+    { label: 'Vault data', dir: DATA_DIR },
+  ].filter(t => typeof t.dir === 'string' && t.dir);
+
+  const volumes = [];
+  for (const target of targets) {
+    let dir = path.resolve(target.dir);
+    // eslint-disable-next-line no-await-in-loop
+    while (!(await fs.pathExists(dir)) && path.dirname(dir) !== dir) dir = path.dirname(dir);
+    let stat;
+    try {
+      // eslint-disable-next-line no-await-in-loop
+      stat = await require('fs').promises.statfs(dir);
+    } catch {
+      continue; // statfs unsupported on this platform / path unreadable
+    }
+    const total = Number(stat.blocks) * Number(stat.bsize);
+    const free = Number(stat.bavail) * Number(stat.bsize);
+    if (!total) continue;
+    const key = `${total}:${free}`;
+    const existing = volumes.find(v => v.key === key);
+    if (existing) {
+      if (!existing.labels.includes(target.label)) existing.labels.push(target.label);
+      continue;
+    }
+    volumes.push({ key, labels: [target.label], path: path.resolve(target.dir), total, free, used: Math.max(0, total - free) });
+  }
+  return volumes.map(({ key, ...rest }) => rest);
+}
+
 async function diskUsageUncached() {
-  const [cache, data, trashSize] = await Promise.all([
+  const [cache, data, trashSize, volumes] = await Promise.all([
     dirSizeTree(CACHE_DIR),
     dirSizeTree(DATA_DIR),
     trash.totalSize(),
+    volumeUsage(),
   ]);
   const cacheChild = name => cache.children.get(name) || { bytes: 0, files: 0 };
   const transcoded = cacheChild('transcoded');
@@ -156,6 +199,9 @@ async function diskUsageUncached() {
     data: { bytes: data.bytes, files: data.files },
     trash: { bytes: trashSize, count: trash.list().length },
     media: { bytes: mediaBytes, items: library.length },
+    // The first entry is the volume holding the first media folder — the one
+    // the Server page's "Disk free" card shows.
+    volumes,
     host: { platform: `${os.platform()} ${os.arch()}`, cpus: os.cpus().length, uptime: os.uptime(), totalMem: os.totalmem(), freeMem: os.freemem(), node: process.version },
   };
 }
@@ -492,6 +538,7 @@ module.exports = {
   getLogs,
   writeLogFile,
   diskUsage,
+  volumeUsage,
   invalidateReports,
   createBackup,
   listBackups,

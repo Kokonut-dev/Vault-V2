@@ -1024,10 +1024,6 @@ class ApiClient {
     return this.request(`/api/system/backups/${encodeURIComponent(name)}`, { method: 'DELETE' });
   }
 
-  testNotifications() {
-    return this.request('/api/system/notifications/test', { method: 'POST' });
-  }
-
   getScrobbles(limit = 50) {
     return this.request(`/api/system/scrobbles?limit=${limit}`);
   }

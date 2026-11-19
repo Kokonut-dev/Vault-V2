@@ -73,6 +73,20 @@ function detectCapabilities(force = false) {
     logger.warn(`[Transcode] ffmpeg capability probe failed: ${err.message}`);
   }
 
+  // ffprobe reads durations, codecs and chapters during scans; it ships
+  // separately from ffmpeg, so it can be missing on its own.
+  caps.ffprobe = false;
+  caps.ffprobeVersion = null;
+  try {
+    const probe = spawnSync(ffprobeBinary(), ['-version'], { encoding: 'utf8', timeout: 10000 });
+    if (probe.status === 0) {
+      caps.ffprobe = true;
+      caps.ffprobeVersion = (probe.stdout || '').split('\n')[0] || null;
+    }
+  } catch (err) {
+    logger.warn(`[Transcode] ffprobe probe failed: ${err.message}`);
+  }
+
   cachedCapabilities = caps;
   return caps;
 }

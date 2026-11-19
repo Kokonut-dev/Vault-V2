@@ -306,7 +306,7 @@ function renderExtraSources(s, ctx, state) {
       li.querySelector('[data-edit]').addEventListener('click', () => openEditor(src));
       li.querySelector('[data-test]').addEventListener('click', (e) => testSource(src, e.currentTarget));
       li.querySelector('[data-remove]').addEventListener('click', async (e) => {
-        const ok = await confirmDialog({
+        const { confirmed: ok } = await confirmDialog({
           title: `Remove “${escapeHtml(src.name)}”?`,
           message: 'Its channels disappear from Live TV. Recordings you already made stay in your library.',
           confirmText: 'Remove list',
@@ -1136,7 +1136,7 @@ export function connectionSection() {
       ? 'Playback stops on every device. You can start it again from this page or the sign-in screen.'
       : `Vault on ${serverInfo?.hostname || 'its computer'} stops, and playback stops on every device. It can only be started again on that computer.`;
     const btn = e.currentTarget;
-    const ok = await confirmDialog({ title: 'Stop the server?', message, confirmText: 'Stop server', danger: true });
+    const { confirmed: ok } = await confirmDialog({ title: 'Stop the server?', message, confirmText: 'Stop server', danger: true });
     if (!ok) return;
     busy(btn, true, 'Stopping…');
     try {

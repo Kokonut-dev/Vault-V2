@@ -66,7 +66,7 @@ export async function renderTrash(container) {
     });
     body.querySelectorAll('[data-purge]').forEach(button => {
       button.addEventListener('click', async () => {
-        const ok = await confirmDialog({
+        const { confirmed: ok } = await confirmDialog({
           title: 'Delete permanently?',
           message: 'This cannot be undone.',
           confirmLabel: 'Delete forever',
@@ -81,7 +81,7 @@ export async function renderTrash(container) {
   }
 
   container.querySelector('#trash-empty').addEventListener('click', async () => {
-    const ok = await confirmDialog({
+    const { confirmed: ok } = await confirmDialog({
       title: 'Empty the trash?',
       message: 'Every file in the trash is deleted permanently. This cannot be undone.',
       confirmLabel: 'Empty trash',

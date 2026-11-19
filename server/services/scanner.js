@@ -11,6 +11,11 @@ const { getExtension, isMediaFile, getFileSize } = require('../utils/fileUtils')
 const events = require('./events');
 const extrasService = require('./extras');
 const ignoreRules = require('../utils/ignoreRules');
+const { createJsonStore } = require('../utils/jsonStore');
+
+// When the last full scan ran and how it went — the Server page shows it, and
+// it has to survive a restart (an in-memory value would always say "never").
+const lastScanStore = createJsonStore('last-scan.json', {});
 
 let watcher = null;
 let isScanning = false;
@@ -487,6 +492,21 @@ async function scanDirectory(dirPath, recursive = true, options = {}) {
   return results;
 }
 
+function recordScan(details) {
+  try {
+    lastScanStore.set({ at: new Date().toISOString(), ...details });
+    lastScanStore.saveNow();
+  } catch (err) {
+    logger.warn(`[Scanner] could not record last scan: ${err.message}`);
+  }
+}
+
+/** `{ at, status, scanned, removed, elapsed, error? }` or null if never scanned. */
+function getLastScan() {
+  const last = lastScanStore.get();
+  return last && last.at ? last : null;
+}
+
 async function scanAll() {
   if (isScanning) {
     logger.warn('Scan already in progress, skipping');
@@ -497,13 +517,14 @@ async function scanAll() {
 
   const config = getConfig();
   const startTime = Date.now();
+  let jobId = null;
 
   try {
     // Ensure media dirs exist (async)
     await Promise.all(Object.values(config.media.paths).map(p => fs.ensureDir(p)));
 
     const libraries = getLibraries(config);
-    const jobId = `scan_${Date.now()}`;
+    jobId = `scan_${Date.now()}`;
     events.jobStart(jobId, 'scan', 'Scanning library', 0);
     const allResults = [];
     for (const library of libraries) {
@@ -533,10 +554,14 @@ async function scanAll() {
     logger.info(`Scan complete: ${allResults.length} items, ${removed} removed, ${elapsed}s`);
     events.jobFinish(jobId, 'done', { scanned: allResults.length, removed });
     events.broadcast('library:changed', { scanned: allResults.length, removed, reason: 'scan' });
+    recordScan({ status: 'done', scanned: allResults.length, removed, elapsed: Number(elapsed) });
 
     return { scanned: allResults.length, removed, elapsed };
   } catch (err) {
     logger.error('Scan failed:', err.message);
+    // Without this the job stayed "running" in the Jobs tab forever.
+    if (jobId) events.jobFinish(jobId, 'error', { error: err.message });
+    recordScan({ status: 'error', error: err.message, elapsed: Number(((Date.now() - startTime) / 1000).toFixed(2)) });
     throw err;
   } finally {
     isScanning = false;
@@ -639,6 +664,7 @@ function stopWatcher() {
 
 module.exports = {
   isScanning: () => isScanning,
+  getLastScan,
   scanFile,
   scanDirectory,
   scanAll,

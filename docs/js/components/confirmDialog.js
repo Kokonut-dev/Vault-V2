@@ -19,11 +19,15 @@ const uid = () => `cd-${Math.random().toString(36).slice(2, 8)}`;
 export function confirmDialog({
   title = 'Are you sure?',
   message = '',
-  confirmText = 'Confirm',
+  confirmText = null,
+  confirmLabel = null, // alias several callers use
   cancelText = 'Cancel',
   danger = false,
   checkbox = null, // { label, checked }
 } = {}) {
+  // Resolves to `{ confirmed, checked }` — an object, so callers must read
+  // `.confirmed`; `if (!await confirmDialog())` never cancels.
+  confirmText = confirmText || confirmLabel || 'Confirm';
   return new Promise((resolve) => {
     const id = uid();
     const cbId = `${id}-cb`;
