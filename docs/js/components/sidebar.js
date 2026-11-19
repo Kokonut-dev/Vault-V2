@@ -36,6 +36,7 @@ const NAV_ITEMS = [
   ]},
   { id: 'manage', section: 'Manage', items: [
     { id: 'upload', label: 'Upload', icon: 'upload', route: '/upload' },
+    { id: 'torrents', label: 'Torrents', icon: 'magnet', route: '/torrents' },
     { id: 'profiles', label: 'Profiles', icon: 'user', route: '/profiles' },
     { id: 'system', label: 'Server', icon: 'hard-drive', route: '/system' },
     { id: 'trash', label: 'Trash', icon: 'trash', route: '/trash' },

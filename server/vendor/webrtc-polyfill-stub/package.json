@@ -1,0 +1,11 @@
+{
+  "name": "webrtc-polyfill",
+  "version": "1.2.2-vault.0",
+  "description": "Vault stand-in for webrtc-polyfill: WebTorrent's browser-peer (WebRTC) support is not used on the server, and the real package pulls in a native module (node-datachannel) whose prebuilt download breaks installs.",
+  "license": "MIT",
+  "type": "module",
+  "main": "index.js",
+  "exports": {
+    ".": "./index.js"
+  }
+}

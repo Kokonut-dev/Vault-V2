@@ -7,13 +7,15 @@
 // function". Shell reads below are now network-first to prevent that mismatch
 // from recurring; the version bump repairs clients that already have v3.
 // v5: "Hearth" UI revamp — new tokens, fonts, logo and brand module.
+// v8: new Torrents page + magnet icon (utils/icons.js is in the shell list),
+//     folder upload (utils/folderUpload.js), Live TV channel-list groups.
 // v7: page transitions (utils/pageTransition.js) are imported by the shell;
 //     Settings was split into views/settings/*.
 // v6: navigations and ALL same-origin code (not just the shell list) revalidate
 // with `cache: 'no-cache'`. GitHub Pages sends max-age=600, so the HTTP cache
 // could hand an old index.html or view module to a reload for 10 minutes,
 // mixing builds ("does not provide an export named 'THEME_META'").
-const CACHE_NAME = 'vault-v2-shell-v7';
+const CACHE_NAME = 'vault-v2-shell-v8';
 const BASE_PATH = '/Vault-V2';
 
 const SHELL_ASSETS = [

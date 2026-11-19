@@ -111,6 +111,9 @@ function handle(event, data) {
     case 'watchlist:changed':
       emit('vault:watchlist-changed', data);
       break;
+    case 'torrents:changed':
+      emit('vault:torrents-changed', data);
+      break;
     // Same window events the app fires for local changes, so a change made on
     // another device (or tab) reaches the same listeners. `remote: true` lets a
     // listener tell them apart; there's no `item` object, only ids.

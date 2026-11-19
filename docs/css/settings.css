@@ -1212,3 +1212,22 @@
 .transfer-tip { margin-bottom: 16px; }
 .transfer-modal-dialog { width: min(640px, calc(100vw - 32px)); max-width: none; }
 .transfer-modal-dialog .modal-body { max-height: min(78vh, 720px); overflow: auto; }
+
+/* ---------- Live TV: more channel lists ----------------------------------- */
+.ltv-sources { margin-top: 28px; }
+.ltv-source-list { list-style: none; margin: 0 0 12px; padding: 0; display: grid; gap: 8px; }
+.ltv-source {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px;
+  padding: 10px 14px; border-radius: 12px;
+  border: 1px solid rgba(var(--glass-tint), 0.1);
+  background: rgba(var(--glass-tint), 0.04);
+}
+.ltv-source.is-off .ltv-source-main { opacity: 0.6; }
+.ltv-source-main { flex: 1; min-width: 200px; }
+.ltv-source-name { font-weight: 600; margin: 0; }
+.ltv-source-meta { font-size: 12px; color: var(--text-secondary); margin: 2px 0 0; overflow-wrap: anywhere; }
+.ltv-source-actions { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
+.ltv-source-toggle { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; margin-right: 6px; }
+.ltv-source-empty { font-size: 13px; color: var(--text-secondary); }
+.ltv-source-editor { margin: 4px 0 12px; padding: 16px; border-radius: 12px; border: 1px solid rgba(var(--glass-tint), 0.14); }
+.ltv-source-form-title { margin: 0 0 8px; font-size: 15px; }

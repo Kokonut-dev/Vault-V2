@@ -10,6 +10,8 @@ FROM node:22-bookworm-slim AS deps
 
 WORKDIR /app/server
 COPY server/package.json server/package-lock.json* ./
+# Local stand-in package referenced from package.json (see vendor/README).
+COPY server/vendor ./vendor
 RUN npm ci --omit=dev --ignore-scripts --no-audit --no-fund || npm install --omit=dev --ignore-scripts --no-audit --no-fund
 
 FROM node:22-bookworm-slim

@@ -817,6 +817,70 @@ html.has-artwork-ambience body { background-attachment: fixed; }
 .health-item.warn { border-color: color-mix(in srgb, var(--warning, #ffb020) 45%, transparent); }
 .health-item.error { border-color: color-mix(in srgb, var(--danger, #ff6b6b) 45%, transparent); }
 
+/* ---------- Live TV: channels grouped by list ------------------------------ */
+.livetv-toolbar { display: flex; flex-wrap: wrap; gap: 10px 16px; align-items: center; margin-bottom: 18px; }
+.livetv-source-filter { display: flex; flex-wrap: wrap; gap: 6px; }
+.livetv-source-filter .chip-btn {
+  border: 1px solid rgba(var(--glass-tint), 0.14);
+  background: rgba(var(--glass-tint), 0.05);
+  color: var(--text-secondary);
+  border-radius: 999px;
+  padding: 6px 12px;
+  font-size: 13px;
+  cursor: pointer;
+}
+.livetv-source-filter .chip-btn[aria-pressed="true"] { background: var(--accent-solid); border-color: transparent; color: var(--on-accent); }
+.livetv-search { max-width: 260px; margin-left: auto; }
+.livetv-group + .livetv-group { margin-top: 28px; }
+.livetv-group-title { display: flex; align-items: baseline; gap: 8px; margin-bottom: 12px; }
+.livetv-source-errors { margin-bottom: 16px; }
+
+/* ---------- Torrents ------------------------------------------------------- */
+.tj-card {
+  border: 1px solid rgba(var(--glass-tint), 0.1);
+  background: rgba(var(--glass-tint), 0.04);
+  border-radius: 16px;
+  padding: 20px;
+  margin-bottom: 24px;
+}
+.tj-card-title { display: flex; align-items: center; gap: 8px; font-size: 17px; font-weight: 700; margin: 0 0 14px; }
+.tj-notice { margin: 0 0 16px; padding-left: 20px; display: grid; gap: 8px; line-height: 1.55; color: var(--text-secondary); }
+.tj-notice strong { color: var(--text-primary); }
+.tj-help { font-size: 12px; color: var(--text-secondary); margin: 4px 0 0; }
+.tj-ack { display: flex; align-items: flex-start; gap: 10px; margin: 12px 0 0; line-height: 1.45; cursor: pointer; }
+.tj-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 16px; }
+.tj-add-form { display: flex; flex-wrap: wrap; gap: 10px; }
+.tj-add-form .form-input { flex: 1 1 320px; min-width: 0; }
+.tj-add-form .form-select { flex: 0 0 auto; width: auto; }
+.tj-add.is-dragover { border-color: var(--accent-solid); border-style: dashed; }
+.tj-list { display: grid; gap: 12px; margin-bottom: 28px; }
+.tj-job {
+  border: 1px solid rgba(var(--glass-tint), 0.1);
+  border-radius: 14px;
+  padding: 14px 16px;
+  background: rgba(var(--glass-tint), 0.03);
+}
+.tj-job.is-error { border-color: color-mix(in oklch, var(--danger, #e5484d) 55%, transparent); }
+.tj-job-head { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: flex-start; }
+.tj-job-main { flex: 1 1 260px; min-width: 0; }
+.tj-job-name { font-size: 15px; font-weight: 600; margin: 0; overflow-wrap: anywhere; }
+.tj-job-status { font-size: 13px; color: var(--text-secondary); margin: 4px 0 0; font-variant-numeric: tabular-nums; }
+.tj-job.is-error .tj-job-status { color: var(--danger, #e5484d); }
+.tj-job-actions { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
+.tj-progress { margin-top: 10px; }
+.tj-picker { margin-top: 12px; border-top: 1px solid rgba(var(--glass-tint), 0.08); padding-top: 12px; }
+.tj-picker-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 8px; font-size: 13px; }
+.tj-picker-bar .form-select { width: auto; }
+.tj-files { list-style: none; margin: 0; padding: 0; max-height: 320px; overflow: auto; display: grid; gap: 2px; }
+.tj-file { display: flex; align-items: center; gap: 10px; padding: 6px 4px; border-radius: 8px; font-size: 13px; cursor: pointer; }
+.tj-file:hover { background: rgba(var(--glass-tint), 0.06); }
+.tj-file.is-other .tj-file-path { color: var(--text-secondary); }
+.tj-file-path { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.tj-file-size { color: var(--text-secondary); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.tj-settings summary { display: flex; align-items: center; gap: 8px; cursor: pointer; font-weight: 600; }
+.tj-settings-body { margin-top: 16px; }
+.tj-vpn { margin-bottom: 16px; }
+
 /* ---------- Reduced motion ------------------------------------------------ */
 @media (prefers-reduced-motion: reduce) {
   .queue-panel, .context-menu, .lyrics-line, .profile-card { transition: none; }

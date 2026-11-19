@@ -7,12 +7,47 @@ import { icon } from '../utils/icons.js';
 import { escapeHtml, formatTime } from '../utils/format.js';
 import { toast } from '../components/toast.js';
 
+const FILTER_KEY = 'vault:livetv-source';
+
+function channelCard(channel) {
+  return `
+      <button type="button" class="media-card channel-card" data-channel="${escapeHtml(channel.id)}">
+        <div class="media-card-cover">
+          ${channel.logo ? `<img loading="lazy" src="${escapeHtml(channel.logo)}" alt="">` : ''}
+          <div class="media-card-placeholder${channel.logo ? '' : ' visible'}">${icon('tv', { size: 30 })}</div>
+        </div>
+        <div class="media-card-info">
+          <div class="media-card-title">${escapeHtml(channel.name)}</div>
+          <div class="media-card-meta">${channel.number ? `<span class="channel-number">${escapeHtml(channel.number)}</span> · ` : ''}${channel.kind === 'vod' ? 'Movie · ' : ''}${channel.group ? escapeHtml(channel.group) : 'Live'}${channel.playable === false ? ' · Unsupported link' : ''}</div>
+        </div>
+      </button>`;
+}
+
+/**
+ * Channels grouped by the list they came from, in list order (main list
+ * first, then extra lists, then HDHomeRun). Channels from an older server
+ * carry no sourceId and form a single unnamed group.
+ */
+export function groupBySource(channels, sources = []) {
+  const order = new Map(sources.map((src, i) => [src.id, i]));
+  const groups = new Map();
+  for (const channel of channels) {
+    const id = channel.sourceId || '';
+    if (!groups.has(id)) {
+      const known = sources.find(src => src.id === id);
+      groups.set(id, { id, name: channel.sourceName || known?.name || '', channels: [] });
+    }
+    groups.get(id).channels.push(channel);
+  }
+  return [...groups.values()].sort((a, b) => (order.get(a.id) ?? 999) - (order.get(b.id) ?? 999));
+}
+
 export async function renderLiveTV(container) {
   container.className = 'page';
   container.innerHTML = `
     <div class="page-header">
       <h1 class="page-title">${icon('radio', { size: 26 })}<span>Live TV</span></h1>
-      <p class="page-subtitle">Channels from your M3U playlist or HDHomeRun tuner, with DVR</p>
+      <p class="page-subtitle">Channels from your M3U playlists or HDHomeRun tuner, with DVR</p>
       <div class="settings-tabs" role="tablist" style="margin-top:12px">
         <button class="settings-tab active" role="tab" data-tab="guide">Guide</button>
         <button class="settings-tab" role="tab" data-tab="recordings">Recordings</button>
@@ -30,14 +65,16 @@ export async function renderLiveTV(container) {
     });
   });
 
+  let channels = [];
+
   async function loadGuide() {
     body.innerHTML = '<div class="skeleton skeleton-block"></div>';
-    let channels = [];
-    let epg = {};
+    channels = [];
+    let sources = [];
     try {
       const data = await api.getChannels(true);
       channels = data.channels || [];
-      epg = data.epg || {};
+      sources = data.sources || [];
     } catch (err) {
       body.innerHTML = `<div class="empty-state">${icon('tv', { size: 30 })}
         <div class="empty-state-title">Live TV is not configured</div>
@@ -47,24 +84,68 @@ export async function renderLiveTV(container) {
       return;
     }
 
+    // Lists that failed to load: say which, so "where did my channels go"
+    // has an answer even when the other lists work.
+    const failed = sources.filter(src => src.error);
+    const failedNote = failed.length ? `<p class="settings-callout is-warn livetv-source-errors" role="status">${icon('alert-triangle', { size: 15 })}<span>${failed.map(src => `<strong>${escapeHtml(src.name)}</strong> didn’t load: ${escapeHtml(src.error)}`).join('<br>')} <a href="settings#live-tv" data-route="/settings#live-tv">Check Live TV settings</a></span></p>` : '';
+
     if (!channels.length) {
-      body.innerHTML = `<div class="empty-state"><div class="empty-state-title">No channels found</div>
+      body.innerHTML = `${failedNote}<div class="empty-state"><div class="empty-state-title">No channels found</div>
         <div class="empty-state-message">Add an M3U channel list in Settings, or let Vault look for an HDHomeRun tuner on your network.</div>
         <a class="btn btn-primary" href="settings#live-tv" data-route="/settings#live-tv">${icon('settings', { size: 16 })}<span>Open Live TV settings</span></a></div>`;
       return;
     }
 
-    body.innerHTML = `<div class="channel-grid">${channels.map(channel => `
-      <button type="button" class="media-card channel-card" data-channel="${channel.id}">
-        <div class="media-card-cover">
-          ${channel.logo ? `<img loading="lazy" src="${escapeHtml(channel.logo)}" alt="">` : ''}
-          <div class="media-card-placeholder${channel.logo ? '' : ' visible'}">${icon('tv', { size: 30 })}</div>
-        </div>
-        <div class="media-card-info">
-          <div class="media-card-title">${escapeHtml(channel.name)}</div>
-          <div class="media-card-meta">${channel.number ? `<span class="channel-number">${escapeHtml(channel.number)}</span> · ` : ''}${channel.kind === 'vod' ? 'Movie · ' : ''}${channel.group ? escapeHtml(channel.group) : 'Live'}${channel.playable === false ? ' · Unsupported link' : ''}</div>
-        </div>
-      </button>`).join('')}</div>`;
+    const groups = groupBySource(channels, sources);
+    const multi = groups.length > 1;
+    let filter = localStorage.getItem(FILTER_KEY) || 'all';
+    if (filter !== 'all' && !groups.some(g => g.id === filter)) filter = 'all';
+    let query = '';
+
+    body.innerHTML = `${failedNote}
+      ${multi || channels.length > 30 ? `<div class="livetv-toolbar">
+        ${multi ? `<div class="chip-row livetv-source-filter" role="group" aria-label="Channel list">
+          <button type="button" class="chip-btn" data-source-filter="all">All · ${channels.length}</button>
+          ${groups.map(g => `<button type="button" class="chip-btn" data-source-filter="${escapeHtml(g.id)}">${escapeHtml(g.name || 'Channels')} · ${g.channels.length}</button>`).join('')}
+        </div>` : ''}
+        <input type="search" class="form-input livetv-search" id="livetv-search" placeholder="Find a channel" aria-label="Find a channel" autocomplete="off">
+      </div>` : ''}
+      <div id="livetv-groups"></div>`;
+    const groupsHost = body.querySelector('#livetv-groups');
+
+    function paint() {
+      const q = query.toLowerCase();
+      const shown = groups
+        .filter(g => filter === 'all' || g.id === filter)
+        .map(g => ({ ...g, channels: q ? g.channels.filter(c => `${c.name} ${c.group || ''} ${c.number || ''}`.toLowerCase().includes(q)) : g.channels }))
+        .filter(g => g.channels.length);
+      body.querySelectorAll('[data-source-filter]').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.sourceFilter === filter)));
+      if (!shown.length) {
+        groupsHost.innerHTML = `<p class="row-meta">No channels match “${escapeHtml(query)}”.</p>`;
+        return;
+      }
+      groupsHost.innerHTML = shown.map(g => `
+        <section class="livetv-group" aria-label="${escapeHtml(g.name || 'Channels')}">
+          ${multi ? `<h2 class="section-title livetv-group-title">${escapeHtml(g.name || 'Channels')} <span class="row-meta">${g.channels.length}</span></h2>` : ''}
+          <div class="channel-grid">${g.channels.map(channelCard).join('')}</div>
+        </section>`).join('');
+      wireCards();
+    }
+
+    body.querySelectorAll('[data-source-filter]').forEach(btn => btn.addEventListener('click', () => {
+      filter = btn.dataset.sourceFilter;
+      localStorage.setItem(FILTER_KEY, filter);
+      paint();
+    }));
+    body.querySelector('#livetv-search')?.addEventListener('input', (e) => {
+      query = e.target.value.trim();
+      paint();
+    });
+    paint();
+  }
+
+  function wireCards() {
+    const body = container.querySelector('#livetv-groups');
 
     // Provider logo links rot often; fall back to the TV placeholder.
     body.querySelectorAll('.channel-card img').forEach(img => {

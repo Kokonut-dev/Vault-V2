@@ -152,7 +152,7 @@ Example: 0,1,4,5,8,9,12,13 (left two columns)
       rateLimit: {
         general: { windowMs: 900000, max: 2000 },
         auth: { windowMs: 900000, max: 10 },
-        upload: { windowMs: 900000, max: 30 }
+        upload: { windowMs: 900000, max: 120 }
       }
     }
   };

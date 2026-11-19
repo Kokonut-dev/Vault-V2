@@ -98,7 +98,13 @@ function renderLiveTv(s, ctx, state) {
     placeholder: 'https://provider.example/xmltv.php or guide.xml.gz',
     keywords: 'epg xmltv guide tv guide programme schedule',
   });
-  sources.append(m3u, epg);
+  sources.append(m3u, epg, row({
+    id: 'ltv-main-name',
+    label: 'List name',
+    help: 'Optional. Shown as the group heading on the Live TV page when you have more than one list.',
+    keywords: 'name provider label',
+    control: `<input class="form-input" id="ltv-main-name" maxlength="60" placeholder="Main list" value="${escapeHtml(state.mainName || '')}">`,
+  }), streamsRow('ltv-main-max', state.mainMaxStreams));
 
   const tuners = group('Tuners');
   tuners.append(el(`<div class="setting-row" data-keywords="hdhomerun tuner antenna discovery network">
@@ -121,11 +127,13 @@ function renderLiveTv(s, ctx, state) {
     form.append(el(`<p class="settings-callout is-warn" data-ffmpeg-missing>${icon('alert-triangle', { size: 15 })}<span><strong>ffmpeg isn’t installed on the server.</strong> Most IPTV channels and movies use formats browsers can’t play on their own, so they won’t play until ffmpeg is installed (or <code>FFMPEG_PATH</code> points at it) and Vault is restarted.</span></p>`));
   }
   form.append(sources, tuners, actions, report);
-  s.body.append(form);
+  const extra = renderExtraSources(s, ctx, state);
+  s.body.append(form, extra);
 
   if (!state.canEdit) {
     setReadOnly(form);
-    readOnlyNotice().then(message => setReadOnly(form, message));
+    setReadOnly(extra);
+    readOnlyNotice().then(message => { setReadOnly(form, message); setReadOnly(extra); });
     form.querySelector('[data-route]')?.removeAttribute('disabled');
     return;
   }
@@ -138,6 +146,8 @@ function renderLiveTv(s, ctx, state) {
     const body = {
       enabled: form.querySelector('#ltv-enabled').checked,
       hdhrDiscover: form.querySelector('#ltv-hdhr').checked,
+      mainName: form.querySelector('#ltv-main-name').value.trim(),
+      mainMaxStreams: Number(form.querySelector('#ltv-main-max').value) || 0,
     };
     const m = m3u.value();
     const g = epg.value();
@@ -205,7 +215,8 @@ function renderLiveTv(s, ctx, state) {
       m3u.input.focus();
       return;
     }
-    if (body.enabled && body.m3uUrl === undefined && !m3u.isConfigured() && !body.hdhrDiscover) {
+    const hasExtra = (state.sources || []).some(src => src.enabled);
+    if (body.enabled && body.m3uUrl === undefined && !m3u.isConfigured() && !body.hdhrDiscover && !hasExtra) {
       fieldError(m3u.input, 'Add a channel list link (or turn on HDHomeRun discovery) before turning Live TV on.');
       m3u.input.focus();
       return;
@@ -226,6 +237,192 @@ function renderLiveTv(s, ctx, state) {
       busy(saveBtn, false);
     }
   });
+}
+
+function streamsRow(id, value = 0) {
+  const n = Number(value) || 0;
+  const options = [0, 1, 2, 3, 4, 5, 6, 8, 10]
+    .map(v => `<option value="${v}"${v === n ? ' selected' : ''}>${v ? `${v} at a time` : 'No limit'}</option>`).join('');
+  return row({
+    id,
+    label: 'Streams at once',
+    help: 'Most IPTV accounts allow only 1–2 connections; going over can get every stream cut. Vault won’t open more than this from this list.',
+    keywords: 'max streams connections limit simultaneous concurrent',
+    control: `<select class="form-select" id="${id}">${options}${n && ![0, 1, 2, 3, 4, 5, 6, 8, 10].includes(n) ? `<option value="${n}" selected>${n} at a time</option>` : ''}</select>`,
+  });
+}
+
+/**
+ * "More channel lists": extra M3U providers, each with its own guide, on/off
+ * switch and connection cap. Their channels appear on the Live TV page as
+ * their own group. Links stay write-only (only a redacted hint comes back).
+ */
+function renderExtraSources(s, ctx, state) {
+  const wrap = group('More channel lists', {
+    description: 'Have more than one provider or playlist? Add each one here. Live TV groups channels by list, and you can switch a list off without deleting it.',
+    className: 'ltv-sources',
+  });
+  const list = el('<ul class="ltv-source-list" role="list"></ul>');
+  const editor = el('<div class="ltv-source-editor" hidden></div>');
+  const addBtn = el(`<button type="button" class="btn btn-secondary" id="ltv-add-source">${icon('plus', { size: 16 })}<span>Add channel list</span></button>`);
+  const report = el('<div class="test-report" role="region" aria-label="Channel list test results" aria-live="polite" hidden></div>');
+  wrap.append(list, editor, el('<div class="settings-actions"></div>'), report);
+  wrap.querySelector('.settings-actions').append(addBtn);
+
+  let current = state;
+  const apply = (next, message) => {
+    current = { ...current, ...next, canEdit: true };
+    ctx.setLiveTv(current);
+    paintList();
+    if (message) flashStatus(s, message);
+    window.dispatchEvent(new CustomEvent('vault:livetv-settings-changed'));
+  };
+
+  function paintList() {
+    const sources = current.sources || [];
+    list.innerHTML = sources.length ? '' : '<li class="ltv-source-empty">No other lists yet.</li>';
+    for (const src of sources) {
+      const li = el(`<li class="ltv-source${src.enabled ? '' : ' is-off'}" data-source-id="${escapeHtml(src.id)}">
+          <div class="ltv-source-main">
+            <p class="ltv-source-name">${escapeHtml(src.name)}${src.enabled ? '' : ' <span class="chip">Off</span>'}</p>
+            <p class="ltv-source-meta"><code>${escapeHtml(src.m3u?.hint || 'hidden')}</code>${src.epg?.configured ? ' · with TV guide' : ''}${src.maxStreams ? ` · ${plural(src.maxStreams, 'stream')} at once` : ''}</p>
+          </div>
+          <div class="ltv-source-actions">
+            <label class="ltv-source-toggle"><input type="checkbox" class="checkbox" data-toggle${src.enabled ? ' checked' : ''}><span>On</span></label>
+            <button type="button" class="btn btn-ghost btn-sm" data-test>${icon('activity', { size: 14 })}<span>Test</span></button>
+            <button type="button" class="btn btn-ghost btn-sm" data-edit>Edit</button>
+            <button type="button" class="btn btn-ghost btn-sm" data-remove aria-label="Remove ${escapeHtml(src.name)}">${icon('trash', { size: 14 })}</button>
+          </div>
+        </li>`);
+      li.querySelector('[data-toggle]').addEventListener('change', async (e) => {
+        const on = e.target.checked;
+        try {
+          apply(await api.updateLiveTvSource(src.id, { enabled: on }), on ? `“${src.name}” switched on` : `“${src.name}” switched off`);
+        } catch (err) {
+          e.target.checked = !on;
+          flashStatus(s, err.message, 'error');
+        }
+      });
+      li.querySelector('[data-edit]').addEventListener('click', () => openEditor(src));
+      li.querySelector('[data-test]').addEventListener('click', (e) => testSource(src, e.currentTarget));
+      li.querySelector('[data-remove]').addEventListener('click', async (e) => {
+        const ok = await confirmDialog({
+          title: `Remove “${escapeHtml(src.name)}”?`,
+          message: 'Its channels disappear from Live TV. Recordings you already made stay in your library.',
+          confirmText: 'Remove list',
+          danger: true,
+        });
+        if (!ok) return;
+        busy(e.currentTarget, true, '');
+        try {
+          apply(await api.removeLiveTvSource(src.id), `“${src.name}” removed`);
+        } catch (err) {
+          busy(e.currentTarget, false);
+          flashStatus(s, err.message, 'error');
+        }
+      });
+      list.append(li);
+    }
+    addBtn.hidden = sources.length >= 20;
+  }
+
+  async function testSource(src, btn, body = {}) {
+    busy(btn, true, 'Testing…');
+    report.hidden = false;
+    report.innerHTML = `<p class="test-report-pending">${icon('loader', { size: 15, className: 'icon spin' })}<span>Fetching “${escapeHtml(src.name)}” on the server…</span></p>`;
+    try {
+      const result = await api.testLiveTv({ sourceId: src.id, ...body });
+      paintReport(report, result, {
+        onAdoptGuide: async (adoptBtn) => {
+          busy(adoptBtn, true, 'Saving…');
+          try {
+            apply(await api.adoptLiveTvGuide({ sourceId: src.id }), `Guide for “${src.name}” saved`);
+            testSource(src, btn);
+          } catch (err) {
+            busy(adoptBtn, false);
+            flashStatus(s, err.message, 'error');
+          }
+        },
+      });
+    } catch (err) {
+      report.innerHTML = `<p class="settings-callout is-error">${icon('alert-circle', { size: 15 })}<span>${escapeHtml(err.message)}</span></p>`;
+    } finally {
+      busy(btn, false);
+    }
+  }
+
+  function openEditor(src = null) {
+    editor.hidden = false;
+    addBtn.hidden = true;
+    editor.innerHTML = `<form class="settings-form ltv-source-form" novalidate>
+        <h4 class="ltv-source-form-title">${src ? `Edit “${escapeHtml(src.name)}”` : 'Add a channel list'}</h4>
+      </form>`;
+    const f = editor.querySelector('form');
+    const nameRow = row({
+      id: 'ltv-src-name',
+      label: 'Name',
+      help: 'e.g. the provider’s name. Used as the group heading on the Live TV page.',
+      control: `<input class="form-input" id="ltv-src-name" maxlength="60" required value="${escapeHtml(src?.name || '')}">`,
+    });
+    const srcM3u = secretField({
+      id: 'ltv-src-m3u',
+      label: 'Channel list (M3U link)',
+      state: src?.m3u || { configured: false, hint: '' },
+      type: 'text',
+      placeholder: 'https://provider.example/get.php?username=…&type=m3u_plus',
+    });
+    const srcEpg = secretField({
+      id: 'ltv-src-epg',
+      label: 'TV guide (XMLTV link)',
+      help: 'Optional. Lists that share channels can share one guide.',
+      state: src?.epg || { configured: false, hint: '' },
+      type: 'text',
+      placeholder: 'https://provider.example/xmltv.php',
+    });
+    const buttons = el(`<div class="settings-actions">
+        <button type="submit" class="btn btn-primary" data-save>${src ? 'Save list' : 'Add list'}</button>
+        <button type="button" class="btn btn-ghost" data-cancel>Cancel</button>
+      </div>`);
+    f.append(nameRow, srcM3u, srcEpg, streamsRow('ltv-src-max', src?.maxStreams || 0), buttons);
+    const nameInput = f.querySelector('#ltv-src-name');
+    const checkM = liveValidate(srcM3u.input, v => validateLink(v, { allowLocalPath: true }));
+    const checkE = liveValidate(srcEpg.input, v => validateLink(v, { allowLocalPath: true }));
+    nameInput.focus();
+
+    const close = () => {
+      editor.hidden = true;
+      editor.replaceChildren();
+      paintList();
+      (src ? list.querySelector(`[data-source-id="${CSS.escape(src.id)}"] [data-edit]`) : addBtn)?.focus();
+    };
+    buttons.querySelector('[data-cancel]').addEventListener('click', close);
+    f.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      [nameInput, srcM3u.input, srcEpg.input].forEach(clearFieldError);
+      const body = { name: nameInput.value.trim(), maxStreams: Number(f.querySelector('#ltv-src-max').value) || 0 };
+      const m = srcM3u.value();
+      const g = srcEpg.value();
+      if (m !== undefined) body.m3uUrl = m;
+      if (g !== undefined) body.epgUrl = g;
+      if (!body.name) { fieldError(nameInput, 'Give this channel list a name'); nameInput.focus(); return; }
+      if (!checkM() || !checkE()) return;
+      if (!src && !body.m3uUrl) { fieldError(srcM3u.input, 'Add the channel list link (M3U)'); srcM3u.input.focus(); return; }
+      const saveBtn = buttons.querySelector('[data-save]');
+      busy(saveBtn, true, 'Saving…');
+      try {
+        const next = src ? await api.updateLiveTvSource(src.id, body) : await api.addLiveTvSource(body);
+        apply(next, src ? `“${body.name}” saved` : `“${body.name}” added`);
+        close();
+      } catch (err) {
+        busy(saveBtn, false);
+        if (!applyFieldErrors({ name: nameInput, m3uUrl: srcM3u.input, epgUrl: srcEpg.input }, err.fields)) flashStatus(s, err.message, 'error');
+      }
+    });
+  }
+
+  addBtn.addEventListener('click', () => openEditor());
+  paintList();
+  return wrap;
 }
 
 function paintReport(report, result, { onAdoptGuide }) {
@@ -509,9 +706,20 @@ function paintLinkResult(host, info, url, ctx, sectionNode) {
     busy(btn, true, 'Working…');
     try {
       if (action === 'livetv-source') {
-        const next = await api.updateLiveTvSettings({ m3uUrl: url, enabled: true });
-        ctx.setLiveTv({ ...next, canEdit: true }, { rerender: true });
-        say('Saved as the Live TV channel list. <button type="button" class="link-button" data-go-ltv>Test it in Live TV settings</button>');
+        // A main list is already set up: add this one next to it instead of
+        // silently replacing the provider someone already uses.
+        const current = await ctx.liveTv().catch(() => null);
+        if (current?.m3u?.configured) {
+          let name = 'Channel list';
+          try { name = new URL(url).hostname.replace(/^www\./, ''); } catch { /* local path */ }
+          const next = await api.addLiveTvSource({ name, m3uUrl: url });
+          ctx.setLiveTv({ ...next, canEdit: true }, { rerender: true });
+          say(`Added as another channel list, “${escapeHtml(name)}”. Its channels show up next to your other list’s. <button type="button" class="link-button" data-go-ltv>Rename or test it in Live TV settings</button>`);
+        } else {
+          const next = await api.updateLiveTvSettings({ m3uUrl: url, enabled: true });
+          ctx.setLiveTv({ ...next, canEdit: true }, { rerender: true });
+          say('Saved as the Live TV channel list. <button type="button" class="link-button" data-go-ltv>Test it in Live TV settings</button>');
+        }
         host.querySelector('[data-go-ltv]')?.addEventListener('click', () => ctx.select('live-tv', { focus: true, test: true }));
       } else if (action === 'livetv-guide-from-playlist') {
         const next = await api.adoptLiveTvGuide({ m3uUrl: url });

@@ -2,6 +2,109 @@
 
 ## [3.0.0] — in progress (branch `arena/0deefe55-vault-v2`)
 
+### Added — upload whole folders
+- The Upload page has a new **Folders (auto-sort)** card. Drop folders in, or
+  use **Choose folder**. Folders are read recursively, including folders with
+  more than 100 entries, which browsers hand out in chunks.
+- Each top-level folder is sorted into Music, Movies & Series or Videos:
+  - mostly audio goes to Music;
+  - `S01E02`, `Title (2016)` or `Movies`/`Series`/`TV` folder names go to
+    Movies & Series;
+  - anything else goes to Videos.
+
+  You can change the library per folder or drop a folder from the list.
+  Audio inside a movie folder (a soundtrack) still goes to Music. Covers and
+  subtitles follow their media. Files Vault can't use (`.txt`, `.nfo`…) are
+  listed and skipped, and `.DS_Store`/`Thumbs.db` are ignored silently.
+- The folder structure is kept on the server: `Artist/Album/01 Track.flac`
+  lands in `music/Artist/Album/`. Paths are sanitised (no `..`, no absolute
+  paths, Windows-reserved names renamed, at most 8 levels deep), and the
+  server checks that every file stays inside the library folder. File names
+  with accents or non-Latin scripts arrive intact. Browsers send them as
+  UTF-8, but the multipart parser read them as Latin-1.
+- Before uploading, the page asks the server which files are already there
+  (same relative path and size) and skips them. Re-dropping a half-uploaded
+  folder only sends what's missing.
+- Uploads go in batches: at most 50 files and 1 GB, one library per batch,
+  covers/subtitles first so the first scan sees them. You can pause, resume
+  and cancel. On a 429 the page waits for the rate limit to reset and carries
+  on. Network or server errors retry twice, then a **Retry failed files**
+  button lists what didn't make it.
+- The upload rate limit went from 30 to 120 requests per 15 minutes. Existing
+  installs still on the old default of 30 are migrated automatically.
+- New endpoint `POST /api/upload/check`. `POST /api/upload/:type?keepFolders=1`
+  keeps relative paths. Without the flag, uploads behave exactly as before.
+
+### Added — several Live TV channel lists
+- **Settings → Live TV → More channel lists**: add as many M3U lists as you
+  like (up to 20). Each has its own name, TV guide, on/off switch and a
+  **streams at once** limit.
+- The original channel list stays the "main" list, and you can now name it.
+  Its channel ids don't change, so favourites and recordings keep working.
+  Extra lists get namespaced ids, so two lists can't collide.
+- The Live TV page groups channels under each list's name, in list order.
+  Filter chips ("All · Sport · Main list") are remembered, and there's a
+  channel search. A list that fails to load is named with the reason, while
+  the other lists still show.
+- Guides from every switched-on list are merged; duplicates (same channel and
+  start time) are dropped. **Test** and **Use this guide** work per list.
+- **Streams at once**: IPTV accounts usually allow 1–2 connections, and going
+  over can cut every stream on the account. When a list is at its limit,
+  Vault first closes an idle stream from that list (nobody watching for
+  15 s). If there is none, it refuses with a clear message (`SOURCE_BUSY`)
+  instead of opening one more connection.
+- Settings → Links & imports → **Use for Live TV** now adds the link as another
+  list if a main list is already set up, instead of replacing it.
+- New endpoints: `POST/PUT/DELETE /api/livetv/sources[/:id]` (admin).
+  `/channels` returns per-list status, and `/test` and
+  `/settings/adopt-guide` accept `sourceId`. Links stay write-only: responses
+  carry only a redacted hint.
+
+### Added — torrents (optional, off by default)
+- New **Torrents** page (sidebar → Manage, admin only). It stays off until an
+  admin turns it on and acknowledges a notice: only download what you have
+  the right to, torrenting shares while it downloads, and peers see the
+  server's IP.
+- Paste a magnet link or drop a `.torrent` file; Vault fetches the file list
+  from peers. Media files, subtitles and covers are preselected. Samples and
+  other files are not, and programs (`.exe`, `.sh`, `.apk`…) are never
+  downloaded, even if ticked. Pick the files and the library (auto-guessed),
+  then **Download**.
+- Downloads go to a hidden `.vault-downloads` folder that the library scan and
+  watcher skip, so half-written files never show up. When finished, the files
+  move into the library, keeping the torrent's folder layout, and get indexed.
+- **Keep sharing** to a ratio (0.5, 1, 2). The library gets a hard link right
+  away (or a copy on another disk), so files appear immediately; sharing then
+  stops by itself at the ratio. **Stop sharing** ends it early.
+- Settings on the page: downloads at once (others queue), download and upload
+  speed limits, DHT, UPnP (off by default), and the **VPN guard**. Pick the
+  VPN's network interface, and torrents only run while it's up. When it
+  drops, every connection is closed at once, and downloads resume when it's
+  back. WebTorrent can't bind to an interface, so this is a kill switch
+  rather than routing. The docs suggest running the server behind the VPN
+  for full protection.
+- Pause/resume, a server restart and the VPN guard all resume from what's on
+  disk; WebTorrent re-checks the pieces. Progress shows in the page and in
+  the global job indicator, with a toast when a download is added to the
+  library.
+- Engine: WebTorrent 2.8.5, an optional dependency loaded only when torrents
+  are on. Without it, Vault runs normally and the page explains how to
+  install it.
+  - `webrtc-polyfill` is replaced by an empty stand-in package
+    (`server/vendor/webrtc-polyfill-stub`). Its native `node-datachannel`
+    download breaks installs, and Vault never uses WebRTC peers. Installs
+    stay pure JavaScript and work with `--ignore-scripts`.
+  - `uint8-util` is pinned to 2.2.6, because 2.3.x crashes WebTorrent 2.x.
+  - The Dockerfile copies `server/vendor` before `npm ci`.
+- New endpoints under `/api/torrents` (admin): status, interfaces, settings,
+  add, start, pause, resume, remove. New config section `torrent` (see
+  `config.example.json`).
+
+### Changed
+- Service worker cache `vault-v2-shell-v8` (new page, new icon).
+- `server/config.example.json` regenerated. It also picks up
+  `server.keepAwake`, which was missing.
+
 ### Fixed — Live TV on Linux: "The Vault server couldn't convert this stream"
 - Channels from an M3U playlist failed on Linux servers but worked on a Mac.
   On Linux, the bundled ffmpeg (`ffmpeg-static` / `ffprobe-static`) links

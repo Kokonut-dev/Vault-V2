@@ -3,7 +3,8 @@
  * a Sample folder tree (wildcards allowed), plus the built-in noise filters
  * every media server applies (dotfiles, @eaDir, AppleDouble files, Thumbs.db…).
  */
-const BUILTIN_DIRS = new Set(['@eadir', '.ds_store', '.trash', '#recycle', '@recycle', 'lost+found', 'node_modules', '.git']);
+// .vault-downloads: torrents still downloading (moved into the library when done).
+const BUILTIN_DIRS = new Set(['@eadir', '.ds_store', '.trash', '#recycle', '@recycle', 'lost+found', 'node_modules', '.git', '.vault-downloads']);
 const BUILTIN_FILE_PATTERNS = [
   /^\._/, // macOS AppleDouble resource forks
   /^\.DS_Store$/i,

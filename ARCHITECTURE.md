@@ -230,7 +230,9 @@ Vault-V2/
 │   │   ├── auth.js                 # /api/auth/*
 │   │   ├── library.js              # /api/library/*
 │   │   ├── media.js                # /api/media/*
-│   │   ├── upload.js               # /api/upload/*
+│   │   ├── upload.js               # /api/upload/* (files + folders with ?keepFolders, /check)
+│   │   ├── livetv.js               # /api/livetv/* (channels, several channel lists, DVR)
+│   │   ├── torrents.js             # /api/torrents/* (admin; off by default)
 │   │   ├── playlists.js
 │   │   ├── transcode.js
 │   │   ├── transfer.js             # /api/transfer — move everything to another server
@@ -243,7 +245,11 @@ Vault-V2/
 │   │   ├── library.js              # Index DB CRUD
 │   │   ├── transfer.js             # Export package + import with path/id relinking
 │   │   ├── transferApply.js        # Swaps a staged import in at start-up (with rollback)
+│   │   ├── livetv.js               # M3U lists (main + livetv.sources[]), merged XMLTV guides
+│   │   ├── restream.js             # ffmpeg → HLS for Live TV; global + per-list stream caps
+│   │   ├── torrent.js              # WebTorrent jobs: staging → library, VPN guard, resume
 │   │   └── authService.js
+│   ├── vendor/                     # webrtc-polyfill stand-in (keeps WebTorrent installs pure JS)
 │   ├── data/                       # Created at runtime, gitignored
 │   │   └── .gitkeep
 │   ├── cache/                      # Transcoded cache, gitignored

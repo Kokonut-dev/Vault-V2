@@ -1,10 +1,15 @@
 /**
  * Live TV & DVR.
  *
- * Sources: an M3U/M3U8 channel playlist (works with IPTV providers, ErsatzTV,
+ * Sources: M3U/M3U8 channel playlists (works with IPTV providers, ErsatzTV,
  * TVHeadend's playlist output, xTeVe…) and/or HDHomeRun tuners discovered on the
- * LAN. EPG comes from an XMLTV file or URL. Recording shells out to ffmpeg and
+ * LAN. EPG comes from XMLTV files or URLs. Recording shells out to ffmpeg and
  * writes straight into the videos library, where the scanner indexes it.
+ *
+ * Several channel lists: the original `livetv.m3uUrl` / `epgUrl` is the
+ * "main" list (its channel ids are unchanged, so favourites and recordings
+ * keep working); `livetv.sources[]` adds more, each with its own guide,
+ * on/off switch and streams-at-once cap. Channels are grouped by list.
  */
 const fs = require('fs-extra');
 const path = require('path');
@@ -38,13 +43,22 @@ async function readSource(source, { maxBytes, accept } = {}) {
   return buffer.toString('utf8');
 }
 
+// Guides are cached per URL (main list + one per extra list) and merged.
 let epgCache = { fetchedAt: 0, programs: [], source: null };
+const guideCache = new Map(); // url → { fetchedAt, programs }
+const MAIN_SOURCE_ID = 'main';
+const MAX_SOURCES = 20;
 const activeRecordings = new Map();
 
 // ---------------------------------------------------------------------------
 // Channel list (M3U)
 // ---------------------------------------------------------------------------
-function parseM3U(text) {
+/**
+ * Channel ids: `ch_<index>_<name>` for the main list (as before — favourites
+ * and recordings store them), `ch_<sourceId>_<index>_<name>` for extra lists.
+ * Extra source ids start with "s", so the two shapes can't collide.
+ */
+function parseM3U(text, { sourceId = MAIN_SOURCE_ID } = {}) {
   const lines = String(text).split(/\r?\n/);
   const channels = [];
   let pending = null;
@@ -83,7 +97,8 @@ function parseM3U(text) {
       pending = null;
     }
   }
-  return channels.map((c, i) => ({ ...c, id: `ch_${i}_${Buffer.from(c.name).toString('base64url').slice(0, 10)}` }));
+  const prefix = sourceId && sourceId !== MAIN_SOURCE_ID ? `ch_${sourceId}_` : 'ch_';
+  return channels.map((c, i) => ({ ...c, id: `${prefix}${i}_${Buffer.from(c.name).toString('base64url').slice(0, 10)}` }));
 }
 
 const VOD_EXT = /\.(mkv|mp4|m4v|avi|mov|wmv|webm|mpg|mpeg|flv)(\?|$)/i;
@@ -112,8 +127,46 @@ let channelCache = { at: 0, channels: null, key: '' };
 
 function channelCacheKey() {
   const lt = getConfig().livetv || {};
-  return JSON.stringify([lt.enabled, lt.m3uUrl, lt.hdhrDiscover]);
+  return JSON.stringify([lt.enabled, lt.hdhrDiscover, activeSources().map(s => [s.id, s.name, s.url, s.maxStreams])]);
 }
+
+const cleanLimit = (n) => {
+  const v = Math.floor(Number(n));
+  return Number.isFinite(v) && v > 0 ? Math.min(v, 32) : 0;
+};
+
+/** Every configured channel list, main first: { id, name, url, epgUrl, enabled, maxStreams }. */
+function allSources(livetv = getConfig().livetv || {}) {
+  const list = [];
+  list.push({
+    id: MAIN_SOURCE_ID,
+    name: String(livetv.mainName || '').trim() || 'Main list',
+    url: livetv.m3uUrl || '',
+    epgUrl: livetv.epgUrl || '',
+    enabled: true,
+    maxStreams: cleanLimit(livetv.mainMaxStreams),
+  });
+  for (const src of Array.isArray(livetv.sources) ? livetv.sources : []) {
+    if (!src || !src.id) continue;
+    list.push({
+      id: String(src.id),
+      name: String(src.name || '').trim() || 'Channel list',
+      url: src.url || '',
+      epgUrl: src.epgUrl || '',
+      enabled: src.enabled !== false,
+      maxStreams: cleanLimit(src.maxStreams),
+    });
+  }
+  return list;
+}
+
+/** Lists that contribute channels right now (switched on and with a link). */
+function activeSources(livetv = getConfig().livetv || {}) {
+  return allSources(livetv).filter(s => s.enabled && s.url);
+}
+
+// Last load result per list, so the Live TV page can say which one failed.
+let sourceStatus = [];
 
 async function loadChannels({ fresh = false } = {}) {
   const key = channelCacheKey();
@@ -132,43 +185,70 @@ async function getChannel(id) {
   return channel || null;
 }
 
+/**
+ * Providers that number channels (tvg-chno) expect them in that order;
+ * unnumbered channels keep their list order after the numbered ones.
+ * Sorted per list, so lists stay grouped.
+ */
+function sortByNumber(channels) {
+  if (!channels.some(c => c.number)) return channels;
+  return channels
+    .map((c, i) => ({ c, i }))
+    .sort((a, b) => {
+      const an = a.c.number ? parseFloat(a.c.number) : Infinity;
+      const bn = b.c.number ? parseFloat(b.c.number) : Infinity;
+      return an - bn || a.i - b.i;
+    })
+    .map(({ c }) => c);
+}
+
 async function readChannels() {
   const config = getConfig();
   const channels = [];
+  const status = [];
 
   if (config.livetv?.enabled) {
-    const source = config.livetv.m3uUrl;
-    if (source) {
+    // Lists load in parallel; one provider being down doesn't hide the rest.
+    const sources = activeSources(config.livetv);
+    const loaded = await Promise.all(sources.map(async (src) => {
       try {
-        const text = await readSource(source, { maxBytes: M3U_MAX_BYTES, accept: 'audio/x-mpegurl, application/vnd.apple.mpegurl, */*' });
-        channels.push(...parseM3U(text));
+        const text = await readSource(src.url, { maxBytes: M3U_MAX_BYTES, accept: 'audio/x-mpegurl, application/vnd.apple.mpegurl, */*' });
+        const parsed = parseM3U(text, { sourceId: src.id }).map(c => ({
+          ...c,
+          sourceId: src.id,
+          sourceName: src.name,
+          sourceMaxStreams: src.maxStreams,
+        }));
+        return { src, channels: sortByNumber(parsed), error: null };
       } catch (err) {
-        logger.warn(`[LiveTV] failed to load channel list: ${err.message}`);
+        logger.warn(`[LiveTV] failed to load channel list "${src.name}": ${err.message}`);
+        return { src, channels: [], error: friendlyError(err) };
       }
+    }));
+    for (const { src, channels: list, error } of loaded) {
+      channels.push(...list);
+      status.push({ id: src.id, name: src.name, count: list.length, error });
     }
 
     if (config.livetv.hdhrDiscover) {
       try {
-        channels.push(...await discoverHDHomeRun());
+        const tuners = (await discoverHDHomeRun()).map(c => ({ ...c, sourceId: 'hdhr', sourceName: 'HDHomeRun' }));
+        channels.push(...sortByNumber(tuners));
+        status.push({ id: 'hdhr', name: 'HDHomeRun', count: tuners.length, error: null });
       } catch (err) {
         logger.warn(`[LiveTV] HDHomeRun discovery failed: ${err.message}`);
+        status.push({ id: 'hdhr', name: 'HDHomeRun', count: 0, error: err.message });
       }
     }
   }
 
-  // Providers that number channels (tvg-chno) expect them in that order;
-  // unnumbered channels keep their list order after the numbered ones.
-  if (channels.some(c => c.number)) {
-    return channels
-      .map((c, i) => ({ c, i }))
-      .sort((a, b) => {
-        const an = a.c.number ? parseFloat(a.c.number) : Infinity;
-        const bn = b.c.number ? parseFloat(b.c.number) : Infinity;
-        return an - bn || a.i - b.i;
-      })
-      .map(({ c }) => c);
-  }
+  sourceStatus = status;
   return channels;
+}
+
+/** Per-list counts / errors from the last channel load. */
+function getSourceStatus() {
+  return sourceStatus;
 }
 
 async function discoverHDHomeRun() {
@@ -265,27 +345,60 @@ function parseXmltvDate(value) {
   return isNaN(date.getTime()) ? null : date.toISOString();
 }
 
-async function getEpg(force = false) {
-  const config = getConfig();
-  const ttl = 30 * 60 * 1000;
-  if (!force && epgCache.programs.length && Date.now() - epgCache.fetchedAt < ttl) return epgCache;
+const EPG_TTL = 30 * 60 * 1000;
 
-  const source = config.livetv?.epgUrl;
-  if (!source) return { ...epgCache, programs: [], source: null };
-
+async function loadGuide(url, force) {
+  const cached = guideCache.get(url);
+  if (!force && cached && Date.now() - cached.fetchedAt < EPG_TTL) return cached;
   try {
-    const xml = await readSource(source, { maxBytes: EPG_MAX_BYTES, accept: 'application/xml, text/xml, */*' });
+    const xml = await readSource(url, { maxBytes: EPG_MAX_BYTES, accept: 'application/xml, text/xml, */*' });
     const programs = parseXmltv(xml).map(p => ({
       ...p,
       startIso: parseXmltvDate(p.start),
       stopIso: parseXmltvDate(p.stop),
     }));
-    epgCache = { fetchedAt: Date.now(), programs, source };
-    return epgCache;
+    const entry = { fetchedAt: Date.now(), programs };
+    guideCache.set(url, entry);
+    return entry;
   } catch (err) {
     logger.warn(`[LiveTV] EPG load failed: ${err.message}`);
-    return { ...epgCache, programs: [], source };
+    // Keep serving the last good copy rather than blanking the guide.
+    return cached || { fetchedAt: 0, programs: [] };
   }
+}
+
+/**
+ * The TV guide: the main list's guide plus every switched-on extra list's
+ * guide, merged. Guides are keyed by tvg-id, so lists sharing a channel
+ * share its programmes; duplicates (same channel + start) are dropped.
+ */
+async function getEpg(force = false) {
+  const lt = getConfig().livetv || {};
+  const urls = [...new Set(allSources(lt).filter(s => s.enabled && s.epgUrl).map(s => s.epgUrl))];
+  const mainUrl = lt.epgUrl || null;
+  if (!urls.length) return { ...epgCache, programs: [], source: null };
+
+  const key = urls.join('\n');
+  if (!force && epgCache.key === key && epgCache.programs.length && Date.now() - epgCache.fetchedAt < EPG_TTL) return epgCache;
+
+  const guides = await Promise.all(urls.map(url => loadGuide(url, force)));
+  let programs;
+  if (guides.length === 1) programs = guides[0].programs;
+  else {
+    const seen = new Set();
+    programs = [];
+    for (const guide of guides) {
+      for (const p of guide.programs) {
+        const id = `${p.channel}|${p.start}`;
+        if (seen.has(id)) continue;
+        seen.add(id);
+        programs.push(p);
+      }
+    }
+  }
+  const fetchedAt = Math.min(...guides.map(g => g.fetchedAt || Date.now()));
+  epgCache = { fetchedAt, programs, source: mainUrl || urls[0], key };
+  return epgCache;
 }
 
 async function getNowNext(channelIds) {
@@ -447,6 +560,8 @@ async function updateSettings(patch = {}) {
 
   if (patch.enabled !== undefined) next.enabled = Boolean(patch.enabled);
   if (patch.hdhrDiscover !== undefined) next.hdhrDiscover = Boolean(patch.hdhrDiscover);
+  if (patch.mainName !== undefined) next.mainName = String(patch.mainName || '').trim().slice(0, 60);
+  if (patch.mainMaxStreams !== undefined) next.mainMaxStreams = cleanLimit(patch.mainMaxStreams);
   for (const [key, label] of [['m3uUrl', 'Channel list link'], ['epgUrl', 'TV guide link']]) {
     if (patch[key] === undefined) continue;
     try { next[key] = cleanSource(patch[key], label); } catch (err) { errors[key] = err.message; }
@@ -457,10 +572,90 @@ async function updateSettings(patch = {}) {
     throw err;
   }
 
-  if (next.epgUrl !== current.epgUrl) epgCache = { fetchedAt: 0, programs: [], source: null };
+  if (next.epgUrl !== current.epgUrl) resetGuides();
   config.livetv = next;
   saveConfig(config);
   return publicSettings(next);
+}
+
+function resetGuides() {
+  epgCache = { fetchedAt: 0, programs: [], source: null };
+  guideCache.clear();
+}
+
+// ---------------------------------------------------------------------------
+// Extra channel lists (livetv.sources[])
+// ---------------------------------------------------------------------------
+function sourceError(message, fields = {}, status = 400) {
+  const err = new Error(message);
+  err.fields = fields;
+  err.status = status;
+  return err;
+}
+
+function cleanSourceFields(patch, existing = null) {
+  const errors = {};
+  const out = {};
+  if (patch.name !== undefined || !existing) {
+    const name = String(patch.name ?? '').trim().slice(0, 60);
+    if (!name) errors.name = 'Give this channel list a name, e.g. the provider’s';
+    else out.name = name;
+  }
+  for (const [key, field, label] of [['url', 'm3uUrl', 'Channel list link'], ['epgUrl', 'epgUrl', 'TV guide link']]) {
+    if (patch[field] === undefined) continue;
+    try { out[key] = cleanSource(patch[field], label); } catch (err) { errors[field] = err.message; }
+  }
+  const url = out.url !== undefined ? out.url : existing?.url;
+  if (!url && !errors.m3uUrl) errors.m3uUrl = 'Add the channel list link (M3U)';
+  if (patch.maxStreams !== undefined) out.maxStreams = cleanLimit(patch.maxStreams);
+  if (patch.enabled !== undefined) out.enabled = Boolean(patch.enabled);
+  if (Object.keys(errors).length) throw sourceError('Some fields need fixing', errors);
+  return out;
+}
+
+function addSource(patch = {}) {
+  const config = getConfig();
+  const livetv = { enabled: false, m3uUrl: '', epgUrl: '', hdhrDiscover: false, ...(config.livetv || {}) };
+  const sources = Array.isArray(livetv.sources) ? [...livetv.sources] : [];
+  if (sources.length >= MAX_SOURCES) throw sourceError(`You can add up to ${MAX_SOURCES} extra channel lists`);
+  const fields = cleanSourceFields(patch);
+  let id;
+  do { id = `s${require('crypto').randomBytes(4).toString('hex')}`; } while (sources.some(s => s.id === id));
+  const source = { id, name: fields.name, url: fields.url, epgUrl: fields.epgUrl || '', enabled: fields.enabled !== false, maxStreams: fields.maxStreams || 0 };
+  sources.push(source);
+  livetv.sources = sources;
+  config.livetv = livetv;
+  saveConfig(config);
+  if (source.epgUrl) resetGuides();
+  return publicSettings(livetv);
+}
+
+function updateSource(id, patch = {}) {
+  const config = getConfig();
+  const livetv = { ...(config.livetv || {}) };
+  const sources = Array.isArray(livetv.sources) ? [...livetv.sources] : [];
+  const idx = sources.findIndex(s => s.id === id);
+  if (idx < 0) throw sourceError('That channel list no longer exists. Reload the page.', {}, 404);
+  const before = sources[idx];
+  const fields = cleanSourceFields(patch, before);
+  sources[idx] = { ...before, ...fields };
+  livetv.sources = sources;
+  config.livetv = livetv;
+  saveConfig(config);
+  if (sources[idx].epgUrl !== before.epgUrl || sources[idx].enabled !== before.enabled) resetGuides();
+  return publicSettings(livetv);
+}
+
+function removeSource(id) {
+  const config = getConfig();
+  const livetv = { ...(config.livetv || {}) };
+  const sources = Array.isArray(livetv.sources) ? livetv.sources : [];
+  if (!sources.some(s => s.id === id)) throw sourceError('That channel list no longer exists. Reload the page.', {}, 404);
+  livetv.sources = sources.filter(s => s.id !== id);
+  config.livetv = livetv;
+  saveConfig(config);
+  resetGuides();
+  return publicSettings(livetv);
 }
 
 /** What the browser may see: flags + redacted hints, never the raw URLs. */
@@ -470,6 +665,16 @@ function publicSettings(livetv = getConfig().livetv || {}) {
     hdhrDiscover: Boolean(livetv.hdhrDiscover),
     m3u: links.describeSecret(livetv.m3uUrl),
     epg: links.describeSecret(livetv.epgUrl),
+    mainName: String(livetv.mainName || ''),
+    mainMaxStreams: cleanLimit(livetv.mainMaxStreams),
+    sources: allSources(livetv).filter(s => s.id !== MAIN_SOURCE_ID).map(s => ({
+      id: s.id,
+      name: s.name,
+      enabled: s.enabled,
+      maxStreams: s.maxStreams,
+      m3u: links.describeSecret(s.url),
+      epg: links.describeSecret(s.epgUrl),
+    })),
   };
 }
 
@@ -517,8 +722,14 @@ async function sampleStreams(channels, { limit = 3, timeoutMs = 10000 } = {}) {
   return summary;
 }
 
-async function testSources({ m3uUrl, epgUrl } = {}) {
-  const saved = getConfig().livetv || {};
+async function testSources({ m3uUrl, epgUrl, sourceId } = {}) {
+  let saved = getConfig().livetv || {};
+  if (sourceId && sourceId !== MAIN_SOURCE_ID) {
+    // Testing an extra list: omitted values fall back to *its* saved links.
+    const src = allSources(saved).find(s => s.id === sourceId);
+    if (!src) throw sourceError('That channel list no longer exists. Reload the page.', {}, 404);
+    saved = { m3uUrl: src.url, epgUrl: src.epgUrl };
+  }
   const m3uSource = m3uUrl === undefined ? saved.m3uUrl : String(m3uUrl || '').trim();
   const epgSource = epgUrl === undefined ? saved.epgUrl : String(epgUrl || '').trim();
   const result = { m3u: null, epg: null, match: null };
@@ -576,14 +787,19 @@ async function testSources({ m3uUrl, epgUrl } = {}) {
 }
 
 /** Copy the guide URL embedded in the saved/given playlist (url-tvg) into epgUrl. */
-async function adoptPlaylistGuide({ m3uUrl } = {}) {
-  const source = m3uUrl === undefined ? (getConfig().livetv || {}).m3uUrl : String(m3uUrl || '').trim();
+async function adoptPlaylistGuide({ m3uUrl, sourceId } = {}) {
+  const extra = sourceId && sourceId !== MAIN_SOURCE_ID
+    ? allSources().find(s => s.id === sourceId)
+    : null;
+  if (sourceId && sourceId !== MAIN_SOURCE_ID && !extra) throw sourceError('That channel list no longer exists. Reload the page.', {}, 404);
+  const saved = extra ? extra.url : (getConfig().livetv || {}).m3uUrl;
+  const source = m3uUrl === undefined ? saved : String(m3uUrl || '').trim();
   if (!source) throw new Error('Add a channel list link first');
   cleanSource(source, 'Channel list link');
   const text = await readSource(source, { maxBytes: M3U_MAX_BYTES });
   const { epgUrl } = links.readM3U(text);
   if (!epgUrl) throw new Error('This playlist doesn\'t name a guide (no url-tvg in its header)');
-  return updateSettings({ epgUrl });
+  return extra ? updateSource(extra.id, { epgUrl }) : updateSettings({ epgUrl });
 }
 
 function stopAll() {
@@ -602,6 +818,13 @@ module.exports = {
   parseM3U,
   entryKind,
   loadChannels,
+  allSources,
+  activeSources,
+  getSourceStatus,
+  addSource,
+  updateSource,
+  removeSource,
+  MAIN_SOURCE_ID,
   getChannel,
   stopAll,
   sampleStreams,

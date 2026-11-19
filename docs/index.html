@@ -876,6 +876,7 @@
         '/favourites': 'Favourites',
         '/history': 'History',
         '/upload': 'Upload',
+        '/torrents': 'Torrents',
         '/settings': 'Settings',
       };
       window.addEventListener('vault:route-changed', (e) => {
@@ -1149,6 +1150,11 @@
       router.addRoute('/upload', async (params, nav) => {
         const { renderUpload } = await import('./js/views/upload.js');
         return mount(renderUpload)(params, nav);
+      });
+
+      router.addRoute('/torrents', async (params, nav) => {
+        const { renderTorrents } = await import('./js/views/torrents.js');
+        return mount(renderTorrents)(params, nav);
       });
 
       router.addRoute('/settings', async (params, nav) => {

@@ -70,6 +70,7 @@ const MESSAGES = {
   BLOCKED: 'This entry points at an address Vault won\'t open (a local file, the server itself or a cloud metadata address).',
   UNSUPPORTED_SCHEME: 'Vault can only play http:// and https:// streams.',
   TOO_MANY_STREAMS: 'Too many streams are running on the Vault server right now. Close another player and try again.',
+  SOURCE_BUSY: 'This channel list allows only so many streams at once, and they\'re all in use. Close another channel from the same list and try again.',
   NO_STREAMS: 'This link contains no audio or video.',
   CRASHED: 'ffmpeg crashed on the Vault server while opening this stream. Update ffmpeg on the server (or set FFMPEG_PATH to your system ffmpeg) and restart Vault — the server log has details.',
   FAILED: 'The Vault server couldn\'t convert this stream.',
@@ -417,6 +418,25 @@ async function start(channel, { transcode = false } = {}) {
     else throw new StreamError(messageFor('TOO_MANY_STREAMS'), 'TOO_MANY_STREAMS', 503);
   }
 
+  // IPTV providers cap simultaneous connections per account (often 1–2);
+  // going over gets every stream on that account cut off. Each channel list
+  // can carry its own cap (Settings → Live TV → streams at once).
+  const sourceLimit = Number(channel.sourceMaxStreams) || 0;
+  if (sourceLimit > 0 && channel.sourceId) {
+    const same = [...sessions.values()].filter(s => s.sourceId === channel.sourceId);
+    if (same.length >= sourceLimit) {
+      const idle = same.filter(s => Date.now() - s.lastAccess > 15000).sort((a, b) => a.lastAccess - b.lastAccess)[0];
+      if (idle) stopSession(idle.id, 'evicted (channel list limit)');
+      else {
+        const name = channel.sourceName ? `“${channel.sourceName}”` : 'This channel list';
+        throw new StreamError(
+          `${name} allows ${sourceLimit} stream${sourceLimit === 1 ? '' : 's'} at once, and ${sourceLimit === 1 ? 'it is' : 'they are all'} in use. Close another channel from the same list and try again.`,
+          'SOURCE_BUSY', 503,
+        );
+      }
+    }
+  }
+
   const source = await probe(url, channel);
   if (!source.video && !source.audio) throw new StreamError(messageFor('NO_STREAMS'), 'NO_STREAMS');
   const plan = planFor(source, { transcode });
@@ -442,6 +462,7 @@ async function start(channel, { transcode = false } = {}) {
     live,
     label: `"${channel.name}"`,
     channelId: channel.id,
+    sourceId: channel.sourceId || null,
     plan,
     source,
     lastAccess: Date.now(),
@@ -531,7 +552,7 @@ function status() {
   return {
     active: sessions.size,
     max: maxSessions(),
-    sessions: [...sessions.values()].map(s => ({ id: s.id, channelId: s.channelId, live: s.live, plan: s.plan, viewers: s.viewers, idleSeconds: Math.round((Date.now() - s.lastAccess) / 1000) })),
+    sessions: [...sessions.values()].map(s => ({ id: s.id, channelId: s.channelId, sourceId: s.sourceId, live: s.live, plan: s.plan, viewers: s.viewers, idleSeconds: Math.round((Date.now() - s.lastAccess) / 1000) })),
   };
 }
 
