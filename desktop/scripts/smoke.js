@@ -101,8 +101,12 @@ function dumpLogs() {
     check(JSON.parse(health.body).status === 'ok', 'server answers /api/health');
     const page = await get(PORT, '/');
     check(page?.status === 200 && /<html/i.test(page.body), 'web app is served');
-    const st = await get(LAUNCHER_PORT, '/launcher/status');
-    check(st && JSON.parse(st.body).status === 'running', 'launcher reports the server running');
+    // The launcher notices on its next health poll (every 0.7 s).
+    const running = await until('the launcher to report running', async () => {
+      const st = await get(LAUNCHER_PORT, '/launcher/status');
+      return st && JSON.parse(st.body).status === 'running';
+    }, 15000).catch(() => false);
+    check(running, 'launcher reports the server running');
     check(fs.existsSync(path.join(home, 'data', 'setup-code.txt')), 'state is written to the home folder');
     check(fs.existsSync(path.join(home, 'logs', 'launcher.log')), 'logs are written to the home folder');
     check(fs.existsSync(path.join(home, 'Media', 'music')), 'default media folders are created');
