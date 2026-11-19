@@ -85,7 +85,7 @@ function selectionBar() {
   });
   bar.querySelector('[data-sel="delete"]').addEventListener('click', async () => {
     const items = selectedItems();
-    const ok = await confirmDialog({
+    const { confirmed: ok } = await confirmDialog({
       title: `Delete ${items.length} item${items.length === 1 ? '' : 's'}?`,
       message: 'Files move to the trash and can be restored for the retention window.',
       confirmLabel: 'Move to trash',

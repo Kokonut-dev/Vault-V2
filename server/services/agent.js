@@ -183,11 +183,20 @@ function readNfo(filePath) {
 // ---------------------------------------------------------------------------
 
 /** Which providers are usable right now (used by the Settings UI). */
+/**
+ * `enabled` = the provider is actually used for matching. `switchedOn` is the
+ * stored on/off flag and `hasKey` whether an API key is saved — TMDb needs
+ * both, so the Server page can say *why* it isn't active. Keys never leave
+ * the server.
+ */
 function status() {
+  const tmdb = providerConfig('tmdb');
+  const musicbrainz = providerConfig('musicbrainz');
+  const nfo = providerConfig('nfo');
   return {
-    tmdb: { enabled: isEnabled('tmdb'), requiresKey: true },
-    musicbrainz: { enabled: isEnabled('musicbrainz'), requiresKey: false },
-    nfo: { enabled: providerConfig('nfo').enabled !== false, requiresKey: false },
+    tmdb: { enabled: isEnabled('tmdb'), requiresKey: true, switchedOn: !!tmdb.enabled, hasKey: !!tmdb.apiKey },
+    musicbrainz: { enabled: isEnabled('musicbrainz'), requiresKey: false, switchedOn: !!musicbrainz.enabled, hasKey: false },
+    nfo: { enabled: nfo.enabled !== false, requiresKey: false, switchedOn: nfo.enabled !== false, hasKey: false },
   };
 }
 

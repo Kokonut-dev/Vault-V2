@@ -15,7 +15,7 @@
 // with `cache: 'no-cache'`. GitHub Pages sends max-age=600, so the HTTP cache
 // could hand an old index.html or view module to a reload for 10 minutes,
 // mixing builds ("does not provide an export named 'THEME_META'").
-const CACHE_NAME = 'vault-v2-shell-v8';
+const CACHE_NAME = 'vault-v2-shell-v9';
 const BASE_PATH = '/Vault-V2';
 
 const SHELL_ASSETS = [

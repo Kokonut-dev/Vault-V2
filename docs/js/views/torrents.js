@@ -402,7 +402,7 @@ export async function renderTorrents(container) {
     card.querySelector('[data-act="resume"]')?.addEventListener('click', () => act('resume', () => api.resumeTorrent(job.id)));
     card.querySelector('[data-act="remove"]')?.addEventListener('click', async () => {
       const finished = job.status === 'done' || job.status === 'seeding';
-      const ok = await confirmDialog({
+      const { confirmed: ok } = await confirmDialog({
         title: 'Remove from the list?',
         message: finished
           ? `“${job.name}” stays in your library; this only clears it from Downloads.`
@@ -492,7 +492,7 @@ export async function renderTorrents(container) {
       }
     });
     host.querySelector('#tj-disable').addEventListener('click', async () => {
-      const ok = await confirmDialog({
+      const { confirmed: ok } = await confirmDialog({
         title: 'Turn off torrents?',
         message: 'Running downloads pause and pick up again when you turn torrents back on.',
         confirmText: 'Turn off',

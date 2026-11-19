@@ -405,6 +405,8 @@ body.queue-open .mini-player { right: min(396px, calc(92vw + 16px)); }
 .settings-tabs { display: flex; gap: 4px; overflow-x: auto; border-bottom: 1px solid var(--border-subtle); margin-bottom: var(--space-lg); }
 .settings-tab { padding: 8px 14px; border: 0; background: none; color: var(--text-secondary); font: inherit; cursor: pointer; border-bottom: 2px solid transparent; white-space: nowrap; }
 .settings-tab.active { color: var(--text-primary); border-bottom-color: var(--accent); }
+.settings-tab { display: inline-flex; align-items: center; gap: 6px; }
+.settings-tab:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; border-radius: var(--radius-sm, 6px); }
 .settings-panel[hidden] { display: none; }
 
 /* ---------- Stats / Wrapped ---------------------------------------------- */
@@ -816,6 +818,26 @@ html.has-artwork-ambience body { background-attachment: fixed; }
 .health-item.ok { border-color: color-mix(in srgb, var(--success, #35d07f) 40%, transparent); }
 .health-item.warn { border-color: color-mix(in srgb, var(--warning, #ffb020) 45%, transparent); }
 .health-item.error { border-color: color-mix(in srgb, var(--danger, #ff6b6b) 45%, transparent); }
+.health-item > .icon { flex-shrink: 0; }
+.health-item .row-main { flex: 1; min-width: 0; }
+.health-item.ok > .icon { color: var(--success, #35d07f); }
+.health-item.warn > .icon { color: var(--warning, #ffb020); }
+.health-item.error > .icon { color: var(--danger, #ff6b6b); }
+.health-item .meter { margin-top: 6px; }
+.health-details { margin-top: 6px; font-size: var(--text-xs); }
+.health-details summary { cursor: pointer; color: var(--text-secondary); }
+.health-details ul { margin: 6px 0 0; padding-left: 18px; display: grid; gap: 4px; max-height: 260px; overflow: auto; }
+.health-details li { overflow-wrap: anywhere; }
+.health-details li .row-meta { display: block; }
+.stat-card .meter { margin-top: 8px; }
+.system-job-progress { display: flex; align-items: center; gap: 8px; flex: 0 0 auto; }
+.system-job-progress .meter { width: 140px; }
+.system-log-toolbar { display: flex; gap: 8px; margin-bottom: 8px; flex-wrap: wrap; align-items: center; }
+.system-log-toolbar .form-input { width: auto; min-width: 180px; flex: 0 1 240px; }
+@media (max-width: 600px) {
+  .system-job-progress .meter { width: 80px; }
+  .backup-row, .health-item { flex-wrap: wrap; }
+}
 
 /* ---------- Live TV: channels grouped by list ------------------------------ */
 .livetv-toolbar { display: flex; flex-wrap: wrap; gap: 10px 16px; align-items: center; margin-bottom: 18px; }

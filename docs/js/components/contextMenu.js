@@ -68,7 +68,7 @@ async function addToPlaylistFlow(item) {
 }
 
 async function deleteFlow(item) {
-  const ok = await confirmDialog({
+  const { confirmed: ok } = await confirmDialog({
     title: `Delete "${item.title}"?`,
     message: 'The file moves to the trash so you can undo it. Nothing is deleted permanently until the retention window passes.',
     confirmLabel: 'Move to trash',

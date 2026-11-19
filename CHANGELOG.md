@@ -2,6 +2,55 @@
 
 ## [3.0.0] — in progress (branch `arena/0deefe55-vault-v2`)
 
+### Fixed — the Server page (sidebar → Server)
+- The page read field names the server never sent, so it showed a library of
+  0, "0 B" free disk, "never" scanned and "No health checks reported" whatever
+  the server knew. Every tab now uses the real `/api/system/*` responses:
+  - **Health:** item count and media size, real free/used disk space (per
+    filesystem when media lives on several drives, with a fill meter), when
+    the last scan ran and how it went, and the search index status. Six
+    library checks (missing files, duplicates, artwork, playback problems,
+    leftover sidecar files after a deep check, trash), each with a list of
+    the affected items. A deep check now shows its own results instead of
+    being replaced by the quick report.
+  - **Jobs:** label, kind, `done of total` and a real percentage, a **Scan
+    library now** button, live updates.
+  - **Logs:** the log lines actually show (they were read from a field that
+    didn't exist), newest first, with a level filter, a text filter and a
+    **Download** button that saves a `.log` file. The old export downloaded
+    an empty JSON list.
+  - **Backups:** delete asks first; restore/delete/create report errors.
+  - **Services:** ffmpeg version and hardware encoders, ffprobe detection,
+    metadata agents (TMDb key and on/off switches for TMDb, MusicBrainz and
+    NFO), Subsonic on/change/off, a notification test that says which targets
+    failed, and recent scrobbles with where they were sent.
+- Passwords and API keys are entered in the app's own dialog (masked,
+  validated) instead of `window.prompt`.
+- Non-admin profiles see the health report plus a clear note, and no buttons
+  that would fail.
+- Tab icons sit next to their labels instead of above them.
+- Server side:
+  - the last scan is recorded and survives restarts;
+  - a failed scan now ends its job as an error (it used to stay "running" in
+    the Jobs tab forever);
+  - `/api/system/disk` reports `volumes` with `statfs`;
+  - `/api/system/capabilities` reports ffprobe;
+  - `POST /api/system/agents/:provider` only accepts `apiKey` and `enabled`
+    (the body used to be copied into `config.json` as-is) and reports
+    `hasKey`/`switchedOn` without ever returning the key;
+  - restore/delete of a backup that doesn't exist returns 404;
+  - `POST /api/system/notifications/test` returns per-target results.
+
+### Fixed — Cancel didn't cancel in confirm dialogs
+- `confirmDialog` resolves to `{ confirmed }`, but eleven callers treated the
+  result as a yes/no value. An object is always "yes", so pressing **Cancel**
+  (or Escape) still went ahead with the action. Affected: Remove missing
+  files, Restore backup, Stop the server, Delete forever / Empty trash, Move
+  to trash, Remove Live TV list, Remove/turn off torrents, and the transfer
+  import. All of them now check `confirmed`. `confirmDialog` also accepts
+  `confirmLabel`, which four callers used, so their buttons no longer read
+  just "Confirm".
+
 ### Added — upload whole folders
 - The Upload page has a new **Folders (auto-sort)** card. Drop folders in, or
   use **Choose folder**. Folders are read recursively, including folders with
