@@ -111,6 +111,8 @@ export function renderMediaList(container, items, options = {}) {
     // Right-click / long-press gets the same actions as grid cards
     // (queue, watchlist, watched, add to playlist, trash).
     row.dataset.itemId = item.id;
+    // Marks the row as item X (multi-select, keyboard navigation). Opening
+    // the menu is right-click / long-press only — see attachContextMenu.
     row.dataset.contextMenuFor = item.id;
     attachContextMenu(row, item);
 

@@ -2,6 +2,14 @@
 
 ## [3.0.0] — in progress (branch `arena/0deefe55-vault-v2`)
 
+### Fixed — left-clicking a song (or any card) also opened the right-click menu
+The "More button" click handler in `docs/js/components/contextMenu.js`
+matched `data-context-menu-for`, which every card and list row carries as its
+item marker (multi-select, keyboard navigation). Every left click therefore
+played/opened the item *and* popped up the menu. "More" buttons now use their
+own `data-context-menu-trigger` attribute; right-click and long-press are
+unchanged. Test: `server/test/context-menu-click.test.js`.
+
 ### Desktop apps for Windows, macOS and Linux
 Tests: `server/test/desktop-app.test.js`; each built app is smoke-tested in CI
 (`desktop/scripts/smoke.js`, `.github/workflows/desktop.yml`). User guide:

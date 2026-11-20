@@ -216,11 +216,15 @@ export function initContextMenu() {
   });
   window.addEventListener('blur', () => close());
 
-  // "More" buttons rendered anywhere in the UI open the same menu.
+  // "More" buttons rendered anywhere in the UI open the same menu:
+  // <button data-context-menu-trigger="<item id>">. This must NOT key off
+  // data-context-menu-for — every card and list row carries that (it marks
+  // "this element is item X" for multi-select and keyboard navigation), so a
+  // plain left click on a song or card used to pop the menu up as well.
   document.addEventListener('click', (event) => {
-    const trigger = event.target.closest('[data-context-menu-for]');
+    const trigger = event.target.closest('[data-context-menu-trigger]');
     if (!trigger) return;
-    const item = store.get('library')?.find(i => i.id === trigger.dataset.contextMenuFor);
+    const item = store.get('library')?.find(i => i.id === trigger.dataset.contextMenuTrigger);
     if (item) showContextMenu(event, item);
   });
 }
