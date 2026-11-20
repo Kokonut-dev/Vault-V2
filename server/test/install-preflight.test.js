@@ -109,6 +109,7 @@ function fakeInstall(name, npmScript) {
   write(path.join(dir, 'package.json'), JSON.stringify({ dependencies: { 'fake-dep': '1.0.0' } }));
   fs.copyFileSync(path.join(SERVER, 'launcher.js'), path.join(dir, 'launcher.js'));
   write(path.join(dir, 'utils', 'deps.js'), fs.readFileSync(path.join(SERVER, 'utils', 'deps.js')));
+  write(path.join(dir, 'utils', 'paths.js'), fs.readFileSync(path.join(SERVER, 'utils', 'paths.js')));
   write(path.join(dir, 'index.js'), `
     require('fake-dep');
     require('http').createServer((req, res) => res.end('{"ok":true}'))

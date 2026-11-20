@@ -9,6 +9,7 @@
     "start": "npm --prefix server start",
     "server": "npm --prefix server run server",
     "dev": "npm --prefix server run dev",
+    "desktop": "npm --prefix desktop install --no-audit --no-fund && npm --prefix desktop start",
     "setup": "npm --prefix server run setup",
     "test": "npm --prefix server test",
     "build:css": "node scripts/build-css.js",

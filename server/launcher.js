@@ -10,6 +10,12 @@
  *   node launcher.js --no-server    launcher only; the app shows "Start server"
  *   node launcher.js --background   no console output (used at sign-in)
  *
+ * The desktop app (desktop/) runs this same file with Electron's built-in
+ * Node (ELECTRON_RUN_AS_NODE=1) and VAULT_PACKAGED=1: dependencies ship
+ * inside the app, so npm never runs, and config/logs/data live in the
+ * user's app-data folder (VAULT_HOME, see utils/paths.js). It talks to the
+ * app over an IPC channel and shuts down cleanly when the app quits.
+ *
  * It listens on 127.0.0.1 only (default port 4001, VAULT_LAUNCHER_PORT) and
  * answers just three things: status, start, and a short error tail when the
  * server crashed. Only Vault's own pages may call it (Origin allowlist), and
@@ -23,8 +29,10 @@ const path = require('path');
 const fs = require('fs');
 const { spawn } = require('child_process');
 const deps = require('./utils/deps');
+const paths = require('./utils/paths');
 
-const SERVER_DIR = __dirname;
+const SERVER_DIR = __dirname; // code (index.js, node_modules)
+const PACKAGED = process.env.VAULT_PACKAGED === '1';
 const VERSION = 1;
 const RESTART_CODE = 75;
 const CONFIG_ERROR_CODE = 78;
@@ -35,7 +43,7 @@ const startServerNow = !args.has('--no-server');
 
 function readConfig() {
   try {
-    return JSON.parse(fs.readFileSync(path.join(SERVER_DIR, 'config.json'), 'utf8'));
+    return JSON.parse(fs.readFileSync(paths.CONFIG_PATH, 'utf8'));
   } catch {
     return {};
   }
@@ -49,8 +57,8 @@ const LAUNCHER_PORT = Number(process.env.VAULT_LAUNCHER_PORT || readConfig().lau
 let logStream = null;
 if (background) {
   try {
-    fs.mkdirSync(path.join(SERVER_DIR, 'logs'), { recursive: true });
-    logStream = fs.createWriteStream(path.join(SERVER_DIR, 'logs', 'launcher.log'), { flags: 'a' });
+    fs.mkdirSync(paths.LOGS_DIR, { recursive: true });
+    logStream = fs.createWriteStream(path.join(paths.LOGS_DIR, 'launcher.log'), { flags: 'a' });
   } catch { /* no log file; stay silent */ }
 }
 function say(message) {
@@ -182,6 +190,13 @@ function startServer() {
     return false;
   }
   const missing = deps.missingDependencies(SERVER_DIR);
+  if (missing.length && PACKAGED) {
+    // The app ships its packages; never run npm inside an installed app.
+    state.status = 'crashed';
+    state.reason = `This copy of the Vault app is incomplete (missing ${missing.slice(0, 3).join(', ')}). Reinstall Vault — your library and settings are kept.`;
+    say(state.reason);
+    return false;
+  }
   if (missing.length) return installDependencies(missing);
   stopRequested = false;
   state.status = 'starting';
@@ -381,6 +396,23 @@ function shutdown() {
 process.on('SIGINT', shutdown);
 process.on('SIGTERM', shutdown);
 
+// Started by the desktop app with an IPC channel: it asks us to stop with a
+// message (signals don't exist on Windows), and if the app itself dies the
+// channel closes — stop the server too rather than leave it orphaned.
+if (typeof process.send === 'function') {
+  process.on('message', (msg) => {
+    if (msg?.type === 'shutdown') shutdown();
+    else if (msg?.type === 'start' && !child && !installer) { crashes.length = 0; startServer(); }
+    else if (msg?.type === 'status') process.send({ type: 'status', status: publicStatus(true) });
+  });
+  process.on('disconnect', shutdown);
+}
+function tellApp(message) {
+  if (typeof process.send === 'function' && process.connected) {
+    try { process.send(message); } catch { /* app gone */ }
+  }
+}
+
 /** Another launcher already owns the port: hand over to it and exit. */
 function handOff() {
   const req = http.request({ host: '127.0.0.1', port: LAUNCHER_PORT, path: startServerNow ? '/launcher/start' : '/launcher/status', method: startServerNow ? 'POST' : 'GET', timeout: 3000, headers: { Host: `127.0.0.1:${LAUNCHER_PORT}` } }, (res) => {
@@ -411,6 +443,7 @@ control.on('error', (err) => {
 
 control.listen(LAUNCHER_PORT, '127.0.0.1', () => {
   say(`ready on http://127.0.0.1:${LAUNCHER_PORT} — the app can now start/stop the server`);
+  tellApp({ type: 'ready', port: LAUNCHER_PORT });
   if (startServerNow) startServer();
 });
 

@@ -15,6 +15,7 @@
  */
 const os = require('os');
 const path = require('path');
+const paths = require('../utils/paths');
 const fs = require('fs');
 const https = require('https');
 const crypto = require('crypto');
@@ -24,7 +25,7 @@ const { getConfig } = require('../config');
 const events = require('./events');
 const logger = require('../utils/logger');
 
-const BIN_DIR = process.env.VAULT_BIN_DIR || path.join(__dirname, '..', 'bin');
+const BIN_DIR = paths.BIN_DIR;
 const EXE = process.platform === 'win32' ? '.exe' : '';
 const TUNNEL_URL_RE = /https:\/\/[a-z0-9-]+\.trycloudflare\.com/i;
 const RELEASE_API = process.env.VAULT_CLOUDFLARED_RELEASE_API

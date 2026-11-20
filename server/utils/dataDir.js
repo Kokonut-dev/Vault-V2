@@ -5,10 +5,7 @@
  * at a throwaway temp folder so a test run never writes into (or reads from)
  * a real install's data.
  */
-const path = require('path');
-
-const DATA_DIR = process.env.VAULT_DATA_DIR
-  ? path.resolve(process.env.VAULT_DATA_DIR)
-  : path.join(__dirname, '..', 'data');
+// VAULT_HOME (the desktop app) moves it with everything else: utils/paths.js.
+const { DATA_DIR } = require('./paths');
 
 module.exports = { DATA_DIR };

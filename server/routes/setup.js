@@ -12,6 +12,7 @@ const express = require('express');
 const router = express.Router();
 const fs = require('fs-extra');
 const path = require('path');
+const paths = require('../utils/paths');
 const crypto = require('crypto');
 const bcrypt = require('bcryptjs');
 const { getConfig, saveConfig, CONFIG_PATH, DEFAULT_CONFIG } = require('../config');
@@ -168,7 +169,7 @@ router.post('/test', async (req, res) => {
           continue;
         }
         try {
-          const fullPath = path.isAbsolute(p) ? p : path.resolve(__dirname, '..', p);
+          const fullPath = paths.resolveHome(p);
           const exists = await fs.pathExists(fullPath);
           if (exists) {
             const stat = await fs.stat(fullPath);
@@ -410,19 +411,18 @@ router.post('/complete', async (req, res) => {
     saveConfig(finalConfig);
 
     // Ensure media dirs exist
-    const serverDir = path.join(__dirname, '..');
     for (const p of Object.values(validatedMediaPaths)) {
-      const fullPath = path.isAbsolute(p) ? p : path.resolve(serverDir, p);
+      const fullPath = paths.resolveHome(p);
       await fs.ensureDir(fullPath);
       logger.info(`Ensured media dir: ${fullPath}`);
     }
 
     // Ensure data/cache dirs
-    await fs.ensureDir(path.join(serverDir, 'data'));
-    await fs.ensureDir(path.join(serverDir, 'cache/thumbnails'));
-    await fs.ensureDir(path.join(serverDir, 'cache/covers'));
-    await fs.ensureDir(path.join(serverDir, 'cache/transcoded'));
-    await fs.ensureDir(path.join(serverDir, 'uploads'));
+    await fs.ensureDir(paths.DATA_DIR);
+    await fs.ensureDir(paths.cacheDir('thumbnails'));
+    await fs.ensureDir(paths.cacheDir('covers'));
+    await fs.ensureDir(paths.cacheDir('transcoded'));
+    await fs.ensureDir(paths.UPLOADS_DIR);
 
     // Reset bruteforce attempts for this IP on success
     authService.resetAttempts(ip);

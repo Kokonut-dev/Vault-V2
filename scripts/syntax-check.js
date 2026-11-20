@@ -21,7 +21,7 @@ const path = require('node:path');
 const REPO_ROOT = path.join(__dirname, '..');
 const SKIP_DIRS = new Set([
   'node_modules', '.git', 'cache', 'data', 'media', 'uploads',
-  'dist', 'build', 'coverage', '.next', '.venv', 'vendor',
+  'dist', 'build', 'coverage', '.next', '.venv', 'vendor', 'stage',
 ]);
 
 function walk(dir, out = []) {

@@ -26,6 +26,7 @@
  * every connection the moment it disappears.
  */
 const path = require('path');
+const paths = require('../utils/paths');
 const os = require('os');
 const crypto = require('crypto');
 const fs = require('fs-extra');
@@ -152,7 +153,7 @@ let saveTimer = null;
 
 function stagingRoot() {
   const paths = getConfig().media?.paths || {};
-  const base = paths.videos || paths.movies || paths.music || path.join(__dirname, '..', 'media');
+  const base = paths.videos || paths.movies || paths.music || paths.MEDIA_DIR;
   return path.join(base, STAGING_DIR);
 }
 

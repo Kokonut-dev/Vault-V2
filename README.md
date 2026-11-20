@@ -28,6 +28,8 @@ You run a small server on your own computer and open the app in your browser. Yo
 
 ## Install
 
+> **Want an app instead?** The **Vault desktop app** for Windows, macOS and Linux bundles everything (no Node.js, git or terminal), runs the server from the tray or menu bar, and keeps your library in your user folder. Download it from the [Desktop apps workflow](https://github.com/Kokonut-dev/Vault-V2/actions/workflows/desktop.yml) or a release, and see [desktop/README.md](desktop/README.md) for install notes. Interested in Android? [ANDROID.md](ANDROID.md) explains how a QR-first Android app would work.
+
 ### 1. What you need
 
 | | |
@@ -407,7 +409,9 @@ Variables marked \* are **first-run defaults**: once the setup wizard has saved 
 | `LOG_LEVEL` | `info` | `debug`, `info`, `warn` or `error` |
 | `VAULT_DEBUG` | off | `1` includes error details in API responses (never on a public server) |
 | `ALLOW_SETUP_RESET` | off | `true` allows resetting setup through the API |
-| `VAULT_DATA_DIR` | `server/data` | Where the data files (library, profiles, history…) live. `npm test` points it at a temp folder; backups and *Move to another server* still use `server/data`, so leave it unset on a real install |
+| `VAULT_HOME` | `server/` | Folder for everything Vault writes: `config.json`, `data/`, `cache/`, `media/` (default folders), `uploads/`, `logs/`, `bin/`. The desktop app sets it to your app-data folder. Move the existing ones with it if you change it |
+| `VAULT_MEDIA_DIR` | `$VAULT_HOME/media` | Parent of the default media folders (movies, music, …) used before setup picks your own |
+| `VAULT_DATA_DIR` | `$VAULT_HOME/data` | Where the data files (library, profiles, history…) live. `npm test` points it at a temp folder; *Move to another server* still uses `$VAULT_HOME/data`, so on a real install move `VAULT_HOME` instead |
 
 ---
 

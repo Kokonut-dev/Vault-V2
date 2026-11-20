@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; img-src data:">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Vault</title>
+  <style>
+    :root { color-scheme: dark; --bg: #161719; --text: #ECEAE6; --muted: #A4A19B; --accent: #93BFF0; --danger: #F2A69B; }
+    * { box-sizing: border-box; }
+    html, body { height: 100%; margin: 0; }
+    body {
+      display: grid; place-items: center; background: var(--bg); color: var(--text);
+      font: 15px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, Ubuntu, sans-serif;
+      -webkit-user-select: none; user-select: none;
+    }
+    main { width: min(440px, 90vw); text-align: center; }
+    svg { width: 72px; height: 72px; }
+    h1 { font-size: 22px; font-weight: 600; margin: 18px 0 6px; }
+    p { margin: 0; color: var(--muted); }
+    .spinner { width: 28px; height: 28px; margin: 26px auto 0; border-radius: 50%; border: 3px solid #ffffff1f; border-top-color: var(--accent); animation: spin 0.9s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    @media (prefers-reduced-motion: reduce) { .spinner { animation-duration: 3s; } }
+    .problem { display: none; margin-top: 22px; padding: 14px 16px; text-align: left; border-radius: 12px; background: #F2A69B14; border: 1px solid #F2A69B40; color: var(--text); -webkit-user-select: text; user-select: text; word-break: break-word; }
+    .actions { display: none; gap: 10px; justify-content: center; margin-top: 18px; flex-wrap: wrap; }
+    a.btn { display: inline-block; padding: 9px 16px; border-radius: 999px; text-decoration: none; font-weight: 600; font-size: 14px; color: var(--text); background: #ffffff14; }
+    a.btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+    a.btn.primary { background: var(--accent); color: #101B28; }
+    body.is-problem .spinner { display: none; }
+    body.is-problem .problem, body.is-problem .actions, body.is-stopped .actions { display: flex; }
+    body.is-problem .problem { display: block; }
+    body.is-stopped .spinner { display: none; }
+    .home { margin-top: 26px; font-size: 12px; opacity: 0.7; -webkit-user-select: text; user-select: text; word-break: break-all; }
+  </style>
+</head>
+<body>
+  <main>
+    <svg viewBox="0 0 64 64" aria-hidden="true"><rect width="64" height="64" rx="16" fill="#93BFF0"/><path fill="#101B28" fill-rule="evenodd" d="M14 54V32a18 18 0 0 1 36 0v22Zm13.5-24v16.5L41 38.25Z"/></svg>
+    <h1 id="title">Starting Vault…</h1>
+    <p id="detail" aria-live="polite">Getting your media server ready.</p>
+    <div class="spinner" role="progressbar" aria-label="Starting"></div>
+    <div class="problem" id="problem" role="alert"></div>
+    <div class="actions">
+      <a class="btn primary" id="retry" href="vault-action:retry">Start server</a>
+      <a class="btn" href="vault-action:logs">Open logs</a>
+    </div>
+    <p class="home" id="home"></p>
+  </main>
+  <script>
+    // Filled in by the app (main.js → refreshUi). Text only — never HTML.
+    window.vaultStatus = function (s) {
+      const body = document.body;
+      const title = document.getElementById('title');
+      const detail = document.getElementById('detail');
+      body.classList.toggle('is-problem', s.status === 'crashed');
+      body.classList.toggle('is-stopped', s.status === 'stopped');
+      document.getElementById('problem').textContent = s.reason || '';
+      if (s.status === 'crashed') {
+        title.textContent = 'Vault couldn’t start';
+        detail.textContent = 'Your library and settings are safe. Here’s what went wrong:';
+        document.getElementById('retry').textContent = 'Try again';
+      } else if (s.status === 'stopped') {
+        title.textContent = 'Vault’s server is stopped';
+        detail.textContent = 'Start it to open your library. Devices on your network can’t reach it while it’s stopped.';
+        document.getElementById('retry').textContent = 'Start server';
+      } else if (s.status === 'stopping') {
+        title.textContent = 'Restarting Vault…';
+        detail.textContent = 'This only takes a moment.';
+      } else {
+        title.textContent = 'Starting Vault…';
+        detail.textContent = 'Getting your media server ready.';
+      }
+      document.getElementById('home').textContent = s.home ? 'Library and settings: ' + s.home : '';
+    };
+  </script>
+</body>
+</html>

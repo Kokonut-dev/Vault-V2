@@ -12,6 +12,7 @@
  */
 const fs = require('fs-extra');
 const path = require('path');
+const paths = require('../utils/paths');
 const { spawn } = require('child_process');
 const { getConfig } = require('../config');
 const logger = require('../utils/logger');
@@ -20,7 +21,7 @@ const transcodePlan = require('./transcodePlan');
 const running = new Map(); // key -> child process
 
 function cacheDir(itemId, variant) {
-  const base = path.join(__dirname, '..', 'cache', 'hls', String(itemId), variant);
+  const base = paths.cacheDir('hls', String(itemId), variant);
   fs.ensureDirSync(base);
   return base;
 }
@@ -149,12 +150,12 @@ function status() {
   return {
     active: running.size,
     renditions: [...running.keys()],
-    cacheDir: path.join(__dirname, '..', 'cache', 'hls'),
+    cacheDir: paths.cacheDir('hls'),
   };
 }
 
 async function clearCache() {
-  const dir = path.join(__dirname, '..', 'cache', 'hls');
+  const dir = paths.cacheDir('hls');
   let removed = 0;
   try {
     const entries = await fs.readdir(dir);

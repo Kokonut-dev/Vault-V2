@@ -1,5 +1,6 @@
 const fs = require('fs-extra');
 const path = require('path');
+const paths = require('../utils/paths');
 const chokidar = require('chokidar');
 const crypto = require('crypto');
 const { getConfig } = require('../config');
@@ -172,7 +173,7 @@ async function scanFile(filePath) {
       };
       if (audioMeta.lyricsLrc || audioMeta.lyrics) {
         try {
-          const lyricsDir = path.join(__dirname, '../cache/lyrics');
+          const lyricsDir = paths.cacheDir('lyrics');
           await fs.ensureDir(lyricsDir);
           const ext = audioMeta.lyricsLrc ? 'lrc' : 'txt';
           const lyricsPath = path.join(lyricsDir, `${id}.${ext}`);
@@ -326,7 +327,7 @@ async function scanFile(filePath) {
 const ARTWORK_FIELDS = ['coverArtPath', 'posterPath', 'thumbnailPath'];
 const TEXT_FIELDS = ['title', 'artist', 'albumArtist', 'album', 'year', 'genre'];
 const CLEARABLE_FIELDS = new Set(['season', 'episode']);
-const COVERS_DIR = path.resolve(__dirname, '../cache/covers');
+const COVERS_DIR = paths.cacheDir('covers');
 // Covers a person uploaded (upload form → upload-*, album editor → cover-*),
 // as opposed to artwork the scanner extracted from the file's own tags.
 const isUploadedCover = p => typeof p === 'string'

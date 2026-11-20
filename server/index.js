@@ -17,6 +17,7 @@ const express = require('express');
 const helmet = require('helmet');
 const morgan = require('morgan');
 const path = require('path');
+const paths = require('./utils/paths');
 const fs = require('fs-extra');
 const { resolveNestedAsset } = require('./utils/spaAssets');
 const clientBuild = require('./utils/clientBuild');
@@ -131,7 +132,7 @@ const { generalLimiter, authLimiter, authFloodLimiter, uploadLimiter } = createR
 // (docs/js/api.js compares it with window.__VAULT_BUILD__ and offers a reload).
 app.use(['/api', '/rest'], (req, res, next) => {
   try {
-    res.setHeader('X-Vault-Build', clientBuild.buildId(path.join(__dirname, '../docs')));
+    res.setHeader('X-Vault-Build', clientBuild.buildId(paths.DOCS_DIR));
   } catch { /* no client on disk */ }
   next();
 });
@@ -152,14 +153,14 @@ app.use('/api/upload/', uploadLimiter);
 
 // Ensure data dirs
 fs.ensureDirSync(require('./utils/dataDir').DATA_DIR);
-fs.ensureDirSync(path.join(__dirname, 'cache'));
-fs.ensureDirSync(path.join(__dirname, 'cache/thumbnails'));
-fs.ensureDirSync(path.join(__dirname, 'cache/covers'));
-fs.ensureDirSync(path.join(__dirname, 'cache/transcoded'));
-fs.ensureDirSync(path.join(__dirname, 'media/movies'));
-fs.ensureDirSync(path.join(__dirname, 'media/music'));
-fs.ensureDirSync(path.join(__dirname, 'media/videos'));
-fs.ensureDirSync(path.join(__dirname, 'uploads'));
+fs.ensureDirSync(paths.CACHE_DIR);
+fs.ensureDirSync(paths.cacheDir('thumbnails'));
+fs.ensureDirSync(paths.cacheDir('covers'));
+fs.ensureDirSync(paths.cacheDir('transcoded'));
+fs.ensureDirSync(paths.mediaDir('movies'));
+fs.ensureDirSync(paths.mediaDir('music'));
+fs.ensureDirSync(paths.mediaDir('videos'));
+fs.ensureDirSync(paths.UPLOADS_DIR);
 
 // Public routes (no auth)
 // Strangers only learn that a Vault answers here; library size and uptime
@@ -315,7 +316,7 @@ app.get('/api/events/public', (req, res) => {
 });
 
 // Serve static frontend (same origin as API — required for playback without mixed-content)
-const docsPath = path.join(__dirname, '../docs');
+const docsPath = paths.DOCS_DIR;
 if (fs.existsSync(docsPath)) {
   // index.html + build-pinned modules + plain static files (utils/clientBuild.js).
   clientBuild.mountClient(app, docsPath);
@@ -369,8 +370,8 @@ function startServer() {
   // Check HTTPS
   if (config.server.https && config.server.https.enabled) {
     try {
-      const keyPath = path.resolve(__dirname, config.server.https.keyPath);
-      const certPath = path.resolve(__dirname, config.server.https.certPath);
+      const keyPath = paths.resolveHome(config.server.https.keyPath);
+      const certPath = paths.resolveHome(config.server.https.certPath);
       if (fs.existsSync(keyPath) && fs.existsSync(certPath)) {
         const options = {
           key: fs.readFileSync(keyPath),

@@ -20,6 +20,7 @@
  */
 const fs = require('fs-extra');
 const path = require('path');
+const paths = require('../utils/paths');
 const dns = require('dns');
 const net = require('net');
 const crypto = require('crypto');
@@ -34,7 +35,7 @@ const deps = {
   lookup: (host) => dns.promises.lookup(host, { all: true }),
 };
 
-const CACHE_ROOT = path.join(__dirname, '..', 'cache', 'restream');
+const CACHE_ROOT = paths.cacheDir('restream');
 const SEGMENT_SECONDS = 4;
 const LIVE_WINDOW = 8; // segments kept in a live playlist
 const START_TIMEOUT_MS = 25000;

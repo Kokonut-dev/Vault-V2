@@ -1,4 +1,5 @@
 const path = require('path');
+const paths = require('../utils/paths');
 const fs = require('fs-extra');
 const { getConfig } = require('../config');
 const logger = require('../utils/logger');
@@ -9,14 +10,14 @@ if (!ffmpeg) logger.warn('[Thumbnail] ffmpeg not available');
 
 function getThumbnailPath(id) {
   const config = getConfig();
-  const thumbDir = path.join(__dirname, '../cache/thumbnails');
+  const thumbDir = paths.cacheDir('thumbnails');
   fs.ensureDirSync(thumbDir);
   return path.join(thumbDir, `${id}.jpg`);
 }
 
 function getCoverPath(id) {
   const config = getConfig();
-  const coverDir = path.join(__dirname, '../cache/covers');
+  const coverDir = paths.cacheDir('covers');
   fs.ensureDirSync(coverDir);
   return path.join(coverDir, `${id}.jpg`);
 }
@@ -74,13 +75,13 @@ async function generateThumbnailAtTime(videoPath, outputPath, timeSeconds) {
 // One ffmpeg pass produces `sprite-%03d.jpg` sheets of N tiles each.
 // ---------------------------------------------------------------------------
 function getTrickplayDir(id) {
-  const dir = path.join(__dirname, '../cache/trickplay', String(id));
+  const dir = paths.cacheDir('trickplay', String(id));
   fs.ensureDirSync(dir);
   return dir;
 }
 
 function getTrickplayManifestPath(id) {
-  return path.join(__dirname, '../cache/trickplay', `${id}.json`);
+  return paths.cacheDir('trickplay', `${id}.json`);
 }
 
 async function generateTrickplay(videoPath, id, { intervalSeconds = 10, width = 160, tilesPerSheet = 25, duration = 0 } = {}) {
@@ -147,7 +148,7 @@ function getTrickplayManifest(id) {
 }
 
 function getTrickplaySheetPath(id, index) {
-  const dir = path.join(__dirname, '../cache/trickplay', String(id));
+  const dir = paths.cacheDir('trickplay', String(id));
   const file = `sprite-${String(index).padStart(3, '0')}.jpg`;
   const full = path.join(dir, file);
   return fs.existsSync(full) ? full : null;
@@ -156,7 +157,7 @@ function getTrickplaySheetPath(id, index) {
 /** Resized cover/artwork variants so grids don't download 8 MB album art. */
 async function getOrGenerateResizedImage(sourcePath, id, size = 320) {
   if (!sourcePath || !fs.existsSync(sourcePath)) return null;
-  const dir = path.join(__dirname, '../cache/images');
+  const dir = paths.cacheDir('images');
   fs.ensureDirSync(dir);
   const out = path.join(dir, `${require('crypto').createHash('md5').update(`${sourcePath}:${size}`).digest('hex')}.jpg`);
   if (fs.existsSync(out)) return out;

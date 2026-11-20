@@ -4,6 +4,7 @@
  */
 const fs = require('fs-extra');
 const path = require('path');
+const paths = require('../utils/paths');
 const { getConfig } = require('../config');
 const logger = require('../utils/logger');
 const extras = require('./extras');
@@ -184,7 +185,7 @@ async function downloadEpisode(feedId, guid) {
   const episode = (feed.items || []).find(i => i.guid === guid);
   if (!episode) throw new Error('Episode not found');
 
-  const targetDir = path.join(getConfig().media.paths.podcasts || path.join(__dirname, '../media/podcasts'), safeName(feed.title));
+  const targetDir = path.join(getConfig().media.paths.podcasts || paths.mediaDir('podcasts'), safeName(feed.title));
   await fs.ensureDir(targetDir);
 
   const fileName = episodeFileName(episode);

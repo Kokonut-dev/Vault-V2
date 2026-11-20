@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const fs = require('fs-extra');
 const path = require('path');
+const paths = require('../utils/paths');
 const multer = require('multer');
 const libraryService = require('../services/library');
 const scannerService = require('../services/scanner');
@@ -237,7 +238,7 @@ router.get('/recent', (req, res) => {
 // track in the album: renaming sets `album` on all of them, reordering writes
 // sequential `track` numbers, and cover art sets the same coverArtPath on all
 // of them (so every song — and the /cover endpoint for any of them) shows it.
-const COVERS_DIR = path.join(__dirname, '../cache/covers');
+const COVERS_DIR = paths.cacheDir('covers');
 const coverUpload = multer({
   storage: multer.diskStorage({
     destination: (req, file, cb) => { fs.ensureDirSync(COVERS_DIR); cb(null, COVERS_DIR); },

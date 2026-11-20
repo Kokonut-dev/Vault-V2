@@ -1,5 +1,6 @@
 const express = require('express');
 const path = require('path');
+const paths = require('../utils/paths');
 const fs = require('fs-extra');
 const multer = require('multer');
 const mime = require('mime-types');
@@ -112,7 +113,7 @@ router.delete('/history', (req, res) => {
 
 // Playlist cover art: uploaded once, stored in the cover cache, and kept on
 // the playlist record as `coverArt` (absolute path, private to the server).
-const COVERS_DIR = path.join(__dirname, '../cache/covers');
+const COVERS_DIR = paths.cacheDir('covers');
 const coverUpload = multer({
   storage: multer.diskStorage({
     destination: (req, file, cb) => { fs.ensureDirSync(COVERS_DIR); cb(null, COVERS_DIR); },

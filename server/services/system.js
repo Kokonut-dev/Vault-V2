@@ -13,10 +13,8 @@ const libraryService = require('./library');
 const trash = require('./trash');
 const comics = require('./comics');
 
-const SERVER_DIR = path.join(__dirname, '..');
 const { DATA_DIR } = require('../utils/dataDir');
-const CACHE_DIR = path.join(SERVER_DIR, 'cache');
-const LOGS_DIR = path.join(SERVER_DIR, 'logs');
+const { CACHE_DIR, LOGS_DIR } = require('../utils/paths');
 const BACKUP_DIR = path.join(DATA_DIR, 'backups');
 
 // ---------------------------------------------------------------------------

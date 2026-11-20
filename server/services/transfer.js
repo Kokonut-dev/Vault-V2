@@ -36,7 +36,10 @@ const { pipeline } = require('stream/promises');
 const zip = require('../utils/zipStream');
 const { stagingDir, READY_FILE } = require('./transferApply');
 
-const SERVER_DIR = path.join(__dirname, '..');
+// "serverDir" below is Vault's writable home (config.json, data/, cache/):
+// server/ in a git clone, the app-data folder in the desktop app.
+const SERVER_DIR = require('../utils/paths').HOME;
+const CODE_DIR = require('../utils/paths').SERVER_DIR;
 const FORMAT = 'vault-transfer';
 const VERSION = 1;
 const MANIFEST = 'vault-transfer.json';
@@ -306,7 +309,7 @@ async function planExport({ includeMedia = true, serverDir = SERVER_DIR, config,
   }
 
   let vaultVersion = null;
-  try { vaultVersion = JSON.parse(fs.readFileSync(path.join(serverDir, 'package.json'), 'utf8')).version; } catch { /* unknown */ }
+  try { vaultVersion = JSON.parse(fs.readFileSync(path.join(fs.existsSync(path.join(serverDir, 'package.json')) ? serverDir : CODE_DIR, 'package.json'), 'utf8')).version; } catch { /* unknown */ }
   const manifest = {
     format: FORMAT,
     version: VERSION,

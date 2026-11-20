@@ -60,6 +60,27 @@ export async function renderQr(container, text, { size = 220 } = {}) {
   }
 }
 
+const LOOPBACK_HOST = /^(localhost|127(\.\d{1,3}){3}|\[::1\])$/i;
+
+/**
+ * The address another device should open. On the server computer itself —
+ * e.g. the Vault desktop app, which shows http://127.0.0.1:4000 — the page's
+ * own origin is useless to a phone, so use the computer's network address
+ * (admin only; others keep the page origin).
+ */
+export async function reachableBaseUrl() {
+  const origin = window.location.origin;
+  if (!LOOPBACK_HOST.test(window.location.hostname)) return origin;
+  try {
+    const { lan } = await api.remoteStatus();
+    if (!lan?.reachable) return origin;
+    const best = (lan.addresses || []).find(a => !a.virtual && !a.linkLocal) || lan.addresses?.[0];
+    return best?.url || origin;
+  } catch {
+    return origin;
+  }
+}
+
 /**
  * Settings → "Pair a device" panel body. The signed-in device mints a
  * single-use, pre-approved code (`POST /api/auth/pair` with its token): the
@@ -81,7 +102,7 @@ export async function renderPairingPanel(container) {
     </div>
     <details>
       <summary class="row-meta">Can’t scan? Type the code instead</summary>
-      <p class="row-meta">On the other device open <code>${escapeHtml(window.location.origin)}/pair</code> and enter the 6 digits above.</p>
+      <p class="row-meta">On the other device open <code id="pair-typed-url">${escapeHtml(window.location.origin)}/pair</code> and enter the 6 digits above.</p>
     </details>
     ${securityNotes('pair')}
   `;
@@ -95,7 +116,9 @@ export async function renderPairingPanel(container) {
     const codeHost = host.querySelector('#pair-code');
     const qrHost = host.querySelector('#pair-qr');
     try {
-      const baseUrl = window.location.origin;
+      const baseUrl = await reachableBaseUrl();
+      const typed = host.querySelector('#pair-typed-url');
+      if (typed) typed.textContent = `${baseUrl}/pair`;
       const data = await api.createSignInLink(baseUrl, 'Device added with a QR code');
       code = data.code || '';
       left = data.expiresIn || 300;
@@ -225,4 +248,4 @@ export async function joinWithPairingCode(code, name = 'Paired device') {
   return false;
 }
 
-export default { renderQr, renderPairingPanel, joinWithPairingCode, confirmApproval, describeRequester };
+export default { renderQr, renderPairingPanel, reachableBaseUrl, joinWithPairingCode, confirmApproval, describeRequester };
