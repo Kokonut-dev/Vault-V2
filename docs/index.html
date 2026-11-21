@@ -811,6 +811,9 @@
             loginError.style.display = 'block';
           }
           if (/connect|fetch|network/i.test(result.error || '')) checkServerOnGate();
+          // This server hasn't been set up yet and refuses sign-in from other
+          // devices until it is: go to the setup wizard (it asks for the code).
+          if (result.code === 'SETUP_REQUIRED') showOnboarding();
         }
         
         if (btn) {

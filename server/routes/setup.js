@@ -51,19 +51,10 @@ function hasConfigFile() {
   }
 }
 
-// Helper: check if current config is still using factory defaults
+// Helper: is first-time setup still pending (no config file, or no password
+// hash in it)? One shared answer with the sign-in guard in setupGuard.js.
 function isUsingDefaults() {
-  if (!hasConfigFile()) return true;
-  try {
-    const fileConfig = fs.readJsonSync(CONFIG_PATH);
-    // If passwordHash is missing or file is basically empty, treat as needing setup
-    if (!fileConfig.auth || !fileConfig.auth.passwordHash) return true;
-    // If file exists but username is admin and grid is default, we still consider setup done
-    // unless explicitly forced. So only file existence matters for needsSetup.
-    return false;
-  } catch {
-    return true;
-  }
+  return setupGuard.pending();
 }
 
 /**
@@ -432,7 +423,12 @@ router.post('/complete', async (req, res) => {
     // Generate access token for immediate login
     // A real device session, like any other sign-in (tokens without one are
     // refused by the auth middleware).
-    const session = require('../services/sessions').create({ username: cleanUsername, profileId: 'default', req, label: 'Setup' });
+    const sessionStore = require('../services/sessions');
+    // First-time setup: forget any session signed in with the factory login
+    // (only possible from this computer). Its tokens are signed with the old
+    // secret and fail anyway; this also clears them from the device list.
+    if (needsSetup) sessionStore.revokeAll();
+    const session = sessionStore.create({ username: cleanUsername, profileId: 'default', req, label: 'Setup' });
     const token = authService.generateAccessToken(cleanUsername, { sid: session.id, profileId: 'default' });
     const decoded = authService.verifyToken(token);
 

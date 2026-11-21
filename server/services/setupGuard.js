@@ -104,10 +104,65 @@ function allow(req, res) {
   return false;
 }
 
+/**
+ * Is first-time setup still pending? True until config.json exists *and*
+ * holds the password hash that setup writes. Until then the in-memory config
+ * carries the factory login (admin / admin + the default grid pattern).
+ * The answer is cached against the file's mtime and size, so asking on every
+ * request costs one stat.
+ */
+let pendingCache = { key: null, pending: true };
+function pending() {
+  const { CONFIG_PATH } = require('../config');
+  let stat;
+  try {
+    stat = fs.statSync(CONFIG_PATH);
+  } catch {
+    pendingCache = { key: null, pending: true };
+    return true;
+  }
+  const key = `${stat.mtimeMs}:${stat.size}`;
+  if (pendingCache.key !== key) {
+    let isPending = true;
+    try {
+      isPending = !fs.readJsonSync(CONFIG_PATH)?.auth?.passwordHash;
+    } catch {
+      isPending = true;
+    }
+    pendingCache = { key, pending: isPending };
+  }
+  return pendingCache.pending;
+}
+
+/**
+ * Sign-in and the signed-in API stay on *this computer* until setup is done.
+ *
+ * Before setup the factory login still works, so if other devices could sign
+ * in, anyone on the same Wi-Fi could skip the setup code entirely: log in as
+ * admin / admin and change settings or switch on remote access. Other devices
+ * may only use the setup routes (which need the setup code) until an owner
+ * has chosen a real password. Sends a 403 and returns false when the request
+ * has to stop.
+ */
+function allowSignIn(req, res) {
+  if (isLocalRequest(req) || !pending()) return true;
+  res.status(403).json({
+    error: "Vault hasn't been set up yet. Finish setup first. From this device you'll need the setup code shown in the Vault server window.",
+    code: 'SETUP_REQUIRED',
+    needsSetup: true,
+  });
+  return false;
+}
+
+/** Express middleware form of allowSignIn. */
+function signInGuard(req, res, next) {
+  if (allowSignIn(req, res)) next();
+}
+
 /** Setup finished: the code is no longer valid or needed. */
 function clear() {
   current = null;
   try { fs.removeSync(CODE_FILE); } catch { /* already gone */ }
 }
 
-module.exports = { code, announce, required, matches, allow, clear, normalize, CODE_FILE };
+module.exports = { code, announce, required, matches, allow, clear, normalize, pending, allowSignIn, signInGuard, CODE_FILE };

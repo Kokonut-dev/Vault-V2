@@ -8,6 +8,10 @@ const { blacklistToken, isTokenBlacklisted, authMiddleware, resolveProfileId } =
 const { sanitizeString } = require('../utils/validators');
 const logger = require('../utils/logger');
 
+// Before first-time setup, nothing here is reachable from other devices: the
+// factory login would otherwise let anyone on the network skip the setup code.
+router.use(require('../services/setupGuard').signInGuard);
+
 // One-time pairing codes for QR / "type this on your TV" login.
 const pairingCodes = new Map(); // code -> { token, expiresAt, approved, used, grant?, sessionId? }
 

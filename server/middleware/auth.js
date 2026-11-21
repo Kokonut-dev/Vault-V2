@@ -70,6 +70,11 @@ function authMiddleware(req, res, next) {
   // Allow health check without auth
   if (req.path === '/api/health') return next();
 
+  // Until first-time setup is done, signed-in requests only work from this
+  // computer (see services/setupGuard.js). This also covers any token that
+  // was issued with the factory login before setup.
+  if (!require('../services/setupGuard').allowSignIn(req, res)) return;
+
   const authHeader = req.headers.authorization;
   let token = null;
 
@@ -135,6 +140,11 @@ function authMiddleware(req, res, next) {
 }
 
 function optionalAuthMiddleware(req, res, next) {
+  // Before setup, other devices are never treated as signed in.
+  if (!require('../utils/clientAddress').isLocalRequest(req) && require('../services/setupGuard').pending()) {
+    req.user = null;
+    return next();
+  }
   const authHeader = req.headers.authorization;
   let token = null;
   if (authHeader && authHeader.startsWith('Bearer ')) token = authHeader.substring(7);
