@@ -139,7 +139,8 @@ function wireTrickplay() {
     const row = Math.floor(within / (meta.columns || 10));
     if (!meta.sheets?.[sheet]) return;
 
-    img.src = meta.sheets[sheet].startsWith('http') ? meta.sheets[sheet] : `${api.baseUrl}${meta.sheets[sheet]}`;
+    // <img> can't send the Authorization header: the sheet needs the media token.
+    img.src = api.withMediaToken(meta.sheets[sheet]);
     img.style.width = `${sheetWidth}px`;
     img.style.height = `${sheetHeight}px`;
     img.style.objectFit = 'none';

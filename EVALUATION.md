@@ -6,8 +6,10 @@
 > **Scale:** each category is scored **out of 1000**. The total is the plain sum of all categories, with an average
 > alongside it.
 >
-> **Update (same PR):** the critical pre-setup login flaw (§2) has been **fixed** and covered by a regression test.
-> Security and Privacy are re-scored below, with the snapshot scores kept in brackets.
+> **Updates (same PR):** the critical pre-setup login flaw (§2) has been **fixed**. So have the two remaining
+> Security weak spots: the CSP no longer allows inline scripts or `<style>` blocks, and full sign-in tokens are no
+> longer accepted in web addresses. Each fix has regression tests. Security and Privacy are re-scored below, with
+> the snapshot scores kept in brackets.
 
 ---
 
@@ -16,7 +18,7 @@
 | # | Category | Score / 1000 | Verdict |
 |---|---|---:|---|
 | 1 | Features & functional scope | **860** | Unusually broad for a self-hosted server: video, music, TV/DVR, podcasts, books, comics, SyncPlay, desktop and PWA. |
-| 2 | Security | **760** (was 640) | A strong layered design. The critical pre-setup login flaw is now fixed. CSP `'unsafe-inline'` and query-string tokens remain. |
+| 2 | Security | **820** (was 640) | A strong layered design. Fixed: the pre-setup login flaw, CSP `'unsafe-inline'` scripts and styles, and full tokens in URLs. Dependency advisories remain. |
 | 3 | Privacy & data ownership | **900** (was 870) | No telemetry or third-party scripts, and online lookups are opt-in. Your data stays on your machine. |
 | 4 | Reliability & data integrity | **720** | Atomic writes and quarantine of corrupt files, but no scheduled backups. A single JSON store is the default. |
 | 5 | Performance & scalability | **680** | Lean client with lazy loading and compression. The JSON index and in-memory search limit large libraries. |
@@ -27,10 +29,10 @@
 | 10 | Documentation | **800** | Thorough README, architecture and platform guides. Some plan/audit docs are stale, and there's no CONTRIBUTING or SECURITY file. |
 | 11 | Installation, deployment & operations | **760** | Runs from npm, Docker (non-root, health check) or desktop installers. Unsigned binaries, and no published image. |
 | 12 | Interoperability & ecosystem | **620** | Subsonic API and opt-in TMDB/MusicBrainz. No Chromecast/DLNA, Jellyfin/Plex APIs or native mobile clients. |
-| | **Total** | **8 970 / 12 000** (was 8 820) | **Average 748 / 1000 (was 735). A capable, privacy-respecting media server. Its urgent security fix is done; next it needs a quality-engineering push.** |
+| | **Total** | **9 030 / 12 000** (was 8 820) | **Average 753 / 1000 (was 735). A capable, privacy-respecting media server. Its security fixes are done; next it needs a quality-engineering push.** |
 
 Categories carry equal weight. If Security counted double (it guards the user's home network), the weighted average
-would be **748 / 1000** (727 before the fix).
+would be **758 / 1000** (728 before the fixes).
 
 ---
 
@@ -61,14 +63,16 @@ would be **748 / 1000** (727 before the fix).
 
 ---
 
-## 2. Security — 760 / 1000 (snapshot: 640)
+## 2. Security — 820 / 1000 (snapshot: 640)
 
 **Justification: strengths**
 
 - **Login:** bcrypt passwords plus a picture-grid second factor (8 cells chosen from 16), optional TOTP, lockout,
   and revocable sessions (every token must carry a live `sid`).
-- **Scoped media tokens:** tokens for media playback are limited to `GET`/`HEAD`, and `?token=` values are
-  redacted from request logs (`server/index.js`).
+- **Scoped media tokens:** web addresses only ever carry a separate media token. It is limited to `GET`/`HEAD`
+  on media paths, expires after 12 hours, and is redacted from request logs (`server/index.js`).
+- **Strict Content-Security-Policy:** no inline scripts, event handlers or `<style>` blocks. The only inline
+  scripts (the server's import map and build id) are allowed by their exact SHA-256 hash (`server/utils/csp.js`).
 - **Rate limits:** per 15 min, 2000 general / 10 sign-in / 120 upload requests.
 - **Request hardening:** Helmet, a CORS allowlist, magic-byte upload validation and path sanitisation against
   traversal.
@@ -92,11 +96,25 @@ would be **748 / 1000** (727 before the fix).
     also clears any session made with the factory login. Regression test:
     `security-hardening.test.js` ("the factory login only works on this computer"). It fails without the fix.
     The re-score adds +120: the critical flaw is gone, but the issues below remain.
-- 🟠 **CSP allows `'unsafe-inline'`** for `script-src` and `style-src`. That greatly weakens Helmet's XSS
-  protection, even though the escaping above is careful.
-- 🟠 **JWTs are accepted in query strings** (`middleware/auth.js`). They're redacted from Vault's own logs, but URLs
-  can still leak through browser history, proxies and the `Referer` header. This is limited to media scope, but a
-  general token is accepted the same way.
+- ✅ **Fixed — was 🟠: the CSP allowed `'unsafe-inline'`** for `script-src` and `style-src`, which greatly weakened
+  Helmet's XSS protection.
+  - **Fix:** every inline script, `onerror`/`onload` handler and `<style>` block moved into files
+    (`js/boot-head.js`, `js/main.js`, `js/utils/imageFallback.js`, `css/auth-gate.css`, `css/views.css`, and the
+    landing and 404 pages).
+  - The policy is now `script-src 'self'` plus SHA-256 hashes for the server's two injected scripts, with
+    `script-src-attr 'none'` and `style-src-elem 'self'`. Runtime subtitle CSS uses a constructable stylesheet.
+  - The GitHub Pages build carries the same policy in a `<meta>` tag.
+  - Checked in headless Chromium against a live server (onboarding, signed-in app, playback, live events): no CSP
+    violations. Tests: `csp.test.js`.
+  - `style-src-attr 'unsafe-inline'` remains for `style="…"` attributes. Those can't run script; at worst
+    injected markup could restyle the page.
+- ✅ **Fixed — was 🟠: full JWTs were accepted in query strings.** URLs leak through browser history, proxies and the
+  `Referer` header.
+  - **Fix:** a full sign-in token in `?token=` is now refused (`401 QUERY_TOKEN_NOT_ALLOWED`).
+  - `<video>`, `<img>`, subtitles, HLS and the live-events stream get a separate media token from
+    `GET /api/auth/media-token`. It is read-only, limited to media paths, valid for 12 hours, tied to the session
+    (signing out or revoking the device kills it), and renewed automatically.
+  - Tests: `media-links.test.js`, `security-hardening.test.js`, `player-livetv.test.js`.
 - 🟠 **`npm audit --omit=dev` reports 4 high-severity advisories.** All of them come through `webtorrent` 2.8.5
   (`bittorrent-tracker`, `ip`, `torrent-discovery`). Torrents are off by default and admin-only, which lowers the
   real risk.
@@ -108,10 +126,10 @@ would be **748 / 1000** (727 before the fix).
 
 1. ✅ *Done:* sign-in and the signed-in API are blocked from other devices until setup is finished, with a regression
    test. A further step would be to not create a usable factory `admin` account at all, even locally.
-2. Remove `'unsafe-inline'`: move inline scripts and styles into files or use per-response nonces, then turn on
-   `require-trusted-types-for 'script'`.
-3. Replace general `?token=` access with short-lived, single-item signed media URLs (or cookies with
-   `SameSite=Strict`), and reject full-scope tokens in query strings.
+2. ✅ *Done:* `'unsafe-inline'` removed for scripts and `<style>`. Next: turn on
+   `require-trusted-types-for 'script'`, and move the remaining `style="…"` attributes into classes.
+3. ✅ *Done:* full-scope tokens are refused in query strings; URLs carry 12-hour media tokens. A further step would
+   be single-item signed URLs, so one leaked link opens one file only.
 4. Upgrade to `webtorrent` 3.x (or isolate it in a child process), and move to helmet 8, multer 2 and
    express-rate-limit 8.
 5. Add a `SECURITY.md` with a disclosure process, and run `npm audit` / CodeQL in CI.
@@ -391,12 +409,12 @@ would be **748 / 1000** (727 before the fix).
 | Priority | Action | Category impact |
 |---|---|---|
 | 1 | ✅ **Done:** block default-credential login before setup for non-loopback requests, with a regression test | Security +120, Privacy +30 (applied) |
-| 2 | Remove CSP `'unsafe-inline'` and full-scope query tokens | Security +60 |
+| 2 | ✅ **Done:** remove CSP `'unsafe-inline'` and full-scope query tokens | Security +60 (applied) |
 | 3 | Add ESLint/Prettier/`@ts-check` plus a coverage gate and Playwright smoke tests | Code quality +100, Testing +120 |
 | 4 | Scheduled backups and a SQLite-by-default index with FTS search | Reliability +100, Performance +120 |
 | 5 | DLNA/Chromecast, published Docker image, signed desktop builds | Interop +120, Operations +80 |
 
-With priority 1 done, the average is **748**. Doing priorities 2–4 as well would lift it to about **790 / 1000** (9 470 / 12 000).
+With priorities 1 and 2 done, the average is **753**. Doing priorities 3 and 4 as well would lift it to about **790 / 1000** (9 470 / 12 000).
 
 ---
 

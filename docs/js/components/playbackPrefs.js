@@ -48,28 +48,49 @@ export function resetPrefs() {
 // ---------------------------------------------------------------------------
 // Subtitle styling
 // ---------------------------------------------------------------------------
-function ensureStyleElement() {
+/**
+ * Subtitle CSS goes into a constructable stylesheet (document.adoptedStyleSheets).
+ * The Content-Security-Policy forbids inline <style> elements (style-src-elem
+ * 'self'); Chromium refuses even an empty one. Stylesheets built through the
+ * CSSOM are not inline markup and are allowed. Browsers without constructable
+ * stylesheets are also too old for style-src-elem, so a plain <style> still
+ * works for them.
+ */
+let subtitleSheet = null;
+function setSubtitleCss(cssText) {
+  if (typeof CSSStyleSheet === 'function' && 'adoptedStyleSheets' in document && 'replaceSync' in CSSStyleSheet.prototype) {
+    if (!subtitleSheet) {
+      subtitleSheet = new CSSStyleSheet();
+      document.adoptedStyleSheets = [...document.adoptedStyleSheets, subtitleSheet];
+    }
+    try { subtitleSheet.replaceSync(cssText); } catch { /* invalid rule: keep the previous style */ }
+    return;
+  }
   let style = document.getElementById('vault-subtitle-style');
   if (!style) {
     style = document.createElement('style');
     style.id = 'vault-subtitle-style';
     document.head.appendChild(style);
   }
-  return style;
+  style.textContent = cssText;
+}
+
+/** CSS colour from saved prefs, or the fallback when it isn't one. */
+function safeColour(value, fallback) {
+  const v = String(value || '').trim();
+  return /^(#[0-9a-f]{3,8}|rgba?\([\d\s.,%]+\)|hsla?\([\d\s.,%deg]+\)|[a-z]+)$/i.test(v) ? v : fallback;
 }
 
 export function applySubtitleStyle(prefs = getPrefs()) {
-  const style = ensureStyleElement();
-  const delayNote = prefs.subtitleDelay ? `/* delay ${prefs.subtitleDelay}s applied to cues */\n` : '';
-  style.textContent = `${delayNote}
+  setSubtitleCss(`
     video::cue {
-      font-size: ${Math.round(prefs.subtitleSize)}%;
-      color: ${prefs.subtitleColor};
-      background-color: ${prefs.subtitleBackground};
+      font-size: ${Math.round(Number(prefs.subtitleSize) || 100)}%;
+      color: ${safeColour(prefs.subtitleColor, '#ffffff')};
+      background-color: ${safeColour(prefs.subtitleBackground, 'rgba(0, 0, 0, 0.6)')};
       text-shadow: 0 1px 2px rgba(0, 0, 0, 0.9);
     }
     video::cue(b) { color: inherit; }
-  `;
+  `);
   document.querySelectorAll('#video-element').forEach(video => {
     video.style.setProperty('--subtitle-size', `${prefs.subtitleSize}%`);
   });

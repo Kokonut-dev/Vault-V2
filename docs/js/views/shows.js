@@ -54,7 +54,7 @@ export async function renderShows(container) {
       card.dataset.type = 'movie';
       card.innerHTML = `
         <div class="media-card-cover">
-          <img loading="lazy" src="${show.poster ? (show.poster.startsWith('http') ? show.poster : `${api.baseUrl}${show.poster}`) : api.getCoverUrl(show.key)}" alt="${escapeHtml(show.title)}" class="loaded" onload="this.classList.add('loaded')" onerror="this.style.display='none';this.parentElement.querySelector('.media-card-placeholder')?.classList.add('visible')">
+          <img loading="lazy" src="${show.poster ? api.withMediaToken(show.poster) : api.getCoverUrl(show.key)}" alt="${escapeHtml(show.title)}" class="loaded" data-img-fallback="placeholder">
           <div class="media-card-placeholder" aria-hidden="true">${icon('tv', { size: 34 })}</div>
           ${show.unwatchedCount ? `<div class="media-card-badge">${show.unwatchedCount} new</div>` : ''}
         </div>
@@ -104,7 +104,7 @@ export async function renderShowDetail(container, key) {
   const backdrop = show.backdrop || show.poster;
   container.innerHTML = `
     <div class="hero">
-      ${backdrop ? `<img class="hero-backdrop" src="${backdrop.startsWith('http') ? backdrop : api.baseUrl + backdrop}" alt="">` : ''}
+      ${backdrop ? `<img class="hero-backdrop" src="${api.withMediaToken(backdrop)}" alt="">` : ''}
       <h1 class="hero-title">${escapeHtml(show.title)}</h1>
       <div class="hero-meta">
         ${show.year ? `<span>${show.year}</span>` : ''}
@@ -133,7 +133,7 @@ export async function renderShowDetail(container, key) {
     row.className = `episode-row${episode.watched ? ' watched' : ''}`;
     row.innerHTML = `
       <div class="episode-thumb">
-        <img loading="lazy" src="${api.getThumbnailUrl(episode.id)}" alt="" onerror="this.style.display='none'">
+        <img loading="lazy" src="${api.getThumbnailUrl(episode.id)}" alt="" data-img-fallback="hide">
         ${episode.progress ? `<div class="media-card-progress"><div class="media-card-progress-bar" style="width:${episode.progress}%"></div></div>` : ''}
       </div>
       <div class="episode-info">

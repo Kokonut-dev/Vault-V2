@@ -95,64 +95,6 @@ export function renderUpload(container) {
 
     <div id="drive-import-host" class="drive-import-host"></div>
 
-    <style>
-      .upload-type-card {
-        background:rgba(var(--glass-tint),0.05);
-        border:1px solid rgba(var(--glass-tint),0.1);
-        border-radius: 16px;
-        padding: 24px;
-        text-align: center;
-        cursor: pointer;
-        transition: all 0.2s;
-      }
-      .upload-type-card:hover {
-        border-color: var(--accent);
-        background:rgba(var(--glass-tint),0.12);
-        transform: translateY(-2px);
-      }
-      .upload-type-card.active {
-        border-color: var(--accent);
-        background: var(--accent-muted);
-      }
-      #drop-zone {
-        border: 2px dashed var(--border-strong);
-        border-radius: 14px;
-        padding: 36px 24px;
-        text-align: center;
-        cursor: pointer;
-        background: rgba(var(--glass-tint), 0.03);
-        transition: border-color 0.2s ease-out, background 0.2s ease-out,
-                    box-shadow 0.2s ease-out;
-      }
-      #drop-zone:hover, #drop-zone:focus-visible {
-        border-color: var(--accent);
-        background: rgba(var(--glass-tint), 0.06);
-      }
-      #drop-zone.dragover {
-        border-color: var(--accent);
-        background: var(--accent-muted);
-        box-shadow: 0 0 0 4px var(--accent-muted);
-      }
-      #drop-zone-arrow {
-        transition: transform 0.25s var(--ease-out);
-      }
-      #drop-zone.dragover #drop-zone-arrow {
-        transform: translateY(-6px);
-      }
-      .drop-zone-buttons { display:flex; gap:8px; justify-content:center; margin-top:14px; flex-wrap:wrap; }
-      .folder-summary { font-size:13px; color:var(--text-secondary); margin-bottom:10px; }
-      .folder-group {
-        display:flex; align-items:center; gap:12px; background:rgba(var(--glass-tint),0.09);
-        padding:10px 12px; border-radius:10px; margin-bottom:8px;
-      }
-      .folder-group .row-main { flex:1; min-width:0; }
-      .folder-group .row-title { font-weight:600; font-size:13px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-      .folder-group .row-meta { font-size:11px; color:var(--text-secondary); }
-      .folder-group select { max-width:180px; }
-      .folder-skipped { font-size:12px; color:var(--text-secondary); margin-top:8px; }
-      .folder-skipped summary { cursor:pointer; }
-      .queue-failure { font-size:12px; color:var(--danger, #e5484d); margin-top:4px; }
-    </style>
   `;
 
   renderDriveImport(container.querySelector('#drive-import-host'));

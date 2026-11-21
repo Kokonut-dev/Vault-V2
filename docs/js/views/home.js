@@ -354,7 +354,7 @@ function createHero(item, progress) {
   const episodeLabel = isEpisode(item) ? [hasValue(item.season) ? `S${item.season}` : '', hasValue(item.episode) ? `E${item.episode}` : ''].join('') : '';
 
   hero.innerHTML = `
-    <img class="hero-backdrop${music ? ' is-cover' : ''}" src="${backdropUrl}" alt="" onerror="this.style.display='none'">
+    <img class="hero-backdrop${music ? ' is-cover' : ''}" src="${backdropUrl}" alt="" data-img-fallback="hide">
     <div class="hero-body">
       <p class="hero-overline">${overline}</p>
       <h2 class="hero-title" id="hero-title">${escapeHtml(item.seriesTitle && isEpisode(item) ? item.seriesTitle : item.title)}</h2>
@@ -374,7 +374,7 @@ function createHero(item, progress) {
         <button class="btn hero-btn hero-btn-quiet" type="button" data-hero-list aria-pressed="false">${icon('bookmark', { size: 16 })}<span>My list</span></button>
       </div>
     </div>
-    ${posterUrl ? `<img class="hero-poster${music ? ' is-square' : ''}" src="${posterUrl}" alt="" onerror="this.remove()">` : ''}
+    ${posterUrl ? `<img class="hero-poster${music ? ' is-square' : ''}" src="${posterUrl}" alt="" data-img-fallback="remove">` : ''}
   `;
 
   hero.querySelector('[data-hero-play]').addEventListener('click', () => playItem(item));

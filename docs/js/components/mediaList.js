@@ -85,7 +85,7 @@ export function renderMediaList(container, items, options = {}) {
       <div class="media-list-item-main">
         <button class="media-list-play" type="button" aria-label="Play">${icon('play', { size: 13 })}</button>
         <div class="media-list-item-cover">
-          <img src="${coverSrc}" alt="" loading="lazy" onerror="this.style.display='none'">
+          <img src="${coverSrc}" alt="" loading="lazy" data-img-fallback="hide">
         </div>
         <div class="media-list-item-text">
           <div class="media-list-item-title">${escapeHtml(item.title)}</div>

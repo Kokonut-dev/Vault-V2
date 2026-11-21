@@ -242,7 +242,7 @@ export function renderMusic(container) {
         : api.getCoverUrl(cover.id);
       card.innerHTML = `
         <div class="media-card-cover music">
-          <img src="${coverUrl}" alt="" loading="lazy" class="loaded" onload="this.classList.add('loaded')" onerror="this.style.display='none';this.parentElement.querySelector('.media-card-placeholder')?.classList.add('visible')">
+          <img src="${coverUrl}" alt="" loading="lazy" class="loaded" data-img-fallback="placeholder">
           <div class="media-card-placeholder" aria-hidden="true">${icon('music', { size: 34 })}</div>
           <div class="media-card-overlay"><button class="media-card-play" type="button" aria-label="Play ${escapeAttr(album)}">${icon('play', { size: 20 })}</button></div>
         </div>

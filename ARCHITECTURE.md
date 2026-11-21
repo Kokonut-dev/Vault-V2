@@ -433,7 +433,7 @@ All responses JSON unless streaming media. Errors: `{ error: string, code: strin
 ### Media Streaming
 
 #### GET /api/media/stream/:id
-- **Headers**: Auth (or token query param `?token=` for <video> src which can't set headers — validate query token)
+- **Headers**: `Authorization: Bearer <token>`. Elements that can't set headers (`<video>`, `<img>`, `<track>`, EventSource) use `?token=` with a short-lived *media* token from `GET /api/auth/media-token` (read-only, media paths only). A full sign-in token in the query string is refused (`401 QUERY_TOKEN_NOT_ALLOWED`).
 - **Response 200/206**: File stream with `Accept-Ranges: bytes`, `Content-Type` mime, supports Range header
 - **Notes**: Uses fs.createReadStream with range.
 

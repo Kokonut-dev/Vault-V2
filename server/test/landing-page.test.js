@@ -11,6 +11,12 @@ const { JSDOM } = require('jsdom');
 
 const DOCS = path.join(__dirname, '..', '..', 'docs');
 const landingHtml = fs.readFileSync(path.join(DOCS, 'landing.html'), 'utf8');
+/**
+ * The page with its local scripts inlined, so jsdom can run them (the real
+ * page loads them as files: the CSP forbids inline scripts).
+ */
+const withLocalScripts = (html) => html.replace(/<script src="\.\/([^"]+)"><\/script>/g,
+  (_, ref) => `<script>${fs.readFileSync(path.join(DOCS, ref), 'utf8')}</script>`);
 const indexHtml = fs.readFileSync(path.join(DOCS, 'index.html'), 'utf8');
 const readme = fs.readFileSync(path.join(__dirname, '..', '..', 'README.md'), 'utf8');
 
@@ -51,7 +57,7 @@ test('landing page: install steps match the README', () => {
 });
 
 test('landing page: theme picker applies and remembers a theme; install tabs switch', () => {
-  const dom = new JSDOM(landingHtml, { runScripts: 'dangerously', url: 'https://kokonut-dev.github.io/Vault-V2/landing.html' });
+  const dom = new JSDOM(withLocalScripts(landingHtml), { runScripts: 'dangerously', url: 'https://kokonut-dev.github.io/Vault-V2/landing.html' });
   const { document, localStorage } = dom.window;
   assert.equal(localStorage.getItem('vault_seen_landing'), '1', 'seen once, the app stops redirecting here');
   const buttons = [...document.querySelectorAll('#theme-picker button')];
@@ -70,12 +76,14 @@ test('landing page: theme picker applies and remembers a theme; install tabs swi
   dom.window.close();
 });
 
-// The redirect is the first inline <script> in index.html's <head>.
+// The redirect runs from js/boot-head.js, the first script in index.html's <head>.
 const redirectSource = (() => {
   const { document } = new JSDOM(indexHtml).window;
-  const script = [...document.head.querySelectorAll('script:not([src])')].find(s => s.textContent.includes('landing.html'));
-  assert.ok(script, 'index.html has the first-visit redirect');
-  return script.textContent;
+  const first = document.head.querySelector('script');
+  assert.equal(first?.getAttribute('src'), './js/boot-head.js', 'index.html loads the first-visit redirect first');
+  const source = fs.readFileSync(path.join(DOCS, 'js', 'boot-head.js'), 'utf8');
+  assert.ok(source.includes("location.replace('landing.html')"));
+  return source;
 })();
 
 function runRedirect({ url, local = {}, session = {} }) {

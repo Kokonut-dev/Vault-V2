@@ -67,38 +67,11 @@ const app = express();
 app.set('trust proxy', 'loopback');
 
 // Middleware
-// Content-Security-Policy: previously disabled while the docs claimed CSP
-// protection. The policy below allows exactly what the app needs:
-//   * self-hosted scripts/styles and the small number of inline handlers the
-//     zero-build SPA still uses,
-//   * media/images from the API base URL (which is this server, or the tunnel
-//     origin the user configured),
-//   * connect to the same origins for fetch()/SSE.
-// `frame-ancestors 'none'` + `object-src 'none'` keep the clickjacking and
-// plugin vectors closed.
+// Content-Security-Policy: see utils/csp.js (no inline scripts or handlers).
 app.use(helmet({
   contentSecurityPolicy: {
     useDefaults: false,
-    directives: {
-      defaultSrc: ["'self'"],
-      // accounts.google.com: Google Identity Services, only loaded when an
-      // admin connects a Google account for Drive import.
-      scriptSrc: ["'self'", "'unsafe-inline'", 'https://accounts.google.com'],
-      styleSrc: ["'self'", "'unsafe-inline'"],
-      // Podcast episodes and their artwork are served by the podcast's own
-      // host; with media-src 'self' every feed episode failed to load.
-      imgSrc: ["'self'", 'data:', 'blob:', 'https:', 'http:'],
-      mediaSrc: ["'self'", 'blob:', 'data:', 'https:', 'http:'],
-      fontSrc: ["'self'", 'data:'],
-      connectSrc: ["'self'", 'https:', 'http:', 'blob:'],
-      workerSrc: ["'self'", 'blob:'],
-      frameSrc: ["'self'", 'blob:', 'https://accounts.google.com'],
-      objectSrc: ["'none'"],
-      baseUri: ["'self'"],
-      formAction: ["'self'"],
-      frameAncestors: ["'none'"],
-      manifestSrc: ["'self'"],
-    },
+    directives: require('./utils/csp').CSP_DIRECTIVES,
   },
   crossOriginEmbedderPolicy: false,
   crossOriginResourcePolicy: { policy: "cross-origin" },

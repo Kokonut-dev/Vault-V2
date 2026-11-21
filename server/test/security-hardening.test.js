@@ -68,6 +68,9 @@ test.before(async () => {
   app.use('/api/auth', authRouter);
   app.use('/api/remote', authMiddleware, requireAdmin, require('../routes/remote'));
   app.use('/rest', require('../routes/subsonic'));
+  // Stand-ins for media routes and the live-events stream (URL-token users).
+  app.use('/api/media', authMiddleware, (req, res) => res.json({ ok: true, scope: req.user.scope || 'full' }));
+  app.get('/api/events', authMiddleware, (req, res) => res.json({ ok: true }));
   await new Promise(r => { server = app.listen(0, '127.0.0.1', r); });
   port = server.address().port;
 });
@@ -395,4 +398,41 @@ test('remote access: turns itself off by default and reports what protects it', 
   assert.equal(typeof summary.signedInDevices, 'number');
   assert.ok(summary.remoteDevices >= 1, 'counts devices that came in through the tunnel');
   delete memory.remoteAccess;
+});
+
+// ---------------------------------------------------------------- URL tokens
+test('links: only read-only media tokens are accepted in a URL, never the sign-in token', async () => {
+  markSetUp();
+  try {
+    const full = tokenFor('default');
+    const sid = authService.verifyToken(full).sid;
+    const media = authService.generateMediaToken('admin', '12h', { sid, profileId: 'default' });
+
+    // The sign-in token works in the header, but is refused in a URL, even for media.
+    assert.equal((await call('GET', '/api/media/stream/x', { token: full })).status, 200);
+    for (const url of ['/api/media/stream/x', '/api/events', '/api/remote']) {
+      const res = await call('GET', `${url}?token=${encodeURIComponent(full)}`);
+      assert.equal(res.status, 401, `${url} with the sign-in token in the URL`);
+      assert.equal(res.body.code, 'QUERY_TOKEN_NOT_ALLOWED');
+    }
+
+    // The media token plays media and opens the events stream...
+    const play = await call('GET', `/api/media/stream/x?token=${encodeURIComponent(media)}`);
+    assert.equal(play.status, 200);
+    assert.equal(play.body.scope, 'media');
+    assert.equal((await call('GET', `/api/events?token=${encodeURIComponent(media)}`)).status, 200);
+
+    // ...and nothing else: no other API, no writes, no new tokens.
+    assert.equal((await call('GET', `/api/remote?token=${encodeURIComponent(media)}`)).status, 401);
+    assert.equal((await call('GET', '/api/remote', { token: media })).status, 401, 'not in the header either');
+    assert.equal((await call('POST', '/api/media/stream/x', { token: media, body: {} })).status, 401, 'read-only');
+    assert.equal((await call('GET', '/api/auth/media-token', { token: media })).status, 401, 'cannot renew itself');
+    assert.equal((await call('GET', `/api/media/stream/x?token=${encodeURIComponent(media)}`, { from: '203.0.113.9' })).status, 200, 'works through the tunnel');
+
+    // Signing out the device revokes its media links too.
+    sessions.revoke(sid);
+    assert.equal((await call('GET', `/api/media/stream/x?token=${encodeURIComponent(media)}`)).status, 401);
+  } finally {
+    fs.rmSync(configModule.CONFIG_PATH, { force: true });
+  }
 });

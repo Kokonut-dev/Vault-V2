@@ -32,6 +32,8 @@ globalThis.matchMedia = () => ({ matches: false, addEventListener() {}, removeEv
 globalThis.requestAnimationFrame = (fn) => setTimeout(fn, 0);
 window.VAULT_CONFIG = { apiBaseUrl: 'https://vault.example.test', basePath: '/Vault-V2' };
 localStorage.setItem('vault_token', 'test-token');
+// Media links use the session's media token, never the sign-in token.
+localStorage.setItem('vault_media_token', JSON.stringify({ token: 'media-token', key: 'test-token', expiresAt: Date.now() + 12 * 60 * 60 * 1000 }));
 
 // jsdom has no media pipeline.
 const media = dom.window.HTMLMediaElement.prototype;
@@ -108,7 +110,7 @@ test('an IPTV movie plays through a server restream, never library routes', asyn
   assert.equal(posts[0].path, '/api/livetv/channels/ch_3_Q29wcGVyIE/play');
   assert.deepEqual(posts[0].body, { transcode: false });
   assert.equal(hlsInstances.length, 1);
-  assert.equal(hlsInstances[0].url, `https://vault.example.test/api/livetv/stream/s${sessionCounter}/index.m3u8?token=test-token`);
+  assert.equal(hlsInstances[0].url, `https://vault.example.test/api/livetv/stream/s${sessionCounter}/index.m3u8?token=media-token`);
   assert.equal(document.getElementById('video-element').getAttribute('src'), null, 'provider URL never reaches <video>');
   assert.ok(document.getElementById('video-player').classList.contains('is-external'), 'download/next hidden');
   assert.ok(!calls.some(c => /\/api\/(transcode|media)\//.test(c.path)), 'no library-only routes');

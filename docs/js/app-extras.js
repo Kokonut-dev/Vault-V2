@@ -445,16 +445,25 @@ export function initSyncPlayFollower() {
 // ---------------------------------------------------------------------------
 // Offline downloads (PWA) — cache a few items for the commute
 // ---------------------------------------------------------------------------
+/** Cache key of a saved stream: its absolute address without the query string. */
+function offlineStreamKey(id) {
+  return new URL(`${api.baseUrl || ''}/api/media/stream/${id}`, window.location.href).href;
+}
+
 export async function downloadItemForOffline(item) {
   if (!('caches' in window)) {
     toast.info('Offline downloads need a service-worker capable browser');
     return false;
   }
-  const url = api.getStreamUrl(item);
   const cache = await caches.open('vault-offline');
   toast.info(`Downloading "${item.title}"…`, 'Offline');
   try {
-    await cache.add(new Request(url));
+    // Fetched with the short-lived media link, but stored under the plain
+    // stream address: the token rotates, and the service worker looks saved
+    // streams up by path (and no token sits in the cache).
+    const response = await fetch(api.getStreamUrl(item.id));
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    await cache.put(offlineStreamKey(item.id), response);
     const meta = (await cache.match('/vault-offline-index').then(r => r?.json())) || { items: [] };
     meta.items = [...meta.items.filter(entry => entry.id !== item.id), {
       id: item.id, title: item.title, duration: item.duration, size: item.size, addedAt: Date.now(),

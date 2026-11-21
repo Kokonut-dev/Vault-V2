@@ -65,6 +65,105 @@ class ApiClient {
     this._tokenCacheTime = 0;
   }
 
+  // --- Media links ---------------------------------------------------------
+  // <video>, <img>, <track> and EventSource can't send an Authorization
+  // header, so their URLs carry `?token=`. That token is a *media token*
+  // (GET /api/auth/media-token): read-only, limited to media paths, tied to
+  // this device's session (signing out revokes it) and valid for 12 hours.
+  // The server refuses the full sign-in token in a URL, so it never ends up
+  // in browser history, proxy logs or a copied link.
+
+  /** Which session a sign-in token belongs to (its `sid`), or the token itself. */
+  _sessionKey(token) {
+    if (!token) return null;
+    try {
+      // JWT parts are unpadded base64url; atob wants padded base64.
+      const b64 = token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/');
+      const payload = JSON.parse(atob(b64 + '='.repeat((4 - (b64.length % 4)) % 4)));
+      return payload.sid ? `${payload.sid}:${payload.profileId || ''}` : token;
+    } catch {
+      return token;
+    }
+  }
+
+  _readMediaToken() {
+    if (this._media) return this._media;
+    try {
+      const saved = JSON.parse(localStorage.getItem('vault_media_token') || 'null');
+      if (saved && typeof saved.token === 'string') this._media = saved;
+    } catch { /* private mode or bad JSON: fetch a new one */ }
+    return this._media || null;
+  }
+
+  _clearMediaToken() {
+    this._media = null;
+    try { localStorage.removeItem('vault_media_token'); } catch { /* private mode */ }
+  }
+
+  /** The cached media token, if it belongs to the current session and hasn't expired. */
+  _currentMediaToken(minValidMs = 0) {
+    const key = this._sessionKey(this.getToken());
+    const media = this._readMediaToken();
+    if (!key || !media || media.key !== key) return null;
+    if (media.expiresAt - Date.now() <= minValidMs) return null;
+    return media.token;
+  }
+
+  /**
+   * Make sure a media token for the current session is cached. Fetches a new
+   * one when there is none, it belongs to another session/profile, or it has
+   * less than 4 hours left (so a link built now keeps working for a film).
+   */
+  async ensureMediaToken({ force = false } = {}) {
+    const access = this.getToken();
+    if (!access) {
+      this._clearMediaToken();
+      return null;
+    }
+    if (!force && this._currentMediaToken(4 * 60 * 60 * 1000)) return this._media.token;
+    if (this._mediaPending) return this._mediaPending;
+    const key = this._sessionKey(access);
+    this._mediaPending = this.request('/api/auth/media-token', { retry: false })
+      .then((res) => {
+        if (!res?.token) return null;
+        this._media = { token: res.token, key, expiresAt: Date.now() + (Number(res.expiresIn) || 12 * 60 * 60) * 1000 };
+        try { localStorage.setItem('vault_media_token', JSON.stringify(this._media)); } catch { /* private mode */ }
+        return res.token;
+      })
+      .catch(() => this._currentMediaToken())
+      .finally(() => { this._mediaPending = null; });
+    return this._mediaPending;
+  }
+
+  /** Keep the media token fresh while the app is open. */
+  startMediaTokenRefresh() {
+    if (this._mediaTimer) return;
+    this._mediaTimer = setInterval(() => { this.ensureMediaToken().catch(() => {}); }, 15 * 60 * 1000);
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible') this.ensureMediaToken().catch(() => {});
+    });
+  }
+
+  /**
+   * Token for a media URL (synchronous, for building src attributes). Starts
+   * a refresh in the background when it's missing or getting old.
+   */
+  getMediaToken() {
+    const fresh = this._currentMediaToken(4 * 60 * 60 * 1000);
+    if (fresh) return fresh;
+    this.ensureMediaToken().catch(() => {});
+    return this._currentMediaToken() || '';
+  }
+
+  /** Add the media token to a same-server media path or URL. */
+  withMediaToken(pathOrUrl) {
+    const absolute = /^https?:/i.test(pathOrUrl);
+    // Never hand the token to another host.
+    if (absolute && !pathOrUrl.startsWith(`${this.baseUrl}/`)) return pathOrUrl;
+    const url = absolute ? pathOrUrl : `${this.baseUrl}${pathOrUrl}`;
+    return `${url}${url.includes('?') ? '&' : '?'}token=${encodeURIComponent(this.getMediaToken())}`;
+  }
+
   getHeaders(includeAuth = true) {
     const headers = { 'Content-Type': 'application/json' };
     if (includeAuth) {
@@ -283,7 +382,8 @@ class ApiClient {
   }
 
   logout() {
-    return this.request('/api/auth/logout', { method: 'POST' }).catch(() => {});
+    const done = this.request('/api/auth/logout', { method: 'POST' }).catch(() => {});
+    return done.finally(() => this._clearMediaToken());
   }
 
   verify() {
@@ -369,7 +469,7 @@ class ApiClient {
 
   // Media
   getStreamUrl(id) {
-    const token = store.get('token') || localStorage.getItem('vault_token');
+    const token = this.getMediaToken();
     return `${this.baseUrl}/api/media/stream/${id}?token=${encodeURIComponent(token || '')}`;
   }
 
@@ -378,7 +478,7 @@ class ApiClient {
   // Content-Disposition, so no custom headers or CORS preflight are needed
   // and the browser saves instead of playing the stream).
   getDownloadUrl(id) {
-    const token = store.get('token') || localStorage.getItem('vault_token');
+    const token = this.getMediaToken();
     return `${this.baseUrl}/api/media/download/${id}?token=${encodeURIComponent(token || '')}`;
   }
 
@@ -406,29 +506,29 @@ class ApiClient {
   }
 
   getCoverUrl(id, size = null) {
-    const token = store.get('token') || localStorage.getItem('vault_token');
+    const token = this.getMediaToken();
     const sizeParam = size ? `&size=${encodeURIComponent(size)}` : '';
     return `${this.baseUrl}/api/media/cover/${id}?token=${encodeURIComponent(token || '')}${sizeParam}`;
   }
 
   getBackdropUrl(id) {
-    const token = store.get('token') || localStorage.getItem('vault_token');
+    const token = this.getMediaToken();
     return `${this.baseUrl}/api/media/cover/${id}?kind=backdrop&token=${encodeURIComponent(token || '')}`;
   }
 
   getThumbnailUrl(id, time = null) {
-    const token = store.get('token') || localStorage.getItem('vault_token');
+    const token = this.getMediaToken();
     const timeParam = time ? `&time=${time}` : '';
     return `${this.baseUrl}/api/media/thumbnail/${id}?token=${encodeURIComponent(token || '')}${timeParam}`;
   }
 
   getTranscodeUrl(id, quality = '720p') {
-    const token = store.get('token') || localStorage.getItem('vault_token');
+    const token = this.getMediaToken();
     return `${this.baseUrl}/api/transcode/${id}?quality=${quality}&token=${encodeURIComponent(token || '')}`;
   }
 
   getAudioTranscodeUrl(id, codec = 'aac', start = 0) {
-    const token = store.get('token') || localStorage.getItem('vault_token');
+    const token = this.getMediaToken();
     const startParam = start > 0 ? `&start=${Math.floor(start * 10) / 10}` : '';
     return `${this.baseUrl}/api/transcode/audio/${id}?codec=${codec}${startParam}&token=${encodeURIComponent(token || '')}`;
   }
@@ -540,7 +640,7 @@ class ApiClient {
   }
 
   getSubtitleUrl(id, subtitleId) {
-    const token = store.get('token') || localStorage.getItem('vault_token');
+    const token = this.getMediaToken();
     return `${this.baseUrl}/api/media/subtitle/${id}/${encodeURIComponent(subtitleId)}?token=${encodeURIComponent(token || '')}`;
   }
 
@@ -1165,7 +1265,7 @@ class ApiClient {
   }
 
   comicPageUrl(id, index) {
-    const token = this.getToken();
+    const token = this.getMediaToken();
     return `${this.baseUrl}/api/comics/${id}/page/${index}?token=${encodeURIComponent(token || '')}`;
   }
 
@@ -1202,7 +1302,7 @@ class ApiClient {
 
   /** Absolute, token-carrying URL for a restream playlist path from playChannel(). */
   liveStreamUrl(playlistPath) {
-    return `${this.baseUrl}${playlistPath}?token=${encodeURIComponent(this.getToken() || '')}`;
+    return `${this.baseUrl}${playlistPath}?token=${encodeURIComponent(this.getMediaToken())}`;
   }
 
   startRecording(data) {
@@ -1435,7 +1535,7 @@ class ApiClient {
   }
 
   playlistCoverUrl(id, version = '') {
-    const token = this.getToken();
+    const token = this.getMediaToken();
     return `${this.baseUrl}/api/playlists/${id}/cover?token=${encodeURIComponent(token || '')}${version ? `&v=${encodeURIComponent(version)}` : ''}`;
   }
 
@@ -1461,7 +1561,7 @@ class ApiClient {
   }
 
   exportPlaylistUrl(id) {
-    return `${this.baseUrl}/api/playlists/${id}/export?token=${encodeURIComponent(this.getToken() || '')}`;
+    return `${this.baseUrl}/api/playlists/${id}/export?token=${encodeURIComponent(this.getMediaToken())}`;
   }
 
   // --- Media additions -----------------------------------------------------
@@ -1486,19 +1586,19 @@ class ApiClient {
   }
 
   trailerUrl(id) {
-    return `${this.baseUrl}/api/media/trailer/${id}?token=${encodeURIComponent(this.getToken() || '')}`;
+    return `${this.baseUrl}/api/media/trailer/${id}?token=${encodeURIComponent(this.getMediaToken())}`;
   }
 
   extraUrl(id, index) {
-    return `${this.baseUrl}/api/media/extra/${id}/${index}?token=${encodeURIComponent(this.getToken() || '')}`;
+    return `${this.baseUrl}/api/media/extra/${id}/${index}?token=${encodeURIComponent(this.getMediaToken())}`;
   }
 
   hlsMasterUrl(id) {
-    return `${this.baseUrl}/api/transcode/hls/${id}/master.m3u8?token=${encodeURIComponent(this.getToken() || '')}`;
+    return `${this.baseUrl}/api/transcode/hls/${id}/master.m3u8?token=${encodeURIComponent(this.getMediaToken())}`;
   }
 
   getEventsUrl() {
-    return `${this.baseUrl}/api/events?token=${encodeURIComponent(this.getToken() || '')}`;
+    return `${this.baseUrl}/api/events?token=${encodeURIComponent(this.getMediaToken())}`;
   }
 
   // --- Sign another device in (QR carries a single-use, pre-approved link)

@@ -2,6 +2,49 @@
 
 ## [3.0.0] — in progress (branch `arena/0deefe55-vault-v2`)
 
+### Security — no inline scripts, and no sign-in tokens in web addresses
+The two remaining weak spots in the Security section of `EVALUATION.md`.
+
+**Strict Content-Security-Policy (no `'unsafe-inline'`)**
+- Every inline `<script>`, `onerror=`/`onload=` handler and `<style>` block in the
+  web client moved into files:
+  - `js/boot-head.js`: landing redirect and early theme.
+  - `js/main.js`: the former inline start-up module.
+  - `js/utils/imageFallback.js`: image fallbacks via `data-img-fallback`.
+  - `css/auth-gate.css` and `css/views.css`.
+  - `landing-head.js`, `landing.js` and `landing.css` for the landing page; `spa-404.js` for the 404 page.
+- Policy (`server/utils/csp.js`):
+  - `script-src 'self'` (plus Google sign-in for Drive import), `script-src-attr 'none'` and
+    `style-src-elem 'self'`.
+  - The server's import map and build id are the only inline scripts. They are allowed by their exact SHA-256 hash
+    (`clientBuild.allowInlineScripts`). Hashes rather than nonces, so 304 revalidation keeps working.
+- `docs/index.html` carries the same policy as a `<meta>` tag for GitHub Pages. The server strips that copy and
+  sends the header instead.
+- Subtitle styling uses a constructable stylesheet with validated colours.
+- `style="…"` attributes are still allowed: they can't run script.
+- Test: `server/test/csp.test.js` scans every page and module for inline code and checks the served header and
+  hashes. Also checked in headless Chromium against a live server (onboarding, signed-in app, cover art, playback,
+  live events): no violations.
+
+**Media links carry a media token, never your sign-in token**
+- A full sign-in token in `?token=` is refused: `401 QUERY_TOKEN_NOT_ALLOWED`.
+  Use the `Authorization` header.
+- New `GET /api/auth/media-token` returns a read-only token with these limits:
+  - `GET`/`HEAD` on media paths only (now including Live TV streams and `/api/events`);
+  - valid for 12 hours;
+  - tied to the session, so it dies when that device is signed out.
+- The client caches the media token and renews it when less than 4 hours remain. All URL builders in `api.js`, plus
+  trickplay, playlists and show artwork, use it. It is cleared on sign-out.
+- `optionalAuthMiddleware` reads the header only.
+- Test: `server/test/media-links.test.js`.
+
+**Fixed along the way: offline downloads never played offline**
+- "Download for offline" requested `/api/media/stream/[object Object]`: it passed the item instead of its id.
+- The service worker never consulted the offline cache for `/api/` requests.
+- Downloads are now stored under the token-free stream address, and the worker plays them when the network is
+  unavailable.
+- Tests in `service-worker.test.js`. Service worker cache bumped to `vault-v2-shell-v17`.
+
 ### Security — a brand-new server no longer accepts the factory login from other devices
 Before first-time setup, Vault's in-memory config holds the factory login
 (`admin` / `admin` and the default grid pattern). The setup routes already

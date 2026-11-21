@@ -85,7 +85,7 @@ const escapeScript = (json) => json.replace(/</g, '\\u003c');
  * index.html with the import map and the build id injected at the top of
  * <head>, ahead of every module script (an import map must come first).
  */
-function injectBuild(html, { id, requestPath = '/' }) {
+function buildTags({ id, requestPath = '/' }) {
   const dir = documentDir(requestPath);
   const target = `/b/${id}/js/`;
   const imports = { '/js/': target };
@@ -93,12 +93,57 @@ function injectBuild(html, { id, requestPath = '/' }) {
   // /movie/js/x.js. Map that prefix too, so the same module isn't loaded
   // twice under two URLs.
   if (dir !== '/') imports[`${dir}js/`] = target;
-  const tags = `<script type="importmap">${escapeScript(JSON.stringify({ imports }))}</script>`
-    + `<script>window.__VAULT_BUILD__=${escapeScript(JSON.stringify(id))};</script>`;
+  const importMap = escapeScript(JSON.stringify({ imports }));
+  const buildScript = `window.__VAULT_BUILD__=${escapeScript(JSON.stringify(id))};`;
+  return {
+    tags: `<script type="importmap">${importMap}</script><script>${buildScript}</script>`,
+    // The only inline scripts Vault sends. The CSP allows exactly these by
+    // hash (see cspHashes); every other inline script stays blocked.
+    inline: [importMap, buildScript],
+  };
+}
+
+function injectTags(html, tags) {
   const head = /<head[^>]*>/i.exec(html);
   if (!head) return tags + html;
   const at = head.index + head[0].length;
   return html.slice(0, at) + tags + html.slice(at);
+}
+
+function injectBuild(html, { id, requestPath = '/' }) {
+  return injectTags(html, buildTags({ id, requestPath }).tags);
+}
+
+/** CSP source expressions ('sha256-…') for inline script bodies. */
+function cspHashes(bodies) {
+  return bodies.map(body => `'sha256-${crypto.createHash('sha256').update(body, 'utf8').digest('base64')}'`);
+}
+
+/**
+ * Add hash sources to the script-src of the Content-Security-Policy header
+ * already set on `res` (by helmet). Hashes rather than a nonce: index.html
+ * is answered with 304s, and a 304 reuses the cached body (and its old nonce)
+ * under fresh headers. A hash is the same for the same build and path.
+ */
+function allowInlineScripts(res, hashes) {
+  const header = res.getHeader('Content-Security-Policy');
+  if (!header || !hashes.length) return;
+  const policy = String(header);
+  const next = /(^|;)\s*script-src\s/i.test(policy)
+    ? policy.replace(/((?:^|;)\s*script-src)([^;]*)/i, (_, name, sources) => `${name}${sources} ${hashes.join(' ')}`)
+    : `${policy};script-src 'self' ${hashes.join(' ')}`;
+  res.setHeader('Content-Security-Policy', next);
+}
+
+/**
+ * index.html carries a <meta> copy of the CSP for the static GitHub Pages
+ * build, which can't send headers. The server sends the policy as a header
+ * (plus frame-ancestors and the inline-script hashes), and browsers enforce
+ * every policy they get. A second copy without the hashes would block the
+ * injected scripts if a tag were ever moved below it, so it is removed here.
+ */
+function stripMetaCsp(html) {
+  return html.replace(/[ \t]*<meta\s+http-equiv=["']Content-Security-Policy["'][^>]*>[ \t]*\r?\n?/gi, '');
 }
 
 /** Cached read of index.html (re-read when the file changes). */
@@ -114,7 +159,9 @@ function readIndex(file) {
 /** Express handler that sends index.html for the current build. */
 function sendIndex(docsPath, req, res, next) {
   try {
-    const html = injectBuild(readIndex(path.join(docsPath, 'index.html')), { id: buildId(docsPath), requestPath: req.path });
+    const { tags, inline } = buildTags({ id: buildId(docsPath), requestPath: req.path });
+    const html = injectTags(stripMetaCsp(readIndex(path.join(docsPath, 'index.html'))), tags);
+    allowInlineScripts(res, cspHashes(inline));
     res.setHeader('Cache-Control', 'no-cache');
     res.type('html');
     // res.send adds the ETag (so reloads get a 304) and skips the body for HEAD.
@@ -178,4 +225,5 @@ function isCodeFile(name) {
   return CODE_FILE.test(name);
 }
 
-module.exports = { buildId, injectBuild, documentDir, sendIndex, mountClient, isCodeFile, listCodeFiles };
+module.exports = {
+  stripMetaCsp, buildId, injectBuild, buildTags, cspHashes, allowInlineScripts, documentDir, sendIndex, mountClient, isCodeFile, listCodeFiles };
