@@ -5,6 +5,9 @@
 > **Snapshot:** `main` at `40ed468` (after PR #52), November 2026.
 > **Scale:** each category is scored **out of 1000**. The total is the plain sum of all categories, with an average
 > alongside it.
+>
+> **Update (same PR):** the critical pre-setup login flaw (§2) has been **fixed** and covered by a regression test.
+> Security and Privacy are re-scored below, with the snapshot scores kept in brackets.
 
 ---
 
@@ -13,8 +16,8 @@
 | # | Category | Score / 1000 | Verdict |
 |---|---|---:|---|
 | 1 | Features & functional scope | **860** | Unusually broad for a self-hosted server: video, music, TV/DVR, podcasts, books, comics, SyncPlay, desktop and PWA. |
-| 2 | Security | **640** | A strong layered design, held back by one critical flaw: default credentials work before setup. |
-| 3 | Privacy & data ownership | **870** | No telemetry or third-party scripts, and online lookups are opt-in. Your data stays on your machine. |
+| 2 | Security | **760** (was 640) | A strong layered design. The critical pre-setup login flaw is now fixed. CSP `'unsafe-inline'` and query-string tokens remain. |
+| 3 | Privacy & data ownership | **900** (was 870) | No telemetry or third-party scripts, and online lookups are opt-in. Your data stays on your machine. |
 | 4 | Reliability & data integrity | **720** | Atomic writes and quarantine of corrupt files, but no scheduled backups. A single JSON store is the default. |
 | 5 | Performance & scalability | **680** | Lean client with lazy loading and compression. The JSON index and in-memory search limit large libraries. |
 | 6 | Code quality & maintainability | **650** | Clean, dependency-light modules. No linter or types, many silent `catch {}` blocks, several 1000+ line files. |
@@ -24,10 +27,10 @@
 | 10 | Documentation | **800** | Thorough README, architecture and platform guides. Some plan/audit docs are stale, and there's no CONTRIBUTING or SECURITY file. |
 | 11 | Installation, deployment & operations | **760** | Runs from npm, Docker (non-root, health check) or desktop installers. Unsigned binaries, and no published image. |
 | 12 | Interoperability & ecosystem | **620** | Subsonic API and opt-in TMDB/MusicBrainz. No Chromecast/DLNA, Jellyfin/Plex APIs or native mobile clients. |
-| | **Total** | **8 820 / 12 000** | **Average 735 / 1000. A capable, privacy-respecting media server that needs one urgent security fix and a quality-engineering push.** |
+| | **Total** | **8 970 / 12 000** (was 8 820) | **Average 748 / 1000 (was 735). A capable, privacy-respecting media server. Its urgent security fix is done; next it needs a quality-engineering push.** |
 
 Categories carry equal weight. If Security counted double (it guards the user's home network), the weighted average
-would be **727 / 1000**.
+would be **748 / 1000** (727 before the fix).
 
 ---
 
@@ -58,7 +61,7 @@ would be **727 / 1000**.
 
 ---
 
-## 2. Security — 640 / 1000
+## 2. Security — 760 / 1000 (snapshot: 640)
 
 **Justification: strengths**
 
@@ -76,14 +79,19 @@ would be **727 / 1000**.
 
 **Justification: weaknesses**
 
-- 🔴 **CRITICAL: default credentials work before setup.** A freshly started, unconfigured server accepted
+- ✅ **Fixed — was CRITICAL: default credentials worked before setup.** A freshly started, unconfigured server accepted
   `POST /api/auth/login` from its **LAN IP** with the factory defaults (`admin` / `admin` plus the default grid
   pattern) and issued a full-access admin token.
   - The setup routes are protected by `setupGuard` (setup code for non-local requests), but the login route is not.
   - So any device on the same network can skip the setup-code protection, sign in as admin during the pre-setup
     window, and reach `/api/settings`, `/api/system`, `/api/server` and `/api/remote`. The last two include
     turning on the internet tunnel.
-  - This directly contradicts the guarantee that the app "does not expose the home network".
+  - This directly contradicted the guarantee that the app "does not expose the home network".
+  - **Fix:** until setup is done, every `/api/auth/*` route and the auth middleware refuse requests that aren't
+    direct loopback (`403 SETUP_REQUIRED`), even with the setup code, which is only for setup. Completing setup
+    also clears any session made with the factory login. Regression test:
+    `security-hardening.test.js` ("the factory login only works on this computer"). It fails without the fix.
+    The re-score adds +120: the critical flaw is gone, but the issues below remain.
 - 🟠 **CSP allows `'unsafe-inline'`** for `script-src` and `style-src`. That greatly weakens Helmet's XSS
   protection, even though the escaping above is careful.
 - 🟠 **JWTs are accepted in query strings** (`middleware/auth.js`). They're redacted from Vault's own logs, but URLs
@@ -98,9 +106,8 @@ would be **727 / 1000**.
 
 **Possible improvements** (in priority order)
 
-1. **Block login while `needsSetup` is true unless the request comes from the server computer (loopback)**, using
-   the same check as `setupGuard`. Better still, don't create a usable `admin` account until setup has set a real
-   password. Add a regression test that logs in from a non-loopback address before setup.
+1. ✅ *Done:* sign-in and the signed-in API are blocked from other devices until setup is finished, with a regression
+   test. A further step would be to not create a usable factory `admin` account at all, even locally.
 2. Remove `'unsafe-inline'`: move inline scripts and styles into files or use per-response nonces, then turn on
    `require-trusted-types-for 'script'`.
 3. Replace general `?token=` access with short-lived, single-item signed media URLs (or cookies with
@@ -112,7 +119,7 @@ would be **727 / 1000**.
 
 ---
 
-## 3. Privacy & data ownership — 870 / 1000
+## 3. Privacy & data ownership — 900 / 1000 (snapshot: 870)
 
 **Justification**
 
@@ -124,7 +131,7 @@ would be **727 / 1000**.
   zip of that folder (`services/system.js`).
 - Remote access is opt-in, time-limited (8 h tunnel) and paired explicitly.
 - **Deductions:**
-  - The pre-setup login flaw (§2) can expose the library to other devices on the network.
+  - ~~The pre-setup login flaw (§2) can expose the library to other devices on the network.~~ Fixed (+30).
   - Remote access relies on a third-party tunnel provider, so when it is on, traffic metadata passes through that
     provider.
   - There's no per-profile privacy setting (e.g. hiding watch history from other profiles or from stats).
@@ -383,13 +390,13 @@ would be **727 / 1000**.
 
 | Priority | Action | Category impact |
 |---|---|---|
-| 1 | **Block default-credential login before setup for non-loopback requests**, and add a regression test | Security +150, Privacy +40 |
+| 1 | ✅ **Done:** block default-credential login before setup for non-loopback requests, with a regression test | Security +120, Privacy +30 (applied) |
 | 2 | Remove CSP `'unsafe-inline'` and full-scope query tokens | Security +60 |
 | 3 | Add ESLint/Prettier/`@ts-check` plus a coverage gate and Playwright smoke tests | Code quality +100, Testing +120 |
 | 4 | Scheduled backups and a SQLite-by-default index with FTS search | Reliability +100, Performance +120 |
 | 5 | DLNA/Chromecast, published Docker image, signed desktop builds | Interop +120, Operations +80 |
 
-Doing priorities 1–4 would lift the average from **735** to about **800 / 1000**.
+With priority 1 done, the average is **748**. Doing priorities 2–4 as well would lift it to about **790 / 1000** (9 470 / 12 000).
 
 ---
 

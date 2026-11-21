@@ -13,8 +13,16 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const http = require('node:http');
 const express = require('express');
+const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
 
 const configModule = require('../config');
+// A server that has finished setup: before setup, other devices (the
+// X-Forwarded-For requests below) are refused by services/setupGuard.js.
+const TMP = fs.mkdtempSync(path.join(os.tmpdir(), 'vault-server-control-'));
+configModule.CONFIG_PATH = path.join(TMP, 'config.json');
+fs.writeFileSync(configModule.CONFIG_PATH, JSON.stringify({ auth: { username: 'admin', passwordHash: 'set' } }));
 const memory = structuredClone(configModule.DEFAULT_CONFIG);
 memory.server = { ...memory.server, host: '127.0.0.1', port: 4000 };
 memory.auth = { ...memory.auth, username: 'admin', jwtSecret: 'test-secret-'.padEnd(48, 'x') };
@@ -55,7 +63,10 @@ test.before(async () => {
   await new Promise(r => { server = app.listen(0, '127.0.0.1', r); });
   port = server.address().port;
 });
-test.after(() => new Promise(r => server.close(r)));
+test.after(() => {
+  fs.rmSync(TMP, { recursive: true, force: true });
+  return new Promise(r => server.close(r));
+});
 
 function call(method, path, { body, token, headers = {} } = {}) {
   return new Promise((resolve, reject) => {

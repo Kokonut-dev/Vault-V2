@@ -2,6 +2,32 @@
 
 ## [3.0.0] — in progress (branch `arena/0deefe55-vault-v2`)
 
+### Security — a brand-new server no longer accepts the factory login from other devices
+Before first-time setup, Vault's in-memory config holds the factory login
+(`admin` / `admin` and the default grid pattern). The setup routes already
+required the setup code from other devices, but `/api/auth/login` did not, so
+anyone on the same network could sign in as admin during the pre-setup window,
+skipping the setup code, and reach Settings, System and Remote access
+(including the internet tunnel). Found during the evaluation in `EVALUATION.md`.
+
+- `services/setupGuard.js`: new `pending()` (no config file, or no saved
+  password hash; cached by the file's mtime and size) and `allowSignIn()` /
+  `signInGuard`. Until setup is done, sign-in and the signed-in API only answer
+  requests from this computer (direct loopback, not forwarded). Other devices
+  get `403 SETUP_REQUIRED`, even if they send the setup code. The code is for
+  setup only.
+- Applied to every `/api/auth/*` route (password, grid, authenticator, pairing)
+  and to `authMiddleware`, so a token from before setup can't be used from
+  another device either. `optionalAuthMiddleware` never treats other devices as
+  signed in before setup.
+- Completing first-time setup now also clears every session made with the
+  factory login (their tokens already failed, because setup picks a new
+  signing secret).
+- The sign-in form opens the setup wizard when a server answers
+  `SETUP_REQUIRED`. Service worker cache bumped to `vault-v2-shell-v16`.
+- Test: `server/test/security-hardening.test.js` ("the factory login only
+  works on this computer"). It fails without the fix.
+
 ### Fixed — left-clicking a song (or any card) also opened the right-click menu
 The "More button" click handler in `docs/js/components/contextMenu.js`
 matched `data-context-menu-for`, which every card and list row carries as its

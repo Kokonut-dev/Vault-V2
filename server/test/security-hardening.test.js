@@ -106,6 +106,8 @@ function call(method, urlPath, { body, token, from, headers = {} } = {}) {
 }
 
 const resetLockouts = (ip) => authService.resetAttempts(ip);
+/** Put a finished-setup config.json on disk (what /api/setup/complete writes). */
+const markSetUp = () => fs.writeFileSync(configModule.CONFIG_PATH, JSON.stringify({ auth: { username: 'admin', passwordHash: memory.auth.passwordHash || 'set' } }));
 
 // ---------------------------------------------------------------- addresses
 test('a loopback request through a tunnel/proxy is not "this computer"', () => {
@@ -219,8 +221,67 @@ test('/api/health: strangers learn only that Vault runs here', async () => {
 });
 
 // ---------------------------------------------------------------- pairing
+test('brand-new server: the factory login only works on this computer', async () => {
+  // Before setup the in-memory config carries admin / admin and the default
+  // pattern. Another device on the network must not be able to use them to
+  // skip the setup code.
+  fs.rmSync(configModule.CONFIG_PATH, { force: true });
+  const bcrypt = require('bcryptjs');
+  const savedHash = memory.auth.passwordHash;
+  memory.auth.passwordHash = bcrypt.hashSync('admin', 4);
+  const ip = '192.168.1.66';
+  resetLockouts(ip);
+  resetLockouts('127.0.0.1');
+  try {
+    assert.equal(setupGuard.pending(), true);
+    const factory = { username: 'admin', password: 'admin' };
+
+    // Every sign-in step is refused from other devices, with or without the setup code.
+    for (const [url, body] of [
+      ['/api/auth/login', factory],
+      ['/api/auth/grid', { challengeToken: 'x', pattern: [0, 1, 4, 5, 8, 9, 12, 13] }],
+      ['/api/auth/second-factor', { challengeToken: 'x', code: '123456' }],
+      ['/api/auth/pair', {}],
+      ['/api/auth/pair/exchange', { code: 'ABCD' }],
+    ]) {
+      const res = await call('POST', url, { body, from: ip });
+      assert.equal(res.status, 403, `${url} from another device before setup`);
+      assert.equal(res.body.code, 'SETUP_REQUIRED');
+    }
+    const withCode = await call('POST', '/api/auth/login', { body: factory, from: ip, headers: { 'X-Vault-Setup-Code': setupGuard.code() } });
+    assert.equal(withCode.status, 403, 'the setup code is for setup, not for the factory login');
+
+    // A token (e.g. one issued on this computer with the factory login) only works here.
+    const token = tokenFor('default');
+    const away = await call('GET', '/api/remote', { token, from: ip });
+    assert.equal(away.status, 403);
+    assert.equal(away.body.code, 'SETUP_REQUIRED');
+    const statusAway = await call('GET', '/api/setup/status', { token, from: ip });
+    assert.equal(statusAway.body.needsSetup, true, 'other devices are never treated as signed in');
+    assert.notEqual((await call('GET', '/api/remote', { token })).status, 403, 'this computer is unaffected');
+
+    // This computer can still use the factory login (e.g. scripts, recovery).
+    const here = await call('POST', '/api/auth/login', { body: factory });
+    assert.equal(here.status, 200);
+    assert.ok(here.body.challengeToken);
+
+    // Once setup has saved a real account, other devices may sign in normally.
+    markSetUp();
+    assert.equal(setupGuard.pending(), false);
+    const after = await call('POST', '/api/auth/login', { body: { username: 'admin', password: 'wrong' }, from: ip });
+    assert.equal(after.status, 401, 'the guard steps aside after setup');
+    assert.equal(after.body.code, 'INVALID_CREDENTIALS');
+  } finally {
+    fs.rmSync(configModule.CONFIG_PATH, { force: true });
+    memory.auth.passwordHash = savedHash;
+    resetLockouts(ip);
+    resetLockouts('127.0.0.1');
+  }
+});
+
 test('pairing: waiting codes are capped, show their origin, and links stay http(s)', async () => {
   authRouter._resetPairingForTests();
+  markSetUp(); // other devices can only pair with a server that is set up
   const made = [];
   for (let i = 0; i < 3; i += 1) {
     const res = await call('POST', '/api/auth/pair', { body: {}, from: '203.0.113.50' });

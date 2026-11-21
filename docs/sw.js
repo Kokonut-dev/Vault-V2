@@ -19,7 +19,8 @@
 // mixing builds ("does not provide an export named 'THEME_META'").
 // v11: 3.0 colour refresh — new theme tokens, favicon and manifest colours.
 // v12: profiles — auth.js imports js/profileSession.js (in the shell list).
-const CACHE_NAME = 'vault-v2-shell-v15';
+// v16: the sign-in form opens setup when a fresh server refuses remote sign-in.
+const CACHE_NAME = 'vault-v2-shell-v16';
 const BASE_PATH = '/Vault-V2';
 
 const SHELL_ASSETS = [
