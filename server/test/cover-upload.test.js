@@ -115,6 +115,8 @@ test('authenticated album, playlist, and new-media cover uploads are reachable',
   sessions.get = (sid) => (sid === 'test-session' ? { id: sid, profileId: 'default' } : realSessions.get(sid));
   t.after(() => Object.assign(sessions, realSessions));
   const token = jwt.sign({ profileId: 'default', sid: 'test-session' }, jwtSecret, { expiresIn: '5m' });
+  // What the client puts in <img src>: a media-scope token (a sign-in token is refused in URLs).
+  const mediaToken = jwt.sign({ profileId: 'default', sid: 'test-session', scope: 'media' }, jwtSecret, { expiresIn: '5m' });
   const generatedCovers = new Set();
 
   t.after(async () => {
@@ -141,7 +143,10 @@ test('authenticated album, playlist, and new-media cover uploads are reachable',
     assert.ok(await fs.pathExists(body.coverArtPath));
     generatedCovers.add(body.coverArtPath);
 
-    const coverMediaRes = await fetch(`${baseUrl}/api/media/cover/album-track?token=${token}`);
+    const refused = await fetch(`${baseUrl}/api/media/cover/album-track?token=${token}`);
+    assert.equal(refused.status, 401, 'the sign-in token is never accepted in a URL');
+    assert.equal((await refused.json()).code, 'QUERY_TOKEN_NOT_ALLOWED');
+    const coverMediaRes = await fetch(`${baseUrl}/api/media/cover/album-track?token=${mediaToken}`);
     assert.equal(coverMediaRes.status, 200);
     assert.equal(coverMediaRes.headers.get('cache-control'), 'no-cache');
     const coverText = await coverMediaRes.text();

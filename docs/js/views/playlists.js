@@ -17,13 +17,13 @@ import { icon } from '../utils/icons.js';
 // future mixed module sets, while these URL fallbacks avoid a forced cache wipe.
 function playlistCoverUrl(id, version = '') {
   if (typeof api.playlistCoverUrl === 'function') return api.playlistCoverUrl(id, version);
-  const token = api.getToken?.() || '';
+  const token = api.getMediaToken?.() || '';
   return `${api.baseUrl}/api/playlists/${id}/cover?token=${encodeURIComponent(token)}${version ? `&v=${encodeURIComponent(version)}` : ''}`;
 }
 
 function exportPlaylistUrl(id) {
   if (typeof api.exportPlaylistUrl === 'function') return api.exportPlaylistUrl(id);
-  const token = api.getToken?.() || '';
+  const token = api.getMediaToken?.() || '';
   return `${api.baseUrl}/api/playlists/${id}/export?token=${encodeURIComponent(token)}`;
 }
 
@@ -111,7 +111,7 @@ export function renderPlaylists(container) {
         card.className = 'media-card';
         card.innerHTML = `
           <div class="media-card-cover" style="background:rgba(var(--glass-tint),0.05); display:flex; align-items:center; justify-content:center;">
-            ${pl.coverArt ? `<img src="${playlistCoverUrl(pl.id, pl.updatedAt || '')}" alt="" style="width:100%;height:100%;object-fit:cover;" onerror="this.style.display='none'">` : icon(pl.type === 'collection' ? 'layout-grid' : 'music', { size: 32 })}
+            ${pl.coverArt ? `<img src="${playlistCoverUrl(pl.id, pl.updatedAt || '')}" alt="" style="width:100%;height:100%;object-fit:cover;" data-img-fallback="hide">` : icon(pl.type === 'collection' ? 'layout-grid' : 'music', { size: 32 })}
           </div>
           <div class="media-card-info">
             <div class="media-card-title">${escapeHtml(pl.name)}</div>
@@ -297,7 +297,7 @@ export function renderPlaylists(container) {
         <button class="btn btn-secondary btn-sm" id="back-btn">${icon('arrow-left', { size: 16 })}<span>Back</span></button>
       </div>
       <div style="background:var(--bg-elevated, var(--bg-secondary)); border:1px solid var(--border-subtle, rgba(var(--glass-tint),0.09)); border-radius:16px; padding:24px; margin-bottom:24px;">
-        ${playlist.coverArt ? `<img src="${playlistCoverUrl(playlist.id, playlist.updatedAt || '')}" alt="" style="width:144px;height:144px;object-fit:cover;border-radius:12px;margin-bottom:16px;" onerror="this.style.display='none'">` : ''}
+        ${playlist.coverArt ? `<img src="${playlistCoverUrl(playlist.id, playlist.updatedAt || '')}" alt="" style="width:144px;height:144px;object-fit:cover;border-radius:12px;margin-bottom:16px;" data-img-fallback="hide">` : ''}
         <h2 style="font-size:24px; font-weight:700; margin-bottom:8px;">${escapeHtml(playlist.name)}</h2>
         <p style="color:var(--text-secondary); margin-bottom:16px;">${escapeHtml(playlist.description || '')}</p>
         <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center;">

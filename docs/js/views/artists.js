@@ -71,7 +71,7 @@ export function renderArtists(container) {
           : api.getCoverUrl(coverTrack.id);
         card.innerHTML = `
           <div class="media-card-cover music">
-            <img loading="lazy" src="${coverUrl}" alt="" class="loaded" onload="this.classList.add('loaded')" onerror="this.style.display='none';this.parentElement.querySelector('.media-card-placeholder')?.classList.add('visible')">
+            <img loading="lazy" src="${coverUrl}" alt="" class="loaded" data-img-fallback="placeholder">
             <div class="media-card-placeholder" aria-hidden="true">${icon('mic', { size: 34 })}</div>
           </div>
           <div class="media-card-info">
@@ -146,7 +146,7 @@ function albumBlock(album, artist, index) {
   ].filter(Boolean);
   const cover = `
     <img src="${coverUrlFor(album.coverTrack, newest(album.tracks))}" alt="" loading="lazy"
-      onload="this.parentElement.classList.add('has-art')" onerror="this.remove()">`;
+      data-img-loaded="parent-art" data-img-fallback="remove">`;
   return `
     <section class="artist-album" data-album="${index}" aria-labelledby="artist-album-${index}">
       <header class="artist-album-head">
@@ -226,9 +226,9 @@ export async function renderArtist(container, name) {
 
     container.innerHTML = `
       <div class="hero artist-hero">
-        <img class="hero-backdrop is-cover" src="${coverUrl}" alt="" onerror="this.remove()">
+        <img class="hero-backdrop is-cover" src="${coverUrl}" alt="" data-img-fallback="remove">
         <div class="artist-hero-avatar" aria-hidden="true">
-          <img src="${coverUrl}" alt="" onload="this.parentElement.classList.add('has-art')" onerror="this.remove()">
+          <img src="${coverUrl}" alt="" data-img-loaded="parent-art" data-img-fallback="remove">
           ${icon('mic', { size: 40 })}
         </div>
         <div class="hero-body">

@@ -19,13 +19,20 @@
 // mixing builds ("does not provide an export named 'THEME_META'").
 // v11: 3.0 colour refresh — new theme tokens, favicon and manifest colours.
 // v12: profiles — auth.js imports js/profileSession.js (in the shell list).
-const CACHE_NAME = 'vault-v2-shell-v15';
+// v16: the sign-in form opens setup when a fresh server refuses remote sign-in.
+// v17: strict CSP — index.html's inline start-up code moved to js/boot-head.js
+//      and js/main.js (both in the shell list); media links use media tokens.
+const CACHE_NAME = 'vault-v2-shell-v17';
+// Media the user saved with "Download for offline" (docs/js/app-extras.js).
+const OFFLINE_CACHE = 'vault-offline';
 const BASE_PATH = '/Vault-V2';
 
 const SHELL_ASSETS = [
   `${BASE_PATH}/`,
   `${BASE_PATH}/index.html`,
   `${BASE_PATH}/config.js`,
+  `${BASE_PATH}/js/boot-head.js`,
+  `${BASE_PATH}/js/main.js`,
   `${BASE_PATH}/manifest.json`,
   `${BASE_PATH}/favicon.svg`,
   `${BASE_PATH}/icon-maskable.svg`,
@@ -49,6 +56,7 @@ const SHELL_ASSETS = [
   `${BASE_PATH}/js/utils/brand.js`,
   `${BASE_PATH}/js/utils/staleModule.js`,
   `${BASE_PATH}/js/utils/pageTransition.js`,
+  `${BASE_PATH}/js/utils/imageFallback.js`,
 ];
 
 self.addEventListener('install', (event) => {
@@ -82,8 +90,16 @@ self.addEventListener('fetch', (event) => {
   
   // Skip API requests — network first
   if (url.pathname.includes('/api/')) {
+    // A stream the user saved for offline (Downloads) is cached under its
+    // address without the query string: the ?token= media link rotates, so the
+    // saved copy must be found by path alone.
+    const isStream = event.request.method === 'GET' && url.pathname.includes('/api/media/stream/');
     event.respondWith(
-      fetch(event.request).catch(() => {
+      fetch(event.request).catch(async () => {
+        if (isStream) {
+          const saved = await caches.open(OFFLINE_CACHE).then(cache => cache.match(url.origin + url.pathname));
+          if (saved) return saved;
+        }
         return new Response(JSON.stringify({ error: 'Offline — server unreachable' }), {
           status: 503,
           headers: { 'Content-Type': 'application/json' }

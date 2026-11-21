@@ -204,7 +204,7 @@ The first time you open Vault, a 6-step wizard appears:
 
 You're signed in automatically. Next time: username + password, then your 8 squares.
 
-**Setting up from another device** (a headless server, a NAS or Docker)? The wizard asks for a **setup code**. It's printed in the server window when Vault starts, and saved in `server/data/setup-code.txt` (with Docker: `docker compose logs vault`). This stops anyone else on your network from claiming a brand-new server before you do. On the computer running Vault, no code is needed.
+**Setting up from another device** (a headless server, a NAS or Docker)? The wizard asks for a **setup code**. It's printed in the server window when Vault starts, and saved in `server/data/setup-code.txt` (with Docker: `docker compose logs vault`). This stops anyone else on your network from claiming a brand-new server before you do. Until setup is done, other devices can't sign in at all (the factory login only works on the server computer itself). On the computer running Vault, no code is needed.
 
 ---
 
@@ -373,9 +373,9 @@ Vault is built so that using it doesn't open up your home network. Here is what 
 | Anywhere (Cloudflare tunnel) | Uses `https`, with a random address that changes each time. Turns itself off after 8 hours by default. Admins only. |
 | Transfer download link | Admins only, works for one download, expires after 2 hours. It contains your settings, so keep it to yourself. |
 | Subsonic apps | Off until you set a separate Subsonic password. Your Vault password is never accepted there, because Subsonic can't ask for the second step. Wrong passwords lock that device out. |
-| A brand-new server | Only the computer running it can set it up without the setup code. Another device needs the code printed in the server window. The same applies to importing a transfer package. |
+| A brand-new server | Only the computer running it can set it up without the setup code. Another device needs the code printed in the server window. The same applies to importing a transfer package. Until setup is finished, **nobody can sign in from another device**, not even with the factory `admin` / `admin` login, and other devices can't use the rest of the API. |
 
-**Behind the scenes:** strangers get very little from the server. `/api/health` only returns `ok` and the version, and `/api/setup/status` shows no username or folders. Sign-in tokens are tied to a device and can be revoked. Media links carry read-only tokens that expire, and those are blanked out in the logs. The browser app sends a strict Content-Security-Policy, refuses to be framed, and sends no referrer. Vault doesn't use cookies, so other websites can't act as you.
+**Behind the scenes:** strangers get very little from the server. `/api/health` only returns `ok` and the version, and `/api/setup/status` shows no username or folders. Sign-in tokens are tied to a device and can be revoked. Your sign-in token never appears in a web address: the server refuses it there. Media links (videos, pictures, subtitles, live events) carry a separate read-only token that only opens media, expires after 12 hours, stops working when that device is signed out, and is blanked out in the logs. The browser app sends a strict Content-Security-Policy that blocks inline scripts, so injected code can't run. It also refuses to be framed and sends no referrer. Vault doesn't use cookies, so other websites can't act as you.
 
 **What no app can promise.** Vault can't make an absolute guarantee, and neither can any other app. What you do matters too:
 1. Use a **strong, unique password** and turn on an **authenticator app** (Settings → Security).
@@ -559,9 +559,10 @@ GET  /api/health                     public health check
 GET  /api/setup/status               { needsSetup }
 POST /api/setup/complete             create the account and config
 POST /api/auth/login                 { username, password } → challengeToken
-POST /api/auth/grid                  { challengeToken, pattern } → token
+POST /api/auth/grid                  { challengeToken, pattern } → token (send as Authorization: Bearer)
+GET  /api/auth/media-token           → { token, expiresIn } read-only, for ?token= on media URLs
 GET  /api/library?search=&type=&genre=&sort=&page=&limit=
-GET  /api/media/stream/:id?token=    range requests supported
+GET  /api/media/stream/:id?token=    media token only; range requests supported
 POST /api/upload/:type               multipart (?keepFolders=1 keeps relative paths)
 POST /api/upload/check               { type, files:[{path,size}] } → { existing }
 GET  /api/livetv/channels            channels + per-list status

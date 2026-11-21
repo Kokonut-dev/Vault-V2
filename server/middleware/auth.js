@@ -4,9 +4,25 @@ const fs = require('fs-extra');
 const path = require('path');
 const sessions = require('../services/sessions');
 
-// Media tokens (GET /api/auth/media-token) only unlock media reads, never the
-// rest of the API.
-const MEDIA_SCOPE_BASES = ['/api/media', '/api/transcode', '/api/comics', '/api/playlists'];
+// Media tokens (GET /api/auth/media-token) only unlock media reads (GET/HEAD
+// under these paths), never the rest of the API. They are the only tokens
+// accepted in a URL (`?token=`): <video>, <img>, <track> and EventSource
+// can't send an Authorization header. A full sign-in token in a URL would
+// leak through browser history, proxies, screenshots and copied links, so it
+// is refused. Full tokens travel in the Authorization header only.
+const MEDIA_SCOPE_BASES = ['/api/media', '/api/transcode', '/api/comics', '/api/playlists', '/api/livetv/stream', '/api/events'];
+
+/** The request path including the mount point (`app.use` strips it from req.path). */
+function fullPath(req) {
+  return `${req.baseUrl || ''}${req.path || ''}`;
+}
+
+/** May a media-scope token be used for this request? */
+function mediaScopeAllows(req) {
+  if (req.method !== 'GET' && req.method !== 'HEAD') return false;
+  const p = fullPath(req);
+  return MEDIA_SCOPE_BASES.some(base => p === base || p.startsWith(`${base}/`));
+}
 
 /**
  * Which profile a token acts as. The session record wins over the token:
@@ -70,14 +86,22 @@ function authMiddleware(req, res, next) {
   // Allow health check without auth
   if (req.path === '/api/health') return next();
 
+  // Until first-time setup is done, signed-in requests only work from this
+  // computer (see services/setupGuard.js). This also covers any token that
+  // was issued with the factory login before setup.
+  if (!require('../services/setupGuard').allowSignIn(req, res)) return;
+
   const authHeader = req.headers.authorization;
   let token = null;
+  let fromQuery = false;
 
   if (authHeader && authHeader.startsWith('Bearer ')) {
     token = authHeader.substring(7);
-  } else if (req.query && req.query.token) {
-    // Allow token via query for media streaming (video/audio tags can't set headers)
+  } else if (req.query && typeof req.query.token === 'string' && req.query.token) {
+    // Media URLs only (video/audio/img tags and EventSource can't set
+    // headers), and only with a media-scope token. Checked below.
     token = req.query.token;
+    fromQuery = true;
   }
 
   if (!token) {
@@ -111,10 +135,11 @@ function authMiddleware(req, res, next) {
     }
     sessions.touch(decoded.sid);
 
-    if (decoded.scope === 'media') {
-      const allowed = (req.method === 'GET' || req.method === 'HEAD')
-        && MEDIA_SCOPE_BASES.some(base => (req.baseUrl || '').startsWith(base));
-      if (!allowed) return res.status(401).json({ error: 'This token only plays media', code: 'INVALID_TOKEN' });
+    if (fromQuery && decoded.scope !== 'media') {
+      return res.status(401).json({ error: 'Sign-in tokens are not accepted in links. Reload Vault to get a media link.', code: 'QUERY_TOKEN_NOT_ALLOWED' });
+    }
+    if (decoded.scope === 'media' && !mediaScopeAllows(req)) {
+      return res.status(401).json({ error: 'This token only plays media', code: 'INVALID_TOKEN' });
     }
 
     const profileId = resolveProfileId(decoded);
@@ -135,10 +160,15 @@ function authMiddleware(req, res, next) {
 }
 
 function optionalAuthMiddleware(req, res, next) {
+  // Before setup, other devices are never treated as signed in.
+  if (!require('../utils/clientAddress').isLocalRequest(req) && require('../services/setupGuard').pending()) {
+    req.user = null;
+    return next();
+  }
+  // Header only: URL tokens are media-scope, which never counts as signed in here.
   const authHeader = req.headers.authorization;
   let token = null;
   if (authHeader && authHeader.startsWith('Bearer ')) token = authHeader.substring(7);
-  else if (req.query && req.query.token) token = req.query.token;
 
   if (!token) {
     req.user = null;

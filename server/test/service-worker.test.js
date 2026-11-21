@@ -13,7 +13,7 @@ const vm = require('node:vm');
 
 const SW_PATH = path.join(__dirname, '..', '..', 'docs', 'sw.js');
 const ORIGIN = 'https://kokonut-dev.github.io';
-const CURRENT_CACHE = 'vault-v2-shell-v15';
+const CURRENT_CACHE = 'vault-v2-shell-v17';
 
 function keyFor(request) {
   const raw = typeof request === 'string' ? request : request.url;
@@ -220,4 +220,29 @@ test('images and media are not forced to revalidate', async () => {
   });
   await harness.dispatchFetch(`${ORIGIN}/Vault-V2/icons/icon-192.png`);
   assert.notEqual(requestCacheMode, 'no-cache');
+});
+
+test('a saved offline stream plays without the network, whatever its media token', async () => {
+  // Downloads are cached under the stream path without ?token=: the media
+  // link rotates, so the copy saved yesterday must still match today's URL.
+  const harness = createHarness();
+  const saved = await harness.caches.open('vault-offline');
+  await saved.put(`${ORIGIN}/api/media/stream/item-1`, new Response('saved film'));
+  harness.setNetwork(async () => { throw new Error('offline'); });
+
+  const hit = await harness.dispatchFetch(`${ORIGIN}/api/media/stream/item-1?token=new-media-token`);
+  assert.equal(await hit.text(), 'saved film');
+
+  const miss = await harness.dispatchFetch(`${ORIGIN}/api/media/stream/item-2?token=x`);
+  assert.equal(miss.status, 503, 'only saved items come from the offline cache');
+  const api = await harness.dispatchFetch(`${ORIGIN}/api/library`);
+  assert.equal(api.status, 503, 'other API calls are never answered from a cache');
+});
+
+test('the client saves offline streams under a token-free key with the real item id', () => {
+  const source = fs.readFileSync(path.join(__dirname, '..', '..', 'docs', 'js', 'app-extras.js'), 'utf8');
+  const body = source.slice(source.indexOf('export async function downloadItemForOffline'));
+  assert.match(body, /getStreamUrl\(item\.id\)/, 'getStreamUrl takes an id, not the item object');
+  assert.match(body, /cache\.put\(offlineStreamKey\(item\.id\)/);
+  assert.doesNotMatch(body.slice(0, body.indexOf('export async function listOfflineItems')), /cache\.add\(/);
 });

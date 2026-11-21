@@ -1,0 +1,218 @@
+/* Sign-in gate. Was an inline <style> in index.html (bundled into vault.css
+   now, so the Content-Security-Policy can forbid inline styles). Kept last in
+   the bundle: it used to come after every other sheet. */
+/* Auth Gate Styles (inline for immediate render) */
+/* The profile-PIN prompt during sign-in must sit above the gate. */
+body.auth-prompt-open .modal-backdrop { z-index: 410; }
+.auth-gate {
+  position: fixed;
+  inset: 0;
+  background-color: var(--bg-primary);
+  background-image:
+    radial-gradient(46vw 46vw at 14% 4%, var(--ambient-1), transparent 68%),
+    radial-gradient(42vw 42vw at 88% 2%, var(--ambient-2), transparent 66%),
+    radial-gradient(64vw 64vw at 52% 114%, var(--ambient-3), transparent 70%),
+    var(--ambient-base);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 400;
+  padding: 20px;
+}
+.auth-container {
+  width: 100%;
+  max-width: 400px;
+  background: rgba(var(--glass-tint), calc(var(--glass-fill-strong) + 0.06));
+  backdrop-filter: blur(calc(var(--glass-blur-effective) + 14px)) saturate(190%);
+  -webkit-backdrop-filter: blur(calc(var(--glass-blur-effective) + 14px)) saturate(190%);
+  border: 1px solid var(--glass-border);
+  border-radius: 22px;
+  padding: 32px;
+  box-shadow: var(--shadow-xl), var(--glass-ring), inset 0 1px 0 var(--glass-highlight);
+}
+.auth-logo {
+  text-align: center;
+  margin-bottom: 32px;
+}
+.auth-logo-icon {
+  width: 56px;
+  height: 56px;
+  margin: 0 auto 14px;
+  filter: drop-shadow(0 8px 22px var(--accent-muted));
+}
+.auth-logo-icon .brand-mark { display: block; }
+.auth-logo h1 {
+  font-family: var(--font-display);
+  font-variation-settings: var(--display-soft);
+  font-size: 34px;
+  font-weight: var(--fw-display);
+  letter-spacing: var(--tracking-display);
+  line-height: 1.1;
+}
+.auth-logo p {
+  color: var(--text-secondary);
+  font-size: 14px;
+  margin-top: 4px;
+}
+.auth-step {
+  display: none;
+}
+.auth-step.active {
+  display: block;
+  animation: pageEnter 0.3s ease-out;
+}
+.auth-step h2 {
+  font-family: var(--font-display);
+  font-variation-settings: var(--display-soft);
+  font-size: 22px;
+  font-weight: var(--fw-display);
+  letter-spacing: var(--tracking-display);
+  margin-bottom: 8px;
+}
+.auth-subtitle {
+  color: var(--text-secondary);
+  font-size: 14px;
+  margin-bottom: 24px;
+}
+.auth-form {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.auth-error {
+  background: color-mix(in srgb, var(--error) 9%, var(--surface-base));
+  border: 1px solid color-mix(in srgb, var(--error) 40%, transparent);
+  color: var(--error);
+  padding: 10px 14px;
+  border-radius: 10px;
+  font-size: 13px;
+}
+.auth-warning {
+  margin-top: 12px;
+  background: color-mix(in srgb, var(--warning) 9%, var(--surface-base));
+  border: 1px solid color-mix(in srgb, var(--warning) 40%, transparent);
+  color: var(--warning);
+  padding: 10px 14px;
+  border-radius: 10px;
+  font-size: 12px;
+  line-height: 1.6;
+  word-break: break-word;
+}
+.auth-warning code {
+  font-family: var(--font-mono, monospace);
+  background: color-mix(in srgb, var(--warning) 12%, transparent);
+  padding: 1px 4px;
+  border-radius: 4px;
+}
+.auth-footer {
+  margin-top: 24px;
+  text-align: center;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+.auth-about { margin-top: 10px; }
+.auth-about a { color: var(--accent-text); text-underline-offset: 2px; }
+.grid-container {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+  margin-bottom: 20px;
+}
+.grid-square {
+  position: relative;
+  aspect-ratio: 1;
+  background: rgba(var(--glass-tint),0.05);
+  border: 2px solid var(--border);
+  border-radius: 12px;
+  cursor: pointer;
+  transition: all 0.15s ease-out;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 600;
+  color: var(--text-tertiary);
+}
+.grid-square:hover {
+  border-color: var(--border-strong);
+  background: rgba(var(--glass-tint),0.12);
+}
+.grid-square.selected {
+  background: var(--accent-solid);
+  border-color: var(--accent-solid);
+  color: var(--on-accent);
+  transform: scale(0.95);
+}
+/* Non-color selection cue (WCAG 1.4.1): check badge + aria-pressed.
+   Masked inline SVG rather than a ✓ font glyph, which only some system
+   fonts carry and which scales with font-size instead of the box. */
+.grid-square.selected::after {
+  content: '';
+  position: absolute;
+  top: 3px;
+  right: 5px;
+  width: 11px;
+  height: 11px;
+  background-color: currentColor;
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='3.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M20 6 9 17l-5-5'/%3E%3C/svg%3E") center / contain no-repeat;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='3.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M20 6 9 17l-5-5'/%3E%3C/svg%3E") center / contain no-repeat;
+  opacity: 0.9;
+}
+.grid-actions {
+  display: flex;
+  gap: 12px;
+}
+.grid-actions .btn {
+  flex: 1;
+}
+.grid-hint {
+  text-align: center;
+  margin-top: 12px;
+  font-size: 12px;
+  color: var(--text-tertiary);
+  font-family: var(--font-mono);
+}
+.connection-status {
+  position: fixed;
+  top: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  /* was white on --error: fails in light themes (1.4.3). Solid surface,
+     error-tinted edge, theme text — readable everywhere. */
+  background: var(--surface-elevated);
+  border: 1px solid var(--error);
+  color: var(--text-primary);
+  padding: 8px 16px;
+  border-radius: 9999px;
+  font-size: 13px;
+  font-weight: 500;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  z-index: 300;
+  box-shadow: var(--shadow-lg);
+}
+.auth-code { margin-top: 18px; font-size: 13px; color: var(--text-secondary); }
+.auth-code summary { cursor: pointer; width: fit-content; margin-inline: auto; padding: 6px 4px; border-radius: 6px; }
+.auth-code summary:hover { color: var(--text-primary); }
+.auth-code-form { margin-top: 10px; text-align: left; }
+.auth-code-form .form-label { font-weight: 400; line-height: 1.45; }
+.auth-code-row { display: flex; gap: 8px; }
+.auth-code-row .form-input { flex: 1; min-width: 0; letter-spacing: 0.2em; font-variant-numeric: tabular-nums; }
+.connection-status-content {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+@media (max-width: 640px) {
+  .auth-container {
+    padding: 24px;
+  }
+}
+
+/* Wrong password / pattern: the sign-in card shakes. (Was injected as an
+   inline <style> by the start-up script.) */
+@keyframes shake {
+  0%, 100% { transform: translateX(0); }
+  20%, 60% { transform: translateX(-4px); }
+  40%, 80% { transform: translateX(4px); }
+}

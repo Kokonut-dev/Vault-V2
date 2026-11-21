@@ -191,6 +191,8 @@ class Store {
     this.set('isAuthenticated', false);
     this.set('challengeToken', null);
     localStorage.removeItem('vault_token');
+    // The media-link token belongs to the session that just ended.
+    localStorage.removeItem('vault_media_token');
   }
 
   // Library helpers — optimized with memoization

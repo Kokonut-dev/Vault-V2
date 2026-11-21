@@ -69,7 +69,7 @@ function renderVideoDetail(container, item) {
     <div class="detail-layout">
       <div>
         <div style="aspect-ratio:2/3; background:rgba(var(--glass-tint),0.05); border-radius:16px; overflow:hidden;">
-          <img src="${api.getThumbnailUrl(item.id)}" alt="${escapeHtml(item.title)}" style="width:100%;height:100%;object-fit:cover;" onerror="this.style.display='none'">
+          <img src="${api.getThumbnailUrl(item.id)}" alt="${escapeHtml(item.title)}" style="width:100%;height:100%;object-fit:cover;" data-img-fallback="hide">
         </div>
         <div style="display:flex; gap:8px; margin-top:16px;">
           <button class="btn btn-primary" id="play-btn" style="flex:1;">${icon('play', { size: 18 })}<span>Play</span></button>
@@ -118,11 +118,6 @@ function renderVideoDetail(container, item) {
       </div>
     </div>
     
-    <style>
-      @media (max-width: 768px) {
-        .detail-grid { grid-template-columns: 1fr !important; }
-      }
-    </style>
   `;
   
   container.querySelector('#back-btn').addEventListener('click', () => history.back());
@@ -217,7 +212,7 @@ function renderMusicDetail(container, item) {
 
     <div class="album-header">
       <div class="album-header-cover">
-        <img src="${coverUrl}" alt="" onerror="this.style.display='none'">
+        <img src="${coverUrl}" alt="" data-img-fallback="hide">
       </div>
       <div class="album-header-meta">
         <span class="quality-badge">${isAlbumView ? 'Album' : 'Track'}</span>

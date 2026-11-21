@@ -54,7 +54,8 @@ jobs:
           
           # Check that onboarding is referenced in index.html
           grep -q "onboarding.css" docs/index.html || (echo "onboarding.css not linked in index.html" && exit 1)
-          grep -q "onboarding.js" docs/index.html || (echo "onboarding.js not imported in index.html" && exit 1)
+          grep -q "js/main.js" docs/index.html || (echo "js/main.js not loaded by index.html" && exit 1)
+          grep -q "onboarding.js" docs/js/main.js || (echo "onboarding.js not imported in js/main.js" && exit 1)
           grep -q "onboarding-host" docs/index.html || (echo "onboarding-host not found in index.html" && exit 1)
           
           # Verify 6 steps are implemented

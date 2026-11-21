@@ -48,7 +48,12 @@ const SHEETS = [
   'music.css',
   'settings.css',
   'home.css',
-  'responsive.css', // last: fit-to-screen guards override earlier sheets
+  'responsive.css', // fit-to-screen guards override earlier sheets
+  // Formerly inline <style> blocks (index.html's sign-in gate, view templates).
+  // They always came after every linked sheet, so they stay last. Moved here
+  // so the Content-Security-Policy can forbid inline styles.
+  'auth-gate.css',
+  'views.css',
 ];
 
 // One marker string per sheet (verified unique across sources) — proves the
@@ -71,6 +76,8 @@ const MARKERS = {
   'settings.css': 'settings-rail',
   'home.css': 'home-libraries',
   'responsive.css': 'fit-guard',
+  'auth-gate.css': 'auth-prompt-open',
+  'views.css': 'upload-type-card',
 };
 
 function loadCleanCss() {
