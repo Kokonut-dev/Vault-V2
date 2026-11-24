@@ -1,5 +1,14 @@
 # Changelog
 
+## [Unreleased] — Artist names open the artist page (branch `arena/d7f9cd96-vault-v2`)
+
+### Added
+- **The artist name under an album's title now opens that artist's page.** This works on album pages (and single-track pages) and on Music → Albums, in both the grid cards and the list's Artist column.
+  - Clicking the name on an album card goes to the artist and doesn't open the album; clicking anywhere else on the card still opens the album.
+  - The name underlines on hover and keyboard focus. It keeps the GitHub Pages base path, so opening it in a new tab works.
+  - **Album-artist tag:** if the album is credited to an album-artist tag that has no artist page of its own, the link goes to the album's single track artist. "Various Artists" stays plain text.
+- Shared helper: `docs/js/utils/artistLink.js`.
+
 ## [Unreleased] — One now-playing indicator everywhere (branch `arena/3ab55583-vault-v2`)
 
 ### Changed
