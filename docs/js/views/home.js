@@ -357,7 +357,7 @@ function createHero(item, progress) {
   hero.innerHTML = `
     <img class="hero-backdrop${music ? ' is-cover' : ''}" src="${backdropUrl}" alt="" data-img-fallback="hide">
     <div class="hero-body">
-      <p class="hero-overline" data-np-slot="inline">${overline}</p>
+      <p class="hero-overline" data-np-slot="start">${overline}</p>
       <h2 class="hero-title" id="hero-title">${escapeHtml(item.seriesTitle && isEpisode(item) ? item.seriesTitle : item.title)}</h2>
       <div class="hero-meta">
         <span>${kind}</span>

@@ -379,61 +379,40 @@ a.artist-album-cover:hover { transform: translateY(-2px); }
    Now playing — every page (utils/nowPlaying.js)
    Elements carry data-np-id / data-np-ids; the matching ones get
    .np-current (+ .np-playing while sound plays) and, where they have a
-   data-np-slot, an .np-badge with the same bouncing bars as the artist page.
+   data-np-slot, an .np-badge in front of the name: the same bouncing bars,
+   size and colour as the artist page's track rows.
    ============================================================ */
-.np-badge { display: inline-flex; align-items: center; gap: 5px; pointer-events: none; }
-.np-eq { display: inline-flex; align-items: flex-end; gap: 2px; height: 12px; flex: 0 0 auto; }
+/* One indicator everywhere — the artist page's track-row bars (.track-eq):
+   three accent bars in front of the name, bouncing while it plays and still
+   while paused. No "Playing" pill and no scrim over the artwork. */
+.np-badge {
+  display: inline-flex;
+  align-items: center;
+  flex: 0 0 auto;
+  margin-right: 8px;
+  color: var(--accent);
+  vertical-align: -1px;
+  pointer-events: none;
+}
+.np-eq { display: inline-flex; align-items: flex-end; gap: 2px; height: 14px; flex: 0 0 auto; }
 .np-eq i { width: 3px; height: 45%; border-radius: 1px; background: currentColor; }
 .np-badge.is-playing .np-eq i { animation: trackEq 0.9s ease-in-out infinite alternate; }
 .np-badge.is-playing .np-eq i:nth-child(2) { animation-delay: -0.3s; }
 .np-badge.is-playing .np-eq i:nth-child(3) { animation-delay: -0.6s; }
-.np-label { font-size: 11px; font-weight: var(--fw-strong, 600); line-height: 1; letter-spacing: 0.01em; }
-
-/* Inline (next to a name or title): just the bars, in the accent colour. */
-[data-np-slot="inline"] > .np-badge { color: var(--accent-text); margin-left: 8px; vertical-align: middle; }
-[data-np-slot="inline"] > .np-badge .np-label { display: none; }
 .np-slot:empty { display: none; }
 .np-slot { display: inline-flex; align-items: center; }
 
-/* On artwork: a pill on big cards, a scrim over small thumbnails. */
-[data-np-slot="cover"] { position: relative; }
-[data-np-slot="cover"] > .np-badge {
-  position: absolute;
-  top: 8px;
-  left: 8px;
-  z-index: 3;
-  padding: 4px 8px;
-  border-radius: 999px;
-  background: var(--accent-solid);
-  color: var(--on-accent);
-  box-shadow: var(--shadow-lift, 0 2px 8px rgb(0 0 0 / 0.25));
-}
-.media-list-item-cover > .np-badge,
-.search-item-cover > .np-badge,
-.episode-thumb > .np-badge {
-  inset: 0;
-  top: 0;
-  left: 0;
-  padding: 0;
-  border-radius: inherit;
-  justify-content: center;
-  background: rgb(0 0 0 / 0.55);
-  color: #fff;
-  box-shadow: none;
-}
-.media-list-item-cover > .np-badge .np-label,
-.search-item-cover > .np-badge .np-label { display: none; }
-.episode-thumb > .np-badge .np-eq { height: 16px; }
-
 /* The item itself: accent title, a quiet accent wash on rows. */
-.media-card.np-current .media-card-cover { box-shadow: 0 0 0 2px var(--accent-solid), 0 1px 2px var(--shadow-color); }
 .media-card.np-current .media-card-title,
 .media-list-item.np-current .media-list-item-title,
 .search-item.np-current .search-item-title,
 .podcast-episode.np-current .row-title,
 .episode-row.np-current .episode-title { color: var(--accent-text); }
 .media-list-item.np-current,
-.media-list-item.np-current:nth-child(even) { background: color-mix(in srgb, var(--accent-solid) 10%, transparent); }
+.media-list-item.np-current:nth-child(even),
+.search-item.np-current:not(.selected),
+.episode-row.np-current,
+.podcast-episode.np-current { background: color-mix(in srgb, var(--accent-solid) 10%, transparent); }
 .album-header-kind { display: flex; align-items: center; gap: 4px; justify-self: start; }
 
 @media (prefers-reduced-motion: reduce) {

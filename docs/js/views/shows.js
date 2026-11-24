@@ -133,12 +133,12 @@ export async function renderShowDetail(container, key) {
     row.className = `episode-row${episode.watched ? ' watched' : ''}`;
     row.dataset.npId = episode.id;
     row.innerHTML = `
-      <div class="episode-thumb" data-np-slot="cover">
+      <div class="episode-thumb">
         <img loading="lazy" src="${api.getThumbnailUrl(episode.id)}" alt="" data-img-fallback="hide">
         ${episode.progress ? `<div class="media-card-progress"><div class="media-card-progress-bar" style="width:${episode.progress}%"></div></div>` : ''}
       </div>
       <div class="episode-info">
-        <div class="episode-title">${episode.episode ? `<span class="episode-number">E${String(episode.episode).padStart(2, '0')}</span>` : ''}${escapeHtml(episode.title)}</div>
+        <div class="episode-title" data-np-slot="start">${episode.episode ? `<span class="episode-number">E${String(episode.episode).padStart(2, '0')}</span>` : ''}${escapeHtml(episode.title)}</div>
         <div class="episode-meta">${episode.duration ? formatTime(episode.duration) : ''}${episode.overview ? ` · ${escapeHtml(truncate(episode.overview, 120))}` : ''}</div>
       </div>
       <div class="episode-actions">

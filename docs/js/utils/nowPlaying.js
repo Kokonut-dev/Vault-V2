@@ -9,9 +9,13 @@
  *   data-np-id="<item id>"         one song / episode / film (row, card)
  *   data-np-ids="<id> <id> …"      a group that contains it (album, artist,
  *                                   genre, playlist card)
- *   data-np-slot="cover|inline"    where the animated bars go inside that
- *                                   element (optional — without a slot the
- *                                   element only gets the classes)
+ *   data-np-slot="start"           where the bars go: put on the element's
+ *                                   title (or an empty span right before
+ *                                   it); they are prepended, so they sit
+ *                                   in front of the name everywhere — the
+ *                                   same look as the artist page's track
+ *                                   rows. Optional: without a slot the
+ *                                   element only gets the classes.
  *
  * Matching elements get `.np-current` (and `.np-playing` while sound is
  * actually playing, so the bars stop when paused). Single items also get
@@ -107,10 +111,6 @@ function slotFor(el) {
   return null;
 }
 
-function badgeLabel(playing) {
-  return playing ? 'Playing' : 'Paused';
-}
-
 function mark(el, playing) {
   el.classList.add(CURRENT);
   el.classList.toggle(PLAYING, playing);
@@ -125,14 +125,12 @@ function mark(el, playing) {
     badge = document.createElement('span');
     badge.className = 'np-badge';
     badge.setAttribute('aria-hidden', 'true');
-    badge.innerHTML = '<span class="np-eq"><i></i><i></i><i></i></span><span class="np-label"></span>';
-    if (slot.dataset.npSlot === 'start') slot.prepend(badge);
-    else slot.append(badge);
+    // One look everywhere: the artist page's bars, in front of the name —
+    // never a pill or a scrim over the artwork.
+    badge.innerHTML = '<span class="np-eq"><i></i><i></i><i></i></span>';
+    slot.prepend(badge);
   }
   badge.classList.toggle('is-playing', playing);
-  const label = badge.querySelector('.np-label');
-  const text = badgeLabel(playing);
-  if (label && label.textContent !== text) label.textContent = text;
 }
 
 function unmark(el) {

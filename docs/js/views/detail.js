@@ -216,7 +216,7 @@ function renderMusicDetail(container, item) {
         <img src="${coverUrl}" alt="" data-img-fallback="hide">
       </div>
       <div class="album-header-meta" data-np-ids="${escapeHtml(npIds(isAlbumView ? albumTracks : [item]))}">
-        <div class="album-header-kind"><span class="quality-badge">${isAlbumView ? 'Album' : 'Track'}</span><span class="np-slot" data-np-slot="inline"></span></div>
+        <div class="album-header-kind"><span class="np-slot" data-np-slot="start"></span><span class="quality-badge">${isAlbumView ? 'Album' : 'Track'}</span></div>
         <h1 class="album-header-title">${escapeHtml(isAlbumView ? albumKey : item.title)}</h1>
         <div class="album-header-sub">
           ${byline ? `<span>${escapeHtml(byline)}</span>` : ''}

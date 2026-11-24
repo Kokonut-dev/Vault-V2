@@ -68,9 +68,9 @@ function likedSongsCard() {
   card.dataset.npIds = npIds(songs);
   card.setAttribute('aria-label', `Liked Songs, ${songs.length} ${songs.length === 1 ? 'song' : 'songs'}`);
   card.innerHTML = `
-    <div class="media-card-cover liked-cover" data-np-slot="cover">${icon('heart-filled', { size: 40 })}</div>
+    <div class="media-card-cover liked-cover">${icon('heart-filled', { size: 40 })}</div>
     <div class="media-card-info">
-      <div class="media-card-title">Liked Songs</div>
+      <div class="media-card-title" data-np-slot="start">Liked Songs</div>
       <div class="media-card-meta">${songs.length} ${songs.length === 1 ? 'song' : 'songs'} • playlist</div>
     </div>
   `;
@@ -135,11 +135,11 @@ export function renderPlaylists(container) {
         // "Playing" badge when the playing song is in this playlist.
         card.dataset.npIds = (pl.items || []).filter(id => typeof id === 'string' || typeof id === 'number').join(' ');
         card.innerHTML = `
-          <div class="media-card-cover" data-np-slot="cover" style="background:rgba(var(--glass-tint),0.05); display:flex; align-items:center; justify-content:center;">
+          <div class="media-card-cover" style="background:rgba(var(--glass-tint),0.05); display:flex; align-items:center; justify-content:center;">
             ${pl.coverArt ? `<img src="${playlistCoverUrl(pl.id, pl.updatedAt || '')}" alt="" style="width:100%;height:100%;object-fit:cover;" data-img-fallback="hide">` : icon(pl.type === 'collection' ? 'layout-grid' : 'music', { size: 32 })}
           </div>
           <div class="media-card-info">
-            <div class="media-card-title">${escapeHtml(pl.name)}</div>
+            <div class="media-card-title" data-np-slot="start">${escapeHtml(pl.name)}</div>
             <div class="media-card-meta">${pl.itemCount || pl.items?.length || 0} items • ${pl.type}</div>
           </div>
         `;

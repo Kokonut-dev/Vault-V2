@@ -90,11 +90,11 @@ export function renderMediaList(container, items, options = {}) {
     row.innerHTML = `
       <div class="media-list-item-main">
         <button class="media-list-play" type="button" aria-label="Play">${icon('play', { size: 13 })}</button>
-        <div class="media-list-item-cover" data-np-slot="cover">
+        <div class="media-list-item-cover">
           <img src="${coverSrc}" alt="" loading="lazy" data-img-fallback="hide">
         </div>
         <div class="media-list-item-text">
-          <div class="media-list-item-title">${escapeHtml(item.title)}</div>
+          <div class="media-list-item-title" data-np-slot="start">${escapeHtml(item.title)}</div>
           ${subtitle ? `<div class="media-list-item-artist">${escapeHtml(subtitle)}</div>` : ''}
         </div>
         ${likeButton(item, { className: 'media-list-like' })}
