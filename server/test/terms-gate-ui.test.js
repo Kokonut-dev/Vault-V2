@@ -285,3 +285,32 @@ test('the sign-in screen and landing page link to the Terms of Use', () => {
   assert.match(index, /href="terms\.html"[^>]*>Terms of Use</);
   assert.match(landing, /href="terms\.html">Terms of Use</);
 });
+
+test('a status asked for early at start-up is used once, and only for the same session', async () => {
+  const { ensureTermsAccepted, prefetchTermsStatus } = await import(docs('components', 'termsGate.js'));
+  const { api } = await import(docs('api.js'));
+  const realFetch = globalThis.fetch;
+  let asked = 0;
+  globalThis.fetch = (url, options) => { if (new URL(url).pathname === '/api/legal/status') asked += 1; return realFetch(url, options); };
+  try {
+    server.status = statusFor({ accepted: true });
+    localStorage.setItem('vault_token', 'session-one');
+    api.clearTokenCache();
+    prefetchTermsStatus();
+    assert.equal(asked, 1, 'asked straight away');
+    assert.equal(await ensureTermsAccepted(), true);
+    assert.equal(asked, 1, 'the early answer was used, not asked again');
+    assert.equal(await ensureTermsAccepted(), true);
+    assert.equal(asked, 2, 'used once only');
+
+    prefetchTermsStatus();
+    localStorage.setItem('vault_token', 'session-two');
+    api.clearTokenCache();
+    assert.equal(await ensureTermsAccepted(), true);
+    assert.equal(asked, 4, 'another session asks for itself');
+  } finally {
+    globalThis.fetch = realFetch;
+    localStorage.removeItem('vault_token');
+    api.clearTokenCache();
+  }
+});

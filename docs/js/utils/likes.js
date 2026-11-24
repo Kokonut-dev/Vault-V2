@@ -15,6 +15,7 @@ import { store } from '../store.js';
 import { api } from '../api.js';
 import { icon, setIcon } from './icons.js';
 import { escapeHtml } from './format.js';
+import { heartPop } from './delight.js';
 
 const SELECTOR = '[data-like-id]';
 let started = false;
@@ -46,13 +47,16 @@ function labelFor(liked, title) {
   return liked ? `Remove${name} from Liked Songs` : `Save${name} to Liked Songs`;
 }
 
+/** What a heart shows (song, state, size, label) — repainted only when it changes. */
+const paintKey = (id, liked, size, title) => `${id}|${liked}|${size}|${title || ''}`;
+
 /** Heart button markup for one song ('' for anything else). */
 export function likeButton(item, { size = 16, className = '' } = {}) {
   if (!isSong(item)) return '';
   const liked = isLiked(item.id);
   const id = escapeHtml(String(item.id));
   const title = escapeHtml(item.title || '');
-  return `<button type="button" class="like-btn${liked ? ' is-liked' : ''}${className ? ` ${className}` : ''}" data-like-id="${id}" data-like-title="${title}" data-like-size="${size}" aria-pressed="${liked}" aria-label="${labelFor(liked, title)}" title="${liked ? 'Remove from Liked Songs' : 'Save to Liked Songs'}">${icon(liked ? 'heart-filled' : 'heart', { size })}</button>`;
+  return `<button type="button" class="like-btn${liked ? ' is-liked' : ''}${className ? ` ${className}` : ''}" data-like-id="${id}" data-like-title="${title}" data-like-size="${size}" data-like-painted="${escapeHtml(paintKey(item.id, liked, size, item.title))}" aria-pressed="${liked}" aria-label="${labelFor(liked, title)}" title="${liked ? 'Remove from Liked Songs' : 'Save to Liked Songs'}">${icon(liked ? 'heart-filled' : 'heart', { size })}</button>`;
 }
 
 /** Bring one heart in line with the store. */
@@ -60,6 +64,12 @@ export function paintLikeButton(btn) {
   if (!btn) return;
   const id = btn.dataset.likeId;
   const liked = Boolean(id) && isLiked(id);
+  // Every favourites change repaints every heart on the page; only the ones
+  // that actually flipped need a new icon (and its swap animation) — the
+  // rest used to re-render all at once on each like.
+  const key = paintKey(id, liked, btn.dataset.likeSize, btn.dataset.likeTitle);
+  if (btn.dataset.likePainted === key && btn.querySelector('svg')) return;
+  btn.dataset.likePainted = key;
   btn.classList.toggle('is-liked', liked);
   btn.setAttribute('aria-pressed', String(liked));
   btn.setAttribute('aria-label', labelFor(liked, btn.dataset.likeTitle || ''));
@@ -106,7 +116,10 @@ export function initLikes() {
     if (!btn || btn.disabled || !btn.dataset.likeId) return;
     event.preventDefault();
     event.stopPropagation();
+    const willLike = !isLiked(btn.dataset.likeId);
     toggleLike(btn.dataset.likeId);
+    // After the toggle: the store repaint has already swapped in the new heart.
+    heartPop(btn, willLike);
   }, true);
   // Keyboard: Enter/Space on a focused heart must not reach the row's handler.
   document.addEventListener('keydown', (event) => {

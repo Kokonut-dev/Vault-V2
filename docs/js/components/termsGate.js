@@ -324,6 +324,28 @@ function showGate(status, terms) {
   });
 }
 
+// A status request started early at start-up (main.js), while the server
+// was still being asked whether it needs setup. Only used for the session
+// (token) it was asked for, and only while it is fresh.
+let prefetched = null;
+const PREFETCH_TTL_MS = 30_000;
+
+/** Ask for the terms status now; the next ensureTermsAccepted() uses the answer. */
+export function prefetchTermsStatus() {
+  const token = api.getToken();
+  if (!token) return;
+  const promise = api.getTermsStatus();
+  promise.catch(() => { /* handled when (if) it is used */ });
+  prefetched = { token, promise, at: Date.now() };
+}
+
+function takePrefetchedStatus() {
+  const early = prefetched;
+  prefetched = null;
+  if (!early || early.token !== api.getToken() || Date.now() - early.at > PREFETCH_TTL_MS) return null;
+  return early.promise;
+}
+
 /**
  * Make sure the signed-in profile has accepted the current terms, showing the
  * gate if not. Resolves true when accepted (or nothing needs accepting),
@@ -334,10 +356,12 @@ function showGate(status, terms) {
 export function ensureTermsAccepted() {
   if (pending) return pending;
   pending = (async () => {
+    let early = takePrefetchedStatus();
     for (let round = 0; round < 3; round++) {
       let status;
       try {
-        status = await api.getTermsStatus();
+        status = await (early || api.getTermsStatus());
+        early = null;
       } catch (err) {
         if (err.status === 401) return false;
         if (err.status === 404) return true; // an older server without terms

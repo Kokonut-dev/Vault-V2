@@ -220,3 +220,23 @@ test('the library arriving after the first paint replaces the welcome', async ()
   assert.equal(view.querySelector('.hero-overline').textContent, 'Newly added');
   assert.equal(view.querySelector('.hero-title').textContent, 'Small Hours', 'newest film with a backdrop');
 });
+
+test('opened before the first library response: the skeleton stays (no empty-vault flash), then the library draws at once', async () => {
+  const { store } = await import(docs('store.js'));
+  const { renderHome } = await import(docs('views', 'home.js'));
+  // As at start-up: nothing has set the library yet.
+  store.libraryLoaded = false;
+  store.state.library = [];
+  store.set('history', []);
+  const view = document.getElementById('view-container');
+  renderHome(view);
+  await new Promise(r => setTimeout(r, 300));
+  assert.ok(view.querySelector('#home-content[aria-busy="true"] .skeleton'), 'the skeleton is still up');
+  assert.equal(view.querySelector('.home-welcome'), null, 'no "ready for its first files" while loading');
+  assert.equal(view.querySelector('#home-summary').textContent, 'Loading your library…');
+  const at = Date.now();
+  store.set('library', library());
+  await until(() => view.querySelector('.hero'));
+  assert.ok(Date.now() - at < 200, 'the first library replaces the skeleton without the 250 ms batching delay');
+  assert.equal(view.querySelector('#home-content').hasAttribute('aria-busy'), false);
+});

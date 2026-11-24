@@ -455,6 +455,24 @@ a.artist-album-cover:hover { transform: translateY(-2px); }
   transition: color var(--duration-fast), opacity var(--duration-fast), transform var(--duration-fast);
 }
 .like-btn[hidden] { display: none !important; }
+/* Liking a song bursts six little dots out of the heart (utils/delight.js,
+   motion "full" only). One 4px dot draws the ring with its box-shadow; the
+   animation scales and fades it, then removes it. */
+.like-btn { position: relative; }
+.like-burst {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  pointer-events: none;
+  opacity: 0;
+  color: var(--accent-text);
+  box-shadow:
+    15px 0 0 currentColor, 7.5px 13px 0 currentColor, -7.5px 13px 0 currentColor,
+    -15px 0 0 currentColor, -7.5px -13px 0 currentColor, 7.5px -13px 0 currentColor;
+}
 .like-btn:hover,
 .like-btn:focus-visible { color: var(--text-primary); transform: scale(1.08); }
 .like-btn.is-liked { color: var(--accent-text); }

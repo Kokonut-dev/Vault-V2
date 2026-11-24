@@ -238,6 +238,43 @@ html[data-motion="reduced"] .page { animation-name: fadeIn; animation-duration: 
   to { opacity: 1; transform: translateY(0) rotate(1.5deg); }
 }
 
+/* Playful touches — Motion "full" only (html[data-motion], set by
+   utils/pageTransition.js from the setting / the system preference).
+   Springy, one-shot, transform + opacity; the tap responses (heart burst,
+   play squish, skip nudge, shuffle wiggle, repeat spin) live in
+   utils/delight.js. */
+html[data-motion="full"] .toast {
+  transition: transform var(--dur-3) var(--ease-spring), opacity var(--dur-2) var(--ease-out);
+}
+/* Sidebar icons hop a little when hovered. */
+html[data-motion="full"] .nav-icon {
+  transition: transform var(--dur-2) var(--ease-spring);
+}
+html[data-motion="full"] .nav-item:hover .nav-icon {
+  transform: translateY(-2px) scale(1.08);
+}
+/* The card play button springs up (rather than slides) on hover. */
+html[data-motion="full"] .media-card-play {
+  transform: translateY(6px) scale(0.86);
+  transition: transform var(--dur-2) var(--ease-spring), background var(--dur-1) var(--ease-standard);
+}
+html[data-motion="full"] .media-card:hover .media-card-play,
+html[data-motion="full"] .media-card:focus-within .media-card-play {
+  transform: translateY(0) scale(1);
+}
+html[data-motion="full"] .media-card-play:active {
+  transform: scale(0.92);
+}
+/* Sign-in grid: a square pops as it is picked. */
+html[data-motion="full"] .grid-square.selected {
+  animation: squarePick var(--dur-3) var(--ease-spring);
+}
+@keyframes squarePick {
+  0% { transform: scale(1); }
+  40% { transform: scale(0.84); }
+  100% { transform: scale(0.95); }
+}
+
 /* Reduced motion */
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {

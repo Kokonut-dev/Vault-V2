@@ -146,6 +146,21 @@ function stripMetaCsp(html) {
   return html.replace(/[ \t]*<meta\s+http-equiv=["']Content-Security-Policy["'][^>]*>[ \t]*\r?\n?/gi, '');
 }
 
+/**
+ * Point index.html's module URLs at the build-pinned copies: the
+ * <link rel="modulepreload"> list (scripts/build-preload.js) and the main.js
+ * entry. Import maps don't apply to a link's href or a script's src, so the
+ * plain ./js/ URLs would be fetched once there and AGAIN under /b/<build>/js/
+ * when main.js's imports resolve through the map. Pinned, they are the same
+ * module-map entries, and cached as immutable (no revalidation on reload).
+ */
+function pinModuleUrls(html, id) {
+  const target = `/b/${id}/js/`;
+  return html
+    .replace(/(<link\s+rel="modulepreload"\s+href=")\.\/js\//g, `$1${target}`)
+    .replace(/(<script\s+type="module"\s+src=")\.\/js\/main\.js"/g, `$1${target}main.js"`);
+}
+
 /** Cached read of index.html (re-read when the file changes). */
 let indexCache = { file: null, mtimeMs: 0, size: 0, html: '' };
 function readIndex(file) {
@@ -159,8 +174,9 @@ function readIndex(file) {
 /** Express handler that sends index.html for the current build. */
 function sendIndex(docsPath, req, res, next) {
   try {
-    const { tags, inline } = buildTags({ id: buildId(docsPath), requestPath: req.path });
-    const html = injectTags(stripMetaCsp(readIndex(path.join(docsPath, 'index.html'))), tags);
+    const id = buildId(docsPath);
+    const { tags, inline } = buildTags({ id, requestPath: req.path });
+    const html = injectTags(pinModuleUrls(stripMetaCsp(readIndex(path.join(docsPath, 'index.html'))), id), tags);
     allowInlineScripts(res, cspHashes(inline));
     res.setHeader('Cache-Control', 'no-cache');
     res.type('html');
@@ -226,4 +242,4 @@ function isCodeFile(name) {
 }
 
 module.exports = {
-  stripMetaCsp, buildId, injectBuild, buildTags, cspHashes, allowInlineScripts, documentDir, sendIndex, mountClient, isCodeFile, listCodeFiles };
+  stripMetaCsp, pinModuleUrls, buildId, injectBuild, buildTags, cspHashes, allowInlineScripts, documentDir, sendIndex, mountClient, isCodeFile, listCodeFiles };

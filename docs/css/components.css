@@ -747,7 +747,8 @@
   pointer-events: auto;
   transform: translateX(120%);
   opacity: 0;
-  transition: all var(--duration-normal) var(--ease-out);
+  /* Only what moves (was `all`, which also transitioned the backdrop blur). */
+  transition: transform var(--duration-normal) var(--ease-out), opacity var(--duration-normal) var(--ease-out);
 }
 
 .toast.show {
@@ -882,6 +883,7 @@
 
 .empty-state-title {
   font-family: var(--font-display);
+  font-variation-settings: var(--display-soft);
   font-size: 22px;
   font-weight: var(--fw-display, 600);
   letter-spacing: -0.01em;

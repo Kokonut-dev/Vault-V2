@@ -3,7 +3,7 @@
  * inline module in index.html; external so the Content-Security-Policy can
  * forbid inline scripts. Loaded with <script type="module" src="./js/main.js">.
  */
-import { getApiBaseUrl, setApiBaseUrl } from './config.js';
+import { getApiBaseUrl, setApiBaseUrl, getBasePath } from './config.js';
 import { store } from './store.js';
 import { api } from './api.js';
 import { authManager } from './auth.js';
@@ -20,8 +20,9 @@ import { runViewCleanups } from './utils/lifecycle.js';
 import { swapView } from './utils/pageTransition.js';
 import { icon, hydrateIcons } from './utils/icons.js';
 import { installImageFallbacks, activateAsyncStylesheets } from './utils/imageFallback.js';
-import { ensureTermsAccepted, termsGateOpen } from './components/termsGate.js';
+import { ensureTermsAccepted, termsGateOpen, prefetchTermsStatus } from './components/termsGate.js';
 import { mountAccountForms, takeResetLink } from './components/accountForms.js';
+import { HOME_MODULES, APP_MODULES } from './utils/preloadGraph.js';
 
 // No inline event handlers (CSP): image fallbacks and the async onboarding
 // stylesheet are wired up here, before any view renders.
@@ -37,6 +38,79 @@ async function loadOnboardingModule() {
     onboardingManager = mod.onboardingManager;
   }
   return onboardingManager;
+}
+
+// The players, shortcuts panel and v3 extras every signed-in session starts
+// (initApp). One shared load, started as soon as initApp() begins (before
+// the media token and the library are back); a failed load is retried next time.
+let appModulesLoad = null;
+function loadAppModules() {
+  appModulesLoad ||= Promise.all([
+    import('./components/audioPlayer.js'),
+    import('./components/videoPlayer.js'),
+    import('./components/miniPlayer.js'),
+    import('./components/shortcutsPanel.js'),
+    import('./app-extras.js'),
+  ]).catch((err) => { appModulesLoad = null; throw err; });
+  return appModulesLoad;
+}
+
+/**
+ * <link rel="modulepreload"> for every module in `paths` (relative to js/):
+ * the whole graph downloads in one parallel wave instead of one round trip
+ * per import level. import.meta.resolve applies the server's import map, so
+ * the URLs are the same module-map entries the imports will ask for.
+ */
+function preloadModules(paths) {
+  for (const rel of paths) {
+    let href;
+    try {
+      href = typeof import.meta.resolve === 'function' ? import.meta.resolve(rel) : new URL(rel, import.meta.url).href;
+    } catch {
+      continue;
+    }
+    const link = document.createElement('link');
+    link.rel = 'modulepreload';
+    link.href = href;
+    document.head.appendChild(link);
+  }
+}
+
+/** Is the page being opened on Home (the router's '/' route)? */
+function openingOnHome() {
+  try {
+    if (sessionStorage.getItem('vault_redirect')) return false;
+    const raw = location.hash.startsWith('#/')
+      ? location.hash.slice(1)
+      : location.pathname.slice(location.pathname.startsWith(getBasePath()) ? getBasePath().length : 0);
+    return router.normalizePath(router.stripFragment(raw || '/')) === '/';
+  } catch {
+    return false;
+  }
+}
+
+// A session check started by start() alongside the setup check (see
+// warmSignedInStart); checkAuth() takes it instead of asking again.
+let pendingVerify = null;
+
+/**
+ * This device has a saved session: everything opening the app needs is
+ * asked for at once instead of one round trip after another — the session
+ * check, the Terms of Use status and the media token go out together with
+ * the setup check, and Home's code downloads and compiles meanwhile. An expired token just fails these early, which is
+ * what checkAuth() would have found out a moment later.
+ */
+function warmSignedInStart() {
+  pendingVerify = authManager.verify();
+  prefetchTermsStatus();
+  api.ensureMediaToken().catch(() => {});
+  // Home's code too: it is what the person sees first. The players and
+  // extras wait for initApp(), so they don't queue ahead of these requests
+  // (a browser opens only ~6 connections to one HTTP/1.1 server).
+  if (openingOnHome()) {
+    preloadModules(HOME_MODULES);
+    import('./views/home.js').catch(() => {});
+  }
 }
 
 // Inline the icon set into every [data-icon] slot in this document
@@ -369,6 +443,8 @@ if (loginForm) {
 }
 
 async function checkAuth() {
+  const verifying = pendingVerify;
+  pendingVerify = null;
   const token = localStorage.getItem('vault_token');
   if (!token) {
     if (authGate) authGate.style.display = 'flex';
@@ -379,7 +455,7 @@ async function checkAuth() {
   }
 
   try {
-    const res = await authManager.verify();
+    const res = await (verifying || authManager.verify());
     if (res.valid) {
       showApp();
       return true;
@@ -462,6 +538,19 @@ async function showOnboarding() {
 }
 
 async function initApp() {
+  // The library and the app's modules don't wait for the media token below:
+  // all three go out at once (they used to be one round trip after another).
+  const firstInit = !appReady;
+  const libraryLoad = firstInit ? api.getLibrary({ limit: 1000 }) : null;
+  libraryLoad?.catch(() => { /* reported below */ });
+  // Favourites, history and resume points are per profile on the server;
+  // the device cache must not show another profile's. Fetched alongside the
+  // library so Home draws once with all of it.
+  if (firstInit) hydrateProfileData(store.get('profileId') || 'default').catch(err => console.warn('Profile data:', err.message));
+  if (firstInit) {
+    preloadModules(APP_MODULES);
+    loadAppModules().catch(() => { /* reported below */ });
+  }
   // Media links (covers, streams, subtitles, live events) carry a
   // read-only media token, never the sign-in token: get one for this
   // session before the first view builds its image and video URLs.
@@ -491,11 +580,8 @@ async function initApp() {
 
   // Load library
   try {
-    const data = await api.getLibrary({ limit: 1000 });
+    const data = await libraryLoad;
     store.setLibrary(data.items || []);
-    // Favourites, history and resume points are per profile on the
-    // server; the device cache must not show another profile's.
-    hydrateProfileData(store.get('profileId') || 'default').catch(err => console.warn('Profile data:', err.message));
   } catch (err) {
     console.warn('Failed to load library:', err.message);
     if (err.message.includes('Cannot connect')) {
@@ -727,22 +813,19 @@ async function initApp() {
     });
   }
 
-  // Init players
-  const { initAudioPlayer } = await import('./components/audioPlayer.js');
-  const { initVideoPlayer } = await import('./components/videoPlayer.js');
-  const { initMiniPlayer } = await import('./components/miniPlayer.js');
+  // Init players and the shortcuts panel (already loading since start()).
+  const [
+    { initAudioPlayer }, { initVideoPlayer }, { initMiniPlayer },
+    { initShortcutsPanel }, { initAppExtras },
+  ] = await loadAppModules();
   initAudioPlayer();
   initVideoPlayer();
   initMiniPlayer();
-
-  // Init shortcuts panel
-  const { initShortcutsPanel } = await import('./components/shortcutsPanel.js');
   initShortcutsPanel();
 
   // v3 client layer: live SSE updates, Up Next queue, synced lyrics,
   // context menus, multi-select, gestures, bottom nav, ambient artwork,
   // SyncPlay follower, sleep timer, offline downloads.
-  const { initAppExtras } = await import('./app-extras.js');
   initAppExtras();
 }
 
@@ -1019,6 +1102,7 @@ async function start() {
     return;
   }
   await redeemPairingLink();
+  if (localStorage.getItem('vault_token')) warmSignedInStart();
 
   // Show loading state? Hide both initially
   if (authGate) authGate.style.display = 'none';
@@ -1028,6 +1112,7 @@ async function start() {
   try {
     const status = await api.getSetupStatus();
     if (status.needsSetup) {
+      pendingVerify = null;
       showOnboarding();
       return;
     }
