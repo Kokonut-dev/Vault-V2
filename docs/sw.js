@@ -30,7 +30,9 @@
 //      hearts in the player bar and Now Playing.
 // v22: one now-playing indicator everywhere (bars in front of the title).
 // v23: artist names link to the artist page (js/utils/artistLink.js).
-const CACHE_NAME = 'vault-v2-shell-v23';
+// v24: optimisation sweep (module preloads, pinned module URLs, slimmer
+// Fraunces, delight.js tap animations).
+const CACHE_NAME = 'vault-v2-shell-v24';
 // Media the user saved with "Download for offline" (docs/js/app-extras.js).
 const OFFLINE_CACHE = 'vault-offline';
 const BASE_PATH = '/Vault-V2';

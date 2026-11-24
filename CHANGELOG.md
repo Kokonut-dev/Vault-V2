@@ -1,5 +1,25 @@
 # Changelog
 
+## [Unreleased] — Faster start and playful touches (branch `arena/a11c77fa-vault-v2`)
+
+### Changed (performance)
+- **Home appears sooner.** Signed in on a warm cache, the app shows in about 310 ms (was about 480) and the first cards in about 400 ms (was about 920). On a cold load with 80 ms latency, the first cards show in about 1.0 s (was about 1.55).
+  - The modules the first screen needs are preloaded from `index.html`. `scripts/build-preload.js` generates the list and `--check` runs in CI. The server pins those URLs to the build (`/b/<id>/js/…`), so no module is fetched twice.
+  - Home's next modules and the player modules are warmed as soon as sign-in starts (`docs/js/utils/preloadGraph.js`, generated).
+  - Token verification, the Terms status check and the media token now start in parallel. The Terms status is fetched once and reused for the same token.
+  - Home keeps its skeleton until the library arrives, so it no longer flashes "Your vault is empty" first.
+  - **Fonts:** the Fraunces files are pinned to the SOFT=100 axis, the only value used, and look identical. 226 KB → 116 KB.
+  - **No more forced layout:** scroll hints take their first measurement from a `ResizeObserver`, which removes a 45 ms layout from the Home render.
+  - **Likes:** liking a song repaints only that heart, not every heart on the page.
+  - **Toasts:** they transition only transform and opacity, not `all`.
+
+### Added (motion)
+- **Small, playful responses to taps** (`docs/js/utils/delight.js`):
+  - Liking a song makes the heart pop, with a ring of accent dots bursting out.
+  - Play buttons squish, skip buttons nudge in their direction, shuffle wiggles, and repeat and "Surprise me" spin.
+- Sidebar icons hop on hover, the card play button springs in, toasts land with a spring, and sign-in grid squares pop when picked.
+- All of it is one-shot and uses transform and opacity only. It runs only when Motion is "full", so Reduced, Off and the system's reduce-motion setting get none of it.
+
 ## [Unreleased] — Artist names open the artist page (branch `arena/d7f9cd96-vault-v2`)
 
 ### Added

@@ -41,6 +41,40 @@
   <!-- Onboarding styles load async — not needed for first paint.
        (CI greps index.html for this href, keep it here.) -->
   <link rel="stylesheet" href="./css/onboarding.css" media="print" data-async-css>
+  <!-- The app's whole static module graph, fetched in one parallel wave instead
+       of one round trip per import level. Generated: node scripts/build-preload.js
+       (the server points these at its build-pinned /b/<build>/js/ URLs). -->
+  <!-- modulepreload:start -->
+  <link rel="modulepreload" href="./js/config.js">
+  <link rel="modulepreload" href="./js/store.js">
+  <link rel="modulepreload" href="./js/api.js">
+  <link rel="modulepreload" href="./js/auth.js">
+  <link rel="modulepreload" href="./js/profileSession.js">
+  <link rel="modulepreload" href="./js/themes.js">
+  <link rel="modulepreload" href="./js/effects.js">
+  <link rel="modulepreload" href="./js/keyboard.js">
+  <link rel="modulepreload" href="./js/pwa.js">
+  <link rel="modulepreload" href="./js/router.js">
+  <link rel="modulepreload" href="./js/components/toast.js">
+  <link rel="modulepreload" href="./js/components/sidebar.js">
+  <link rel="modulepreload" href="./js/components/searchModal.js">
+  <link rel="modulepreload" href="./js/utils/lifecycle.js">
+  <link rel="modulepreload" href="./js/utils/pageTransition.js">
+  <link rel="modulepreload" href="./js/utils/icons.js">
+  <link rel="modulepreload" href="./js/utils/imageFallback.js">
+  <link rel="modulepreload" href="./js/components/termsGate.js">
+  <link rel="modulepreload" href="./js/components/accountForms.js">
+  <link rel="modulepreload" href="./js/utils/preloadGraph.js">
+  <link rel="modulepreload" href="./js/utils/staleModule.js">
+  <link rel="modulepreload" href="./js/utils/brand.js">
+  <link rel="modulepreload" href="./js/utils/fuse.js">
+  <link rel="modulepreload" href="./js/utils/focusTrap.js">
+  <link rel="modulepreload" href="./js/utils/likes.js">
+  <link rel="modulepreload" href="./js/utils/format.js">
+  <link rel="modulepreload" href="./js/components/gridPicker.js">
+  <link rel="modulepreload" href="./js/views/settings/ui.js">
+  <link rel="modulepreload" href="./js/utils/delight.js">
+  <!-- modulepreload:end -->
 </head>
 <body>
   <!-- Skip link for accessibility -->

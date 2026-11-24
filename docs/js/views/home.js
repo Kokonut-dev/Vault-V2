@@ -170,19 +170,26 @@ export function renderHome(container) {
 
   const content = container.querySelector('#home-content');
   let timer = null;
-  const draw = () => {
+  // Opened before the first library response (start-up): the skeleton stays
+  // up until it lands instead of flashing the empty-vault welcome, unless it
+  // never does (server down) — then the page is drawn anyway.
+  const libraryPending = () => !store.libraryLoaded && !(store.get('library') || []).length;
+  const showingSkeleton = () => content.hasAttribute('aria-busy');
+  const draw = (force = false) => {
     clearTimeout(timer);
     timer = null;
     if (!content.isConnected) return;
+    if (!force && libraryPending()) return;
     renderContent(container, content);
   };
   const schedule = () => {
     clearTimeout(timer);
-    timer = setTimeout(draw, 250);
+    timer = setTimeout(() => draw(), 250);
   };
   // The library often arrives just after the first paint (sign-in, profile
-  // switch, a scan finishing); re-draw then instead of showing it as empty.
-  subscribeView(store, 'library', schedule);
+  // switch, a scan finishing). Its first arrival replaces the skeleton at
+  // once; later updates are batched.
+  subscribeView(store, 'library', () => (showingSkeleton() ? draw() : schedule()));
   // The profile's history and favourites are fetched alongside the library;
   // take them in while the page is fresh, but don't redraw (and lose the
   // scroll position) every time something plays later on.
@@ -190,7 +197,8 @@ export function renderHome(container) {
   const early = () => { if (Date.now() - mountedAt < 5000) schedule(); };
   subscribeView(store, 'history', early);
   subscribeView(store, 'favourites', early);
-  timer = setTimeout(draw, 0);
+  timer = setTimeout(() => draw(), 0);
+  setTimeout(() => { if (showingSkeleton()) draw(true); }, 6000);
 }
 
 function displayName() {

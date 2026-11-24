@@ -7,7 +7,9 @@
    ============================================================ */
 
 /* Fraunces — soft "old-style" display serif.
-   Axes: wght 100–900, opsz 9–144, SOFT 0–100, WONK 0–1. */
+   Axes: wght 100–900, opsz 9–144, WONK 0–1. SOFT is fixed at 100 (the
+   rounded terminals every heading uses, --display-soft) — instanced with
+   fontTools varLib.instancer, which halves the files (121 → 62 KB Latin). */
 @font-face {
   font-family: 'Fraunces';
   font-style: normal;

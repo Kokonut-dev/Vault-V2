@@ -29,8 +29,11 @@ function track(el) {
   if (tracked.has(el)) return;
   tracked.add(el);
   el.addEventListener('scroll', () => updateHint(el), { passive: true });
-  resizeObserver?.observe(el);
-  updateHint(el);
+  // The observer's first callback (after the next layout) sets the initial
+  // hint. Measuring here, inside the MutationObserver, forced a synchronous
+  // style + layout of the whole freshly rendered view on every navigation.
+  if (resizeObserver) resizeObserver.observe(el);
+  else updateHint(el);
 }
 
 function scan(root = document) {

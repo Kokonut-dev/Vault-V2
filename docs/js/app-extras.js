@@ -30,6 +30,7 @@ import { router } from './router.js';
 import { initScrollHints } from './utils/scrollHints.js';
 import { formatTime } from './utils/format.js';
 import { getSyncSession, setSyncSession, clearSyncSession } from './utils/syncplaySession.js';
+import { initDelight } from './utils/delight.js';
 
 // ---------------------------------------------------------------------------
 // Multi-select (batch operations on cards)
@@ -590,6 +591,7 @@ export function initAppExtras() {
   initGridKeyboardNav();
   initNowPlaying();
   initLikes();
+  initDelight();
 
   window.vaultExtras = {
     downloadItemForOffline,

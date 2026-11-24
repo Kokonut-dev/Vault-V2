@@ -29,6 +29,7 @@ jobs:
         run: |
           node scripts/syntax-check.js
           node scripts/import-check.js
+          node scripts/build-preload.js --check
 
       - name: Server tests
         working-directory: server

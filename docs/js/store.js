@@ -111,6 +111,9 @@ class Store {
   set(key, value, persist = false) {
     const oldValue = this.state[key];
     this.state[key] = value;
+    // Home tells "still loading" from "really empty" by this (no flash of
+    // the empty-vault welcome before the first library response).
+    if (key === 'library') this.libraryLoaded = true;
 
     if (persist) {
       this.persist(key, value);
