@@ -548,3 +548,19 @@ a.artist-album-cover:hover { transform: translateY(-2px); }
   .liked-hero { grid-template-columns: minmax(0, 1fr); align-items: start; gap: var(--space-md); }
   .liked-hero .liked-cover { width: 120px; }
 }
+
+/* Artist names that open the artist page (utils/artistLink.js): they keep the
+   surrounding text colour and underline on hover/focus, like links in a
+   Spotify byline. */
+.artist-link {
+  color: inherit;
+  text-decoration: none;
+  border-radius: 4px;
+}
+.artist-link:hover,
+.artist-link:focus-visible {
+  color: var(--text-primary);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.album-header-artist .artist-link { font-weight: var(--fw-strong, 600); color: var(--text-primary); }

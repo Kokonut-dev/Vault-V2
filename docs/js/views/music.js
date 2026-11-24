@@ -11,6 +11,7 @@ import { icon } from '../utils/icons.js';
 import { wireViewToggle } from '../utils/viewMode.js';
 import { releaseVirtualGrid } from '../utils/virtualGrid.js';
 import { npIds } from '../utils/nowPlaying.js';
+import { artistLinkHtml, pickArtist } from '../utils/artistLink.js';
 
 export function renderMusic(container) {
   container.className = 'page';
@@ -253,6 +254,13 @@ export function renderMusic(container) {
   }
 
   /** "Album artist" as the album page names it. */
+  /** The album's artist name as a link to their page (plain text if none). */
+  function albumArtistLink(tracks, artist) {
+    const trackArtists = [...new Set(tracks.map(t => t.artist).filter(Boolean))];
+    const target = pickArtist([artist, ...(trackArtists.length === 1 ? trackArtists : [])], store.get('library') || []);
+    return artistLinkHtml(artist, target);
+  }
+
   function albumArtistOf(tracks) {
     const tags = [...new Set(tracks.map(t => t.albumArtist).filter(Boolean))];
     if (tags.length === 1) return tags[0];
@@ -286,7 +294,8 @@ export function renderMusic(container) {
       play();
     });
     el.addEventListener('click', (e) => {
-      if (e.target.closest('button')) return;
+      // The Play button plays; the artist link goes to the artist (router).
+      if (e.target.closest('button, a[data-route]')) return;
       open();
     });
     el.addEventListener('keydown', (e) => {
@@ -325,7 +334,7 @@ export function renderMusic(container) {
         </div>
         <div class="media-card-info">
           <div class="media-card-title" data-np-slot="start">${escapeHtml(album)}</div>
-          <div class="media-card-meta">${artist ? `${escapeHtml(artist)} • ` : ''}${tracks.length} ${tracks.length === 1 ? 'track' : 'tracks'}</div>
+          <div class="media-card-meta">${artist ? `${albumArtistLink(tracks, artist)} • ` : ''}${tracks.length} ${tracks.length === 1 ? 'track' : 'tracks'}</div>
         </div>
       `;
       // role=group, not button: the card contains a real Play <button>, and
@@ -388,7 +397,7 @@ export function renderMusic(container) {
             ${seconds ? `<div class="media-list-item-artist">${escapeHtml(formatTotalDuration(seconds))}</div>` : ''}
           </div>
         </div>
-        <div class="media-list-cell media-list-cell--artist" title="${escapeAttr(artist)}">${escapeHtml(artist) || '<span class="media-list-none">—</span>'}</div>
+        <div class="media-list-cell media-list-cell--artist" title="${escapeAttr(artist)}">${artist ? albumArtistLink(tracks, artist) : '<span class="media-list-none">—</span>'}</div>
         <div class="media-list-cell media-list-cell--duration">${tracks.length}</div>
         <div class="media-list-cell media-list-cell--year">${year || '<span class="media-list-none">—</span>'}</div>
       `;

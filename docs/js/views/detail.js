@@ -13,6 +13,7 @@ import { icon, setIcon } from '../utils/icons.js';
 import { uploadAlbumCover } from '../utils/coverUpload.js';
 import { openEditDetails, canEditDetails, decodeEntities } from '../components/editDetails.js';
 import { npIds } from '../utils/nowPlaying.js';
+import { artistLinkHtml, pickArtist } from '../utils/artistLink.js';
 
 export async function renderDetail(container, id) {
   container.className = 'page';
@@ -196,6 +197,14 @@ function renderMusicDetail(container, item) {
   const byline = isAlbumView
     ? (albumArtistTags.length === 1 ? albumArtistTags[0] : albumArtists.length > 1 ? 'Various Artists' : (albumArtists[0] || ''))
     : (item.artist || '');
+  // The byline opens the artist page: the credited name if it has one,
+  // otherwise the album's single track artist ("Various Artists" stays text).
+  const bylineArtist = pickArtist(
+    isAlbumView
+      ? [byline, ...(albumArtists.length === 1 ? albumArtists : [])]
+      : [item.artist, item.albumArtist].filter(Boolean),
+    library,
+  );
   const coverVersion = Math.max(
     item.updatedAt ? new Date(item.updatedAt).getTime() : 0,
     ...albumTracks.map(t => new Date(t.updatedAt || 0).getTime() || 0)
@@ -219,7 +228,7 @@ function renderMusicDetail(container, item) {
         <div class="album-header-kind"><span class="np-slot" data-np-slot="start"></span><span class="quality-badge">${isAlbumView ? 'Album' : 'Track'}</span></div>
         <h1 class="album-header-title">${escapeHtml(isAlbumView ? albumKey : item.title)}</h1>
         <div class="album-header-sub">
-          ${byline ? `<span>${escapeHtml(byline)}</span>` : ''}
+          ${byline ? `<span class="album-header-artist">${artistLinkHtml(byline, bylineArtist)}</span>` : ''}
           ${item.year ? `<span>${item.year}</span>` : ''}
           <span>${plural(albumTracks.length, 'track')}</span>
           ${formatTotalDuration(totalSeconds) ? `<span>${formatTotalDuration(totalSeconds)}</span>` : ''}

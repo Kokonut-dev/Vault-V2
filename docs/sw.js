@@ -29,7 +29,8 @@
 // v21: Liked Songs — js/utils/likes.js and views/liked.js; index.html gained
 //      hearts in the player bar and Now Playing.
 // v22: one now-playing indicator everywhere (bars in front of the title).
-const CACHE_NAME = 'vault-v2-shell-v22';
+// v23: artist names link to the artist page (js/utils/artistLink.js).
+const CACHE_NAME = 'vault-v2-shell-v23';
 // Media the user saved with "Download for offline" (docs/js/app-extras.js).
 const OFFLINE_CACHE = 'vault-offline';
 const BASE_PATH = '/Vault-V2';

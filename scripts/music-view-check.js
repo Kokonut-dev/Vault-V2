@@ -605,6 +605,61 @@ function assert(condition, message) {
     });
   }
 
+  // ------------------------------------------------ artist links
+  console.log('[music-view-check] artist names lead to the artist page');
+
+  await test('the album page byline links to the artist', async () => {
+    store.setLibrary(lib);
+    const page = document.createElement('div');
+    document.body.appendChild(page);
+    await renderDetail(page, 't3'); // Second Wind — Nova
+    const link = page.querySelector('.album-header-sub .artist-link');
+    assert(link, 'no artist link under the album title');
+    assert(link.textContent.trim() === 'Nova', `link text: ${link.textContent}`);
+    assert(link.getAttribute('data-route') === '/artist/Nova', `data-route: ${link.getAttribute('data-route')}`);
+    page.remove();
+  });
+
+  await test('"Various Artists" stays plain text', async () => {
+    const page = document.createElement('div');
+    document.body.appendChild(page);
+    await renderDetail(page, 't1'); // First Light — Nova + Guest
+    const sub = page.querySelector('.album-header-sub');
+    assert(/Various Artists/.test(sub.textContent), `byline: ${sub.textContent}`);
+    assert(!sub.querySelector('a'), 'Various Artists was linked');
+    page.remove();
+  });
+
+  await test('an album-artist tag without its own page falls back to the track artist', async () => {
+    const tagged = lib.map((t) => (t.album === 'Second Wind' ? { ...t, albumArtist: 'Nova & Friends' } : t));
+    store.setLibrary(tagged);
+    const page = document.createElement('div');
+    document.body.appendChild(page);
+    await renderDetail(page, 't3');
+    const link = page.querySelector('.album-header-sub .artist-link');
+    assert(link && link.textContent.trim() === 'Nova & Friends', `link: ${link?.outerHTML}`);
+    assert(link.getAttribute('data-route') === '/artist/Nova', `data-route: ${link?.getAttribute('data-route')}`);
+    page.remove();
+    store.setLibrary(lib);
+  });
+
+  await test('the artist on an album card links to the artist without opening the album', async () => {
+    store.set('musicGroupBy', 'album');
+    const c = mount();
+    c.querySelector('.view-toggle [data-view="grid"]').click();
+    const card = [...c.querySelectorAll('#albums-grid .media-card')]
+      .find((el) => el.querySelector('.media-card-title').textContent.trim() === 'Second Wind');
+    const link = card && card.querySelector('.media-card-meta .artist-link');
+    assert(link && link.getAttribute('data-route') === '/artist/Nova', 'album card has no artist link');
+    events.length = 0;
+    link.click();
+    assert(opened().length === 0, 'clicking the artist also opened the album');
+    c.querySelector('.view-toggle [data-view="list"]').click();
+    const row = [...c.querySelectorAll('.media-list--albums .media-list-item, .media-list-item')]
+      .find((el) => /Second Wind/.test(el.textContent));
+    assert(row && row.querySelector('.media-list-cell--artist .artist-link'), 'album list row has no artist link');
+  });
+
   // -------------------------------------------- big library (windowed grid)
   console.log('[music-view-check] Grid → List on a big library');
 
