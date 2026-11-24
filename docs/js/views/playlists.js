@@ -11,6 +11,8 @@ import { makeReorderable } from '../components/reorderableList.js';
 import { confirmDialog } from '../components/confirmDialog.js';
 import { escapeHtml, formatTime } from '../utils/format.js';
 import { icon } from '../utils/icons.js';
+import { likedSongs } from '../utils/likes.js';
+import { npIds } from '../utils/nowPlaying.js';
 
 // Keep playlist pages usable for the one load where a newly deployed view may
 // still be paired with an older installed-PWA API client. sw.js v4 prevents
@@ -56,6 +58,25 @@ async function uploadPlaylistCover(id, cover) {
   throw err;
 }
 
+/** The pinned "Liked Songs" card at the top of the playlists grid. */
+function likedSongsCard() {
+  const songs = likedSongs();
+  const card = document.createElement('a');
+  card.className = 'media-card liked-songs-card';
+  card.href = '/liked';
+  card.dataset.route = '/liked';
+  card.dataset.npIds = npIds(songs);
+  card.setAttribute('aria-label', `Liked Songs, ${songs.length} ${songs.length === 1 ? 'song' : 'songs'}`);
+  card.innerHTML = `
+    <div class="media-card-cover liked-cover" data-np-slot="cover">${icon('heart-filled', { size: 40 })}</div>
+    <div class="media-card-info">
+      <div class="media-card-title">Liked Songs</div>
+      <div class="media-card-meta">${songs.length} ${songs.length === 1 ? 'song' : 'songs'} • playlist</div>
+    </div>
+  `;
+  return card;
+}
+
 export function renderPlaylists(container) {
   container.className = 'page';
   container.innerHTML = `
@@ -90,21 +111,23 @@ export function renderPlaylists(container) {
       const playlists = data.playlists || [];
       store.set('playlists', playlists);
       
+      content.innerHTML = '<div class="media-grid" id="playlists-grid"></div>';
+      const grid = content.querySelector('#playlists-grid');
+      // Liked Songs is always first, like Spotify (views/liked.js).
+      grid.appendChild(likedSongsCard());
+
       if (playlists.length === 0) {
-        content.innerHTML = `
+        content.insertAdjacentHTML('beforeend', `
           <div class="empty-state">
             <div class="empty-state-icon">${icon('list', { size: 30 })}</div>
             <div class="empty-state-title">No playlists yet</div>
             <div class="empty-state-message">Create your first playlist to organize your media</div>
             <button class="btn btn-primary" id="empty-create">Create Playlist</button>
           </div>
-        `;
+        `);
         content.querySelector('#empty-create')?.addEventListener('click', showCreateModal);
         return;
       }
-      
-      content.innerHTML = '<div class="media-grid" id="playlists-grid"></div>';
-      const grid = content.querySelector('#playlists-grid');
       
       playlists.forEach(pl => {
         const card = document.createElement('div');

@@ -12,6 +12,7 @@ import { escapeHtml, formatDuration, durationSeconds, truncate, plural, formatTo
 import { attachContextMenu } from '../components/contextMenu.js';
 import { toast } from '../components/toast.js';
 import { npIds } from '../utils/nowPlaying.js';
+import { likeButton } from '../utils/likes.js';
 
 function musicItems() {
   return (store.get('library') || []).filter(item => item.type === 'music');
@@ -184,7 +185,7 @@ function albumBlock(album, artist, index) {
               <span class="track-title">${escapeHtml(track.title)}</span>
               ${sub ? `<span class="track-sub">${escapeHtml(sub)}</span>` : ''}
             </span>
-            <span class="track-dur">${formatDuration(track.duration)}</span>
+            <span class="track-end">${likeButton(track, { className: 'track-like' })}<span class="track-dur">${formatDuration(track.duration)}</span></span>
           </li>`;
         }).join('')}
       </ol>

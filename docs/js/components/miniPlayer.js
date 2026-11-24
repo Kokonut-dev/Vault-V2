@@ -7,6 +7,7 @@ import { formatTime } from '../utils/format.js';
 import { setIcon } from '../utils/icons.js';
 import { toast } from './toast.js';
 import { attachSeekPreview } from './seekPreview.js';
+import { isSong, paintLikeButton } from '../utils/likes.js';
 
 export function initMiniPlayer() {
   const miniPlayer = document.getElementById('mini-player');
@@ -97,6 +98,22 @@ export function initMiniPlayer() {
       nowPlayingBgImg.onload = () => nowPlaying.classList.add('has-cover-art');
     }
     [miniDownloadBtn, npDownloadBtn].forEach(btn => { if (btn) btn.disabled = false; });
+
+    // Heart: save the playing song to Liked Songs (utils/likes.js handles clicks).
+    [['mini-like', 16], ['now-playing-like', 22]].forEach(([id, size]) => {
+      const btn = document.getElementById(id);
+      if (!btn) return;
+      if (isSong(item)) {
+        btn.hidden = false;
+        btn.dataset.likeId = String(item.id);
+        btn.dataset.likeTitle = item.title || '';
+        btn.dataset.likeSize = String(size);
+        paintLikeButton(btn);
+      } else {
+        btn.hidden = true;
+        delete btn.dataset.likeId;
+      }
+    });
     
     // Visualizer
     initVisualizer();

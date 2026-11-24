@@ -476,6 +476,109 @@ function assert(condition, message) {
       page.remove();
       store.set('currentTrack', null);
     });
+
+    await test('a restored track with an outdated id still marks its library copy', async () => {
+      // Same song, but the id it had before a rescan / moved folder.
+      store.set('currentTrack', { ...lib[2], id: 'old-id-from-a-saved-queue' });
+      store.set('isPlaying', false);
+      pick('all'); layout('list'); await settle();
+      const rows = marked().map((e) => e.dataset.id);
+      assert(rows.join(',') === 't3', `marked: ${rows.join(',') || '(none)'}`);
+      assert(!marked()[0].classList.contains('np-playing'), 'paused song shows the playing animation');
+      store.set('currentTrack', null); await settle();
+    });
+
+    await test('a video closed without its event does not hide the music', async () => {
+      const modal = document.createElement('div');
+      modal.id = 'video-modal';
+      modal.hidden = true;
+      document.body.appendChild(modal);
+      window.dispatchEvent(new CustomEvent('vault:video-opened', { detail: { item: lib[6] } }));
+      store.set('currentTrack', lib[2]); store.set('isPlaying', true);
+      pick('all'); layout('list'); await settle();
+      assert(marked().map((e) => e.dataset.id).join(',') === 't3', 'stale video id hid the playing song');
+      window.dispatchEvent(new CustomEvent('vault:video-closed'));
+      modal.remove();
+      store.set('currentTrack', null); await settle();
+    });
+  }
+
+  // ------------------------------------------------------- liked songs
+  console.log('[music-view-check] Liked Songs — a heart on every song');
+
+  {
+    const settle = () => new Promise((r) => setTimeout(r, 30));
+    const { api } = await import(`${DOCS}api.js`);
+    const calls = [];
+    api.addFavourite = async (id) => { calls.push(['add', id]); return {}; };
+    api.removeFavourite = async (id) => { calls.push(['remove', id]); return {}; };
+    const { initLikes, likedSongs } = await import(`${DOCS}utils/likes.js`);
+    initLikes();
+    store.set('favourites', [], true);
+    store.set('musicGroupBy', 'all');
+    const c = mount();
+    c.querySelector('.view-toggle [data-view="list"]').click();
+    await nextTick();
+    const content = c.querySelector('#music-content');
+
+    await test('every song row has a heart (and nothing else does)', () => {
+      const rows = [...content.querySelectorAll('.media-list-item')];
+      const songs = rows.filter((r) => lib.find((i) => i.id === r.dataset.id)?.type === 'music');
+      assert(songs.length && songs.every((r) => r.querySelector('.like-btn[data-like-id]')), 'a song row has no heart');
+      const film = rows.find((r) => r.dataset.id === 'm1');
+      assert(!film || !film.querySelector('.like-btn'), 'the film got a heart');
+    });
+
+    await test('clicking a heart likes the song without playing it, and syncs to the server', async () => {
+      events.length = 0;
+      content.querySelector('[data-id="t2"] .like-btn').click();
+      content.querySelector('[data-id="t5"] .like-btn').click();
+      await settle();
+      assert(played().length === 0, 'the heart click also played the song');
+      assert(JSON.stringify(store.get('favourites')) === '["t2","t5"]', `favourites: ${JSON.stringify(store.get('favourites'))}`);
+      assert(calls.filter((x) => x[0] === 'add').map((x) => x[1]).join(',') === 't2,t5', `server calls: ${JSON.stringify(calls)}`);
+      const btn = content.querySelector('[data-id="t2"] .like-btn');
+      assert(btn.classList.contains('is-liked') && btn.getAttribute('aria-pressed') === 'true', 'the heart did not fill');
+      assert(JSON.parse(localStorage.getItem('vault_favourites')).length === 2, 'likes were not saved locally');
+    });
+
+    await test('Liked Songs lists them newest first and plays the list', async () => {
+      assert(likedSongs().map((i) => i.id).join(',') === 't5,t2', `order: ${likedSongs().map((i) => i.id)}`);
+      const { renderLiked } = await import(`${DOCS}views/liked.js`);
+      const page = document.createElement('div');
+      document.body.appendChild(page);
+      renderLiked(page);
+      await nextTick();
+      const rows = [...page.querySelectorAll('.media-list-item')].map((r) => r.dataset.id);
+      assert(rows.join(',') === 't5,t2', `liked rows: ${rows.join(',')}`);
+      assert(/2 songs/.test(page.querySelector('.liked-meta').textContent), 'song count missing');
+      events.length = 0;
+      page.querySelector('#liked-play').click();
+      const p = played();
+      assert(p.length === 1 && p[0].detail.queue.map((i) => i.id).join(',') === 't5,t2', 'Play did not queue the liked songs');
+      // Unliking on the page removes the row.
+      page.querySelector('[data-id="t5"] .like-btn').click();
+      await settle();
+      const after = [...page.querySelectorAll('.media-list-item')].map((r) => r.dataset.id);
+      assert(after.join(',') === 't2', `after unlike: ${after.join(',')}`);
+      assert(calls.some((x) => x[0] === 'remove' && x[1] === 't5'), 'unlike was not sent to the server');
+      // Other hearts for the same song repaint.
+      const listBtn = content.querySelector('[data-id="t5"] .like-btn');
+      assert(listBtn && !listBtn.classList.contains('is-liked'), 'the music list heart did not repaint');
+      page.remove();
+    });
+
+    await test('the artist page has a heart on every track', async () => {
+      const { renderArtist } = await import(`${DOCS}views/artists.js`);
+      const page = document.createElement('div');
+      document.body.appendChild(page);
+      renderArtist(page, 'Nova');
+      const rows = [...page.querySelectorAll('.track-row')];
+      assert(rows.length === 3 && rows.every((r) => r.querySelector('.track-like')), `artist rows with hearts: ${rows.filter((r) => r.querySelector('.track-like')).length}/${rows.length}`);
+      assert(page.querySelector('.track-row[data-track="t2"] .track-like.is-liked'), 'liked state not shown on the artist page');
+      page.remove();
+      store.set('favourites', [], true);
+    });
   }
 
   // -------------------------------------------- big library (windowed grid)

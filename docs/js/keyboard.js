@@ -175,6 +175,7 @@ export class KeyboardManager {
         v: 'videos',
         p: 'playlists',
         f: 'favourites',
+        l: 'liked',
         s: 'settings',
       };
       if (navMap[key]) {

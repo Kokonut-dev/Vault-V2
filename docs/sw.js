@@ -26,7 +26,9 @@
 //      stand-alone terms.html page is cached so it can be read offline.
 // v20: now-playing marks on every page (js/utils/nowPlaying.js) and per-page
 //      Grid/List (js/utils/viewMode.js); store.js gained `viewModes`.
-const CACHE_NAME = 'vault-v2-shell-v20';
+// v21: Liked Songs — js/utils/likes.js and views/liked.js; index.html gained
+//      hearts in the player bar and Now Playing.
+const CACHE_NAME = 'vault-v2-shell-v21';
 // Media the user saved with "Download for offline" (docs/js/app-extras.js).
 const OFFLINE_CACHE = 'vault-offline';
 const BASE_PATH = '/Vault-V2';

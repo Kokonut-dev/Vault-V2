@@ -45,6 +45,7 @@ export const KEYBOARD_SHORTCUTS = {
     { key: 'G then V', desc: 'Go to Videos' },
     { key: 'G then P', desc: 'Go to Playlists' },
     { key: 'G then F', desc: 'Go to Favourites' },
+    { key: 'G then L', desc: 'Go to Liked Songs' },
     { key: 'G then S', desc: 'Go to Settings' },
   ],
 };

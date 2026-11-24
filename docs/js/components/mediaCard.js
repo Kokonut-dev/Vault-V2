@@ -6,6 +6,7 @@ import { formatTime, truncate, escapeHtml, escapeAttr } from '../utils/format.js
 import { lazyLoadElement } from '../utils/lazyLoad.js';
 import { icon } from '../utils/icons.js';
 import { attachContextMenu } from './contextMenu.js';
+import { likeButton } from '../utils/likes.js';
 
 /** Quality badges (resolution / HDR / surround) — Plex-style at-a-glance tags. */
 export function qualityBadges(item) {
@@ -87,6 +88,7 @@ export function createMediaCard(item, options = {}) {
       <div class="media-card-overlay">
         <button class="media-card-play" type="button" aria-label="Play ${escapeAttr(item.title)}">${icon('play', { size: 20 })}</button>
       </div>
+      ${likeButton(item, { className: 'media-card-like' })}
       ${hasProgress ? `<div class="media-card-progress"><div class="media-card-progress-bar" style="width:${progress}%"></div></div>` : ''}
       ${item.duration && !isMusic ? `<div class="media-card-duration">${formatTime(item.duration)}</div>` : ''}
       ${item.missing

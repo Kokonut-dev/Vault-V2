@@ -24,7 +24,7 @@ const CURRENT = 'np-current';
 const PLAYING = 'np-playing';
 const OWNER = '[data-np-id],[data-np-ids]';
 
-let state = { id: null, playing: false };
+let state = { id: null, ids: [], playing: false };
 let videoId = null;
 let scheduled = 0;
 let started = false;
@@ -40,21 +40,62 @@ function escapeValue(value) {
   return String(value).replace(/["\\]/g, '\\$&');
 }
 
+const norm = (value) => String(value ?? '').trim().toLowerCase();
+const songKey = (item) => [norm(item.title), norm(item.artist || item.albumArtist), norm(item.album)].join('\u0001');
+
+let aliasMemo = { track: null, library: null, ids: [] };
+
+/**
+ * Every id that stands for the playing track. Normally just its own id, but a
+ * track restored from an older queue (or handed over from another device)
+ * can carry an id the library no longer has — after a rescan, a moved music
+ * folder or a re-import the same song gets a new id. Then the library copy
+ * with the same file path, or the same title + artist + album, is marked
+ * instead of nothing.
+ */
+function idsFor(track, id) {
+  const library = store.get('library') || [];
+  if (aliasMemo.track === track && aliasMemo.library === library && aliasMemo.ids[0] === id) return aliasMemo.ids;
+  const ids = [id];
+  if (library.length && !library.some((item) => String(item?.id) === id)) {
+    const path = track.filePath || track.path || null;
+    const key = track.title ? songKey(track) : null;
+    for (const item of library) {
+      if (!item || item.id === undefined || item.id === null) continue;
+      const samePath = path && (item.filePath === path || item.path === path);
+      const sameSong = key && item.type === track.type && songKey(item) === key;
+      if (samePath || sameSong) ids.push(String(item.id));
+    }
+  }
+  aliasMemo = { track, library, ids };
+  return ids;
+}
+
+function videoOpen() {
+  const modal = document.getElementById('video-modal');
+  // No modal in the page (tests, embeds): trust the open/close events.
+  return !modal || modal.classList.contains('active');
+}
+
 /** What is playing right now: the open video, otherwise the audio player's track. */
 function readState() {
+  // A video that was closed without its "closed" event must not hide the
+  // music that is playing now.
+  if (videoId && !videoOpen()) videoId = null;
   if (videoId) {
     const video = document.getElementById('video-element');
-    return { id: videoId, playing: Boolean(video && !video.paused && !video.ended) };
+    return { id: videoId, ids: [videoId], playing: Boolean(video && !video.paused && !video.ended) };
   }
   const track = store.get('currentTrack');
   const id = track && track.id !== undefined && track.id !== null ? String(track.id) : null;
-  return { id, playing: Boolean(id && store.get('isPlaying')) };
+  return { id, ids: id ? idsFor(track, id) : [], playing: Boolean(id && store.get('isPlaying')) };
 }
 
-function matches(el, id) {
-  if (!id) return false;
-  if (el.dataset.npId === id) return true;
-  return (el.dataset.npIds || '').split(/\s+/).includes(id);
+function matches(el, ids) {
+  if (!ids || !ids.length) return false;
+  if (el.dataset.npId !== undefined && ids.includes(el.dataset.npId)) return true;
+  const group = (el.dataset.npIds || '').split(/\s+/);
+  return ids.some((id) => group.includes(id));
 }
 
 /** The element's own slot — not one belonging to a nested item. */
@@ -106,11 +147,14 @@ function unmark(el) {
 
 /** Mark/unmark everything under `root` for the current state. */
 export function markNowPlaying(root = document) {
-  const { id, playing } = state;
-  root.querySelectorAll(`.${CURRENT}`).forEach((el) => { if (!matches(el, id)) unmark(el); });
-  if (!id) return;
-  const value = escapeValue(id);
-  root.querySelectorAll(`[data-np-id="${value}"],[data-np-ids~="${value}"]`).forEach((el) => mark(el, playing));
+  const { ids, playing } = state;
+  root.querySelectorAll(`.${CURRENT}`).forEach((el) => { if (!matches(el, ids)) unmark(el); });
+  if (!ids || !ids.length) return;
+  const selector = ids.map((id) => {
+    const value = escapeValue(id);
+    return `[data-np-id="${value}"],[data-np-ids~="${value}"]`;
+  }).join(',');
+  root.querySelectorAll(selector).forEach((el) => mark(el, playing));
 }
 
 function refresh() {
@@ -140,6 +184,8 @@ export function initNowPlaying() {
   started = true;
   store.subscribe('currentTrack', schedule);
   store.subscribe('isPlaying', schedule);
+  // A rescan can give the playing song a new id (see idsFor).
+  store.subscribe('library', schedule);
 
   window.addEventListener('vault:video-opened', (event) => {
     const item = event.detail?.item;

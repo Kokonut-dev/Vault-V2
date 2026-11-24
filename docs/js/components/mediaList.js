@@ -6,6 +6,7 @@ import { formatDuration, escapeHtml } from '../utils/format.js';
 import { icon } from '../utils/icons.js';
 import { attachContextMenu } from './contextMenu.js';
 import { releaseVirtualGrid } from '../utils/virtualGrid.js';
+import { likeButton } from '../utils/likes.js';
 
 export function renderMediaList(container, items, options = {}) {
   const { onPlay, onClick, sortField = 'title', sortOrder = 'asc', onSort, hideAlbum = false } = options;
@@ -96,6 +97,7 @@ export function renderMediaList(container, items, options = {}) {
           <div class="media-list-item-title">${escapeHtml(item.title)}</div>
           ${subtitle ? `<div class="media-list-item-artist">${escapeHtml(subtitle)}</div>` : ''}
         </div>
+        ${likeButton(item, { className: 'media-list-like' })}
       </div>
       <div class="media-list-cell media-list-cell--artist" title="${escapeHtml(second)}">${escapeHtml(second) || '<span class="media-list-none">—</span>'}</div>
       <div class="media-list-cell media-list-cell--duration">${formatDuration(item.duration)}</div>

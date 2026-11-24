@@ -7,6 +7,7 @@ import { Fuse } from '../utils/fuse.js';
 import { router } from '../router.js';
 import { createFocusTrap } from '../utils/focusTrap.js';
 import { icon } from '../utils/icons.js';
+import { likeButton } from '../utils/likes.js';
 
 export class SearchModal {
   constructor() {
@@ -198,6 +199,7 @@ export class SearchModal {
                   <div class="search-item-title">${this.escape(item.title)}</div>
                   <div class="search-item-meta">${this.escape(item.artist || item.genre || item.year || '')}</div>
                 </div>
+                ${likeButton(item, { size: 15, className: 'search-item-like' })}
                 <span class="search-item-type">${item.type}</span>
               </div>
             `;
