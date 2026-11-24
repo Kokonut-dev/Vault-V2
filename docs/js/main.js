@@ -530,6 +530,7 @@ async function initApp() {
     '/videos': 'Videos',
     '/playlists': 'Playlists',
     '/favourites': 'Favourites',
+    '/liked': 'Liked Songs',
     '/history': 'History',
     '/upload': 'Upload',
     '/torrents': 'Torrents',
@@ -792,6 +793,11 @@ function setupRoutes() {
   router.addRoute('/playlists', async (params, nav) => {
     const { renderPlaylists } = await import('./views/playlists.js');
     return mount(renderPlaylists)(params, nav);
+  });
+
+  router.addRoute('/liked', async (params, nav) => {
+    const { renderLiked } = await import('./views/liked.js');
+    return mount(renderLiked)(params, nav);
   });
 
   router.addRoute('/favourites', async (params, nav) => {

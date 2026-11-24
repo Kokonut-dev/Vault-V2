@@ -122,8 +122,10 @@ test('album and playlist move buttons persist and render the new order', async (
   const playlistContainer = document.createElement('main');
   document.body.appendChild(playlistContainer);
   renderPlaylists(playlistContainer);
-  await waitFor(() => playlistContainer.querySelector('.media-card'), 'playlist card did not render');
-  playlistContainer.querySelector('.media-card').click();
+  // The first card is the pinned "Liked Songs" playlist.
+  await waitFor(() => playlistContainer.querySelector('.media-card:not(.liked-songs-card)'), 'playlist card did not render');
+  assert.ok(playlistContainer.querySelector('.media-card.liked-songs-card'), 'Liked Songs is not pinned on the playlists page');
+  playlistContainer.querySelector('.media-card:not(.liked-songs-card)').click();
   await waitFor(
     () => playlistContainer.querySelectorAll('#pl-items .media-list-item').length === 3,
     'playlist rows did not render',

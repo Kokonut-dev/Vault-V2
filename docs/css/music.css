@@ -455,3 +455,117 @@ a.artist-album-cover:hover { transform: translateY(-2px); }
 .genre-group.is-open .genre-caret { transform: rotate(90deg); }
 .genre-name { display: inline-flex; align-items: center; }
 .genre-tracks { margin-top: 8px; }
+
+/* ============================================================
+   Liked Songs — the heart on every song (utils/likes.js)
+   Quiet until hovered, like Spotify; always shown once liked, and always
+   on touch screens (no hover there).
+   ============================================================ */
+.like-btn {
+  display: inline-grid;
+  place-items: center;
+  flex: 0 0 auto;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: color var(--duration-fast), opacity var(--duration-fast), transform var(--duration-fast);
+}
+.like-btn[hidden] { display: none !important; }
+.like-btn:hover,
+.like-btn:focus-visible { color: var(--text-primary); transform: scale(1.08); }
+.like-btn.is-liked { color: var(--accent-text); }
+.like-btn.is-liked:hover { color: var(--accent-text); }
+
+/* In rows and on cards: hidden until the row/card is hovered or focused. */
+.media-list-like,
+.track-like { opacity: 0; }
+.media-list-item:hover .media-list-like,
+.media-list-item:focus-within .media-list-like,
+.track-row:hover .track-like,
+.track-row:focus-within .track-like,
+.media-list-like.is-liked,
+.track-like.is-liked,
+.media-list-like:focus-visible,
+.track-like:focus-visible { opacity: 1; }
+.media-list-like { margin-left: auto; }
+.track-end { display: inline-flex; align-items: center; gap: var(--space-sm); }
+
+.media-card-like {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 4;
+  width: 30px;
+  height: 30px;
+  background: rgb(0 0 0 / 0.5);
+  color: #fff;
+  opacity: 0;
+  backdrop-filter: blur(6px);
+}
+.media-card:hover .media-card-like,
+.media-card:focus-within .media-card-like,
+.media-card-like.is-liked { opacity: 1; }
+.media-card-like:hover,
+.media-card-like:focus-visible { color: #fff; }
+.media-card-like.is-liked,
+.media-card-like.is-liked:hover { color: var(--accent); }
+
+@media (hover: none) {
+  .media-list-like,
+  .track-like,
+  .media-card-like { opacity: 1; }
+}
+
+/* Player bar + Now Playing. */
+.mini-player-like { margin-left: 4px; }
+.now-playing-titlebar { display: flex; align-items: center; gap: var(--space-md); min-width: 0; }
+.now-playing-titles { flex: 1; min-width: 0; }
+.now-playing-like { width: 44px; height: 44px; }
+
+/* Liked Songs page. */
+.liked-hero {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: end;
+  gap: var(--space-xl);
+  margin-bottom: var(--space-xl);
+}
+.liked-cover,
+.liked-songs-card .liked-cover {
+  display: grid;
+  place-items: center;
+  color: #fff;
+  background: linear-gradient(135deg, #4b2bd6 0%, #8a6cf0 55%, #c7d7f2 100%);
+}
+.liked-hero .liked-cover {
+  width: 176px;
+  aspect-ratio: 1;
+  border-radius: var(--radius-lg);
+  box-shadow: 0 12px 32px -12px var(--shadow-color);
+}
+.liked-songs-card { color: inherit; text-decoration: none; }
+.liked-songs-card .liked-cover { aspect-ratio: 1; }
+.liked-hero-body { display: grid; gap: var(--space-sm); min-width: 0; }
+.liked-title { display: flex; align-items: center; margin: 0; }
+.liked-meta { display: flex; flex-wrap: wrap; gap: 2px 10px; color: var(--text-secondary); font-size: var(--text-sm); }
+.liked-meta span + span::before {
+  content: '';
+  display: inline-block;
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  background: currentColor;
+  opacity: 0.7;
+  margin-right: 10px;
+  vertical-align: middle;
+}
+.liked-actions { display: flex; flex-wrap: wrap; gap: var(--space-sm); margin-top: var(--space-xs); }
+@media (max-width: 640px) {
+  .liked-hero { grid-template-columns: minmax(0, 1fr); align-items: start; gap: var(--space-md); }
+  .liked-hero .liked-cover { width: 120px; }
+}

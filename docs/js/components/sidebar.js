@@ -25,6 +25,7 @@ const NAV_ITEMS = [
     { id: 'watchlist', label: 'My List', icon: 'bookmark', route: '/watchlist' },
     { id: 'continue', label: 'Continue Watching', icon: 'activity', route: '/continue' },
     { id: 'playlists', label: 'Playlists', icon: 'list', route: '/playlists' },
+    { id: 'liked', label: 'Liked Songs', icon: 'heart-filled', route: '/liked' },
     { id: 'favourites', label: 'Favourites', icon: 'heart', route: '/favourites' },
     { id: 'history', label: 'History', icon: 'history', route: '/history' },
     { id: 'downloads', label: 'Downloads', icon: 'download', route: '/downloads' },

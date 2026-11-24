@@ -170,6 +170,7 @@
       <div class="mini-player-title" id="mini-title">Not playing</div>
       <div class="mini-player-artist" id="mini-artist"></div>
     </div>
+    <button type="button" class="btn btn-icon like-btn mini-player-like" id="mini-like" aria-label="Save to Liked Songs" aria-pressed="false" data-icon="heart" data-icon-size="16" hidden></button>
     <div class="mini-player-controls">
       <button class="btn btn-icon" id="mini-prev" aria-label="Previous track" data-icon="skip-back" data-icon-size="16"></button>
       <button class="btn btn-icon" id="mini-play" aria-label="Play/Pause" data-icon="play" data-icon-size="16"></button>
@@ -202,9 +203,12 @@
         <div class="now-playing-visualizer" id="visualizer"></div>
       </div>
       <div class="now-playing-info">
-        <div>
-          <div class="now-playing-title" id="now-playing-title">Select a track</div>
-          <div class="now-playing-artist" id="now-playing-artist"></div>
+        <div class="now-playing-titlebar">
+          <div class="now-playing-titles">
+            <div class="now-playing-title" id="now-playing-title">Select a track</div>
+            <div class="now-playing-artist" id="now-playing-artist"></div>
+          </div>
+          <button type="button" class="btn btn-icon like-btn now-playing-like" id="now-playing-like" aria-label="Save to Liked Songs" aria-pressed="false" data-icon="heart" data-icon-size="22" hidden></button>
         </div>
         <div class="now-playing-progress">
           <input type="range" class="slider" id="now-playing-slider" min="0" max="100" value="0" aria-label="Seek">

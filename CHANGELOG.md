@@ -1,5 +1,26 @@
 # Changelog
 
+## [Unreleased] — Liked Songs & now-playing fix (branch `arena/69271b81-vault-v2`)
+
+### Added
+- **Liked Songs, like on Spotify.** Every song has a heart:
+  - Music (grid and list), album pages (including the reorder/edit list), artist pages, search results, the
+    player bar and Now Playing.
+  - The heart is quiet until you hover a row and stays filled once liked. On touch screens it is always shown.
+    Clicking it never plays or opens the song.
+- **A "Liked Songs" playlist** in the sidebar (`/liked`, shortcut **G then L**) and pinned first on the Playlists
+  page:
+  - Newest like first, with Play, Shuffle and sortable columns. Unliking a song removes it straight away.
+  - Likes use your profile's favourites, so they sync to the server and across devices, and a liked song also
+    shows under Favourites.
+
+### Fixed
+- **The now-playing mark could be missing even though a song was playing.**
+  - A song restored from an older saved queue, or handed over from another device, can carry an id the library
+    no longer uses: a rescan, a moved music folder or a re-import gives files new ids. Such a song now marks the
+    library copy with the same file path, or the same title, artist and album.
+  - A video that closed without its "closed" event no longer hides the music's mark.
+
 ## [Unreleased] — Now playing on every page & Grid/List fixes (branch `arena/fd11e94b-vault-v2`)
 
 ### Added
