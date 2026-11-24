@@ -1,5 +1,21 @@
 # Changelog
 
+## [Unreleased] — Reliable GitHub Pages deploys (branch `arena/54f68586-vault-v2`)
+
+### Fixed
+- **GitHub Pages deploy failing with "No artifacts named github-pages were found"** (after PR #50 and #54). The
+  workflow uploaded the site and deployed it in the same job, so the deploy sometimes asked for the upload before
+  GitHub had registered it. `deploy.yml` now has a `build` job (checks, tests, upload) and a separate `deploy` job
+  that starts only after the upload is complete, as in GitHub's own Pages template. If GitHub's Pages API still has
+  a hiccup, the deploy retries once after a minute.
+- The deploy check now verifies the 7-step setup wizard (including the Terms of Use step and `docs/terms.html`)
+  instead of only printing "6 steps present".
+
+### Changed
+- GitHub Actions updated to their Node 24 versions (`checkout@v7`, `setup-node@v7`, `configure-pages@v6`,
+  `upload-pages-artifact@v5`, `deploy-pages@v5`), which removes the "Node.js 20 is deprecated" warnings from the
+  deploy and test workflows.
+
 ## [Unreleased] — Terms of Use (branch `arena/80672d05-vault-v2`)
 
 ### Added — Terms of Use you must read and accept
