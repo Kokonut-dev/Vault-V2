@@ -62,7 +62,7 @@ export function renderLiked(container) {
         <div class="liked-cover" aria-hidden="true">${icon('heart-filled', { size: 56 })}</div>
         <div class="liked-hero-body">
           <p class="hero-overline">Playlist</p>
-          <h1 class="page-title liked-title" data-np-ids="${escapeHtml(npIds(songs))}">Liked Songs<span class="np-slot" data-np-slot="inline"></span></h1>
+          <h1 class="page-title liked-title" data-np-ids="${escapeHtml(npIds(songs))}"><span class="np-slot" data-np-slot="start"></span>Liked Songs</h1>
           <div class="liked-meta">${meta.map((m) => `<span>${escapeHtml(m)}</span>`).join('')}</div>
           <div class="liked-actions">
             <button type="button" class="btn btn-primary" id="liked-play" ${songs.length ? '' : 'disabled'}>${icon('play', { size: 16 })}<span>Play</span></button>

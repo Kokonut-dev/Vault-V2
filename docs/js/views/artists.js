@@ -74,12 +74,12 @@ export function renderArtists(container) {
           ? api.getCoverUrlVersioned(coverTrack.id, artistVersion)
           : api.getCoverUrl(coverTrack.id);
         card.innerHTML = `
-          <div class="media-card-cover music" data-np-slot="cover">
+          <div class="media-card-cover music">
             <img loading="lazy" src="${coverUrl}" alt="" class="loaded" data-img-fallback="placeholder">
             <div class="media-card-placeholder" aria-hidden="true">${icon('mic', { size: 34 })}</div>
           </div>
           <div class="media-card-info">
-            <div class="media-card-title">${escapeHtml(truncate(artist, 40))}</div>
+            <div class="media-card-title" data-np-slot="start">${escapeHtml(truncate(artist, 40))}</div>
             <div class="media-card-meta">${[albums.size ? plural(albums.size, 'album') : null, plural(tracks.length, 'track')].filter(Boolean).join(' · ')}</div>
           </div>
         `;
@@ -159,7 +159,7 @@ function albumBlock(album, artist, index) {
           : `<a class="artist-album-cover" href="${albumHref}" data-route="${albumHref}" tabindex="-1" aria-hidden="true">${cover}</a>`}
         <div class="artist-album-info">
           <h2 class="artist-album-title" id="artist-album-${index}" data-np-ids="${escapeHtml(npIds(album.tracks))}">
-            ${loose ? escapeHtml(title) : `<a href="${albumHref}" data-route="${albumHref}">${escapeHtml(title)}</a>`}<span class="np-slot" data-np-slot="inline"></span>
+            <span class="np-slot" data-np-slot="start"></span>${loose ? escapeHtml(title) : `<a href="${albumHref}" data-route="${albumHref}">${escapeHtml(title)}</a>`}
           </h2>
           <div class="artist-album-meta">${meta.map(m => `<span>${escapeHtml(String(m))}</span>`).join('')}</div>
           <div class="artist-album-actions">

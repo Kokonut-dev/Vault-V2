@@ -88,11 +88,11 @@ export function renderHistory(container) {
         : `datetime="${watchedDate.toISOString()}" title="${watchedDate.toLocaleString()}"`;
       row.innerHTML = `
         <div class="media-list-item-main">
-          <div class="media-list-item-cover" data-np-slot="cover">
+          <div class="media-list-item-cover">
             <img src="${api.getThumbnailUrl(item.id)}" alt="" loading="lazy">
           </div>
           <div>
-            <div class="media-list-item-title">${escapeHtml(item.title)}</div>
+            <div class="media-list-item-title" data-np-slot="start">${escapeHtml(item.title)}</div>
             <div class="media-list-item-artist">${escapeHtml(item.artist || '')}</div>
           </div>
         </div>

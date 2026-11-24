@@ -192,11 +192,11 @@ export class SearchModal {
             const idx = globalIndex++;
             return `
               <div class="search-item ${idx === this.selectedIndex ? 'selected' : ''}" data-index="${idx}" data-id="${item.id}" data-np-id="${this.escape(String(item.id))}">
-                <div class="search-item-cover" data-np-slot="cover">
+                <div class="search-item-cover">
                   <img data-src="${api.getThumbnailUrl(item.id) || api.getCoverUrl(item.id)}" alt="" loading="lazy">
                 </div>
                 <div class="search-item-info">
-                  <div class="search-item-title">${this.escape(item.title)}</div>
+                  <div class="search-item-title" data-np-slot="start">${this.escape(item.title)}</div>
                   <div class="search-item-meta">${this.escape(item.artist || item.genre || item.year || '')}</div>
                 </div>
                 ${likeButton(item, { size: 15, className: 'search-item-like' })}
@@ -267,9 +267,9 @@ export class SearchModal {
             <div class="search-section-title">Recently Played</div>
             ${items.map(item => `
               <div class="search-item" data-id="${item.id}" data-np-id="${this.escape(String(item.id))}">
-                <div class="search-item-cover" data-np-slot="cover"><img data-src="${api.getThumbnailUrl(item.id)}" alt=""></div>
+                <div class="search-item-cover"><img data-src="${api.getThumbnailUrl(item.id)}" alt=""></div>
                 <div class="search-item-info">
-                  <div class="search-item-title">${this.escape(item.title)}</div>
+                  <div class="search-item-title" data-np-slot="start">${this.escape(item.title)}</div>
                   <div class="search-item-meta">${this.escape(item.artist || '')}</div>
                 </div>
                 <span class="search-item-type">${item.type}</span>

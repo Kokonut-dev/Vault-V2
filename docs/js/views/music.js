@@ -240,7 +240,7 @@ export function renderMusic(container) {
       const artistPath = `/artist/${encodeURIComponent(artist)}`;
       section.innerHTML = `
         <h3 class="music-group-title" data-np-ids="${escapeAttr(npIds(tracks))}">
-          <span class="music-group-name" data-np-slot="inline">${known
+          <span class="music-group-name" data-np-slot="start">${known
             ? `<a href="${escapeAttr(artistPath.slice(1))}" data-route="${escapeAttr(artistPath)}">${escapeHtml(artist)}</a>`
             : escapeHtml(artist)}</span>
           <span class="music-group-count">${tracks.length} ${tracks.length === 1 ? 'track' : 'tracks'}</span>
@@ -318,13 +318,13 @@ export function renderMusic(container) {
       card.dataset.npIds = npIds(tracks);
       const artist = albumArtistOf(tracks);
       card.innerHTML = `
-        <div class="media-card-cover music" data-np-slot="cover">
+        <div class="media-card-cover music">
           <img src="${albumCoverUrl(tracks)}" alt="" loading="lazy" class="loaded" data-img-fallback="placeholder">
           <div class="media-card-placeholder" aria-hidden="true">${icon('music', { size: 34 })}</div>
           <div class="media-card-overlay"><button class="media-card-play" type="button" aria-label="Play ${escapeAttr(album)}">${icon('play', { size: 20 })}</button></div>
         </div>
         <div class="media-card-info">
-          <div class="media-card-title">${escapeHtml(album)}</div>
+          <div class="media-card-title" data-np-slot="start">${escapeHtml(album)}</div>
           <div class="media-card-meta">${artist ? `${escapeHtml(artist)} • ` : ''}${tracks.length} ${tracks.length === 1 ? 'track' : 'tracks'}</div>
         </div>
       `;
@@ -380,11 +380,11 @@ export function renderMusic(container) {
       row.innerHTML = `
         <div class="media-list-item-main">
           <button class="media-list-play" type="button" aria-label="Play ${escapeAttr(album)}">${icon('play', { size: 13 })}</button>
-          <div class="media-list-item-cover" data-np-slot="cover">
+          <div class="media-list-item-cover">
             <img src="${albumCoverUrl(tracks)}" alt="" loading="lazy" data-img-fallback="hide">
           </div>
           <div class="media-list-item-text">
-            <div class="media-list-item-title">${escapeHtml(album)}</div>
+            <div class="media-list-item-title" data-np-slot="start">${escapeHtml(album)}</div>
             ${seconds ? `<div class="media-list-item-artist">${escapeHtml(formatTotalDuration(seconds))}</div>` : ''}
           </div>
         </div>
@@ -419,7 +419,7 @@ export function renderMusic(container) {
         <div class="genre-head" data-np-ids="${escapeAttr(npIds(tracks))}">
           <button class="btn btn-ghost btn-sm genre-toggle" type="button" aria-expanded="false" aria-controls="${listId}">
             <span class="genre-caret" aria-hidden="true">${icon('chevron-right', { size: 14 })}</span>
-            <span class="genre-name" data-np-slot="inline">${escapeHtml(genre)}</span>
+            <span class="genre-name" data-np-slot="start">${escapeHtml(genre)}</span>
           </button>
           <span class="music-group-count">${tracks.length} ${tracks.length === 1 ? 'track' : 'tracks'}</span>
           <button class="btn btn-secondary btn-sm genre-play" type="button" aria-label="Play ${escapeAttr(genre)}">${icon('play', { size: 14 })}<span>Play</span></button>

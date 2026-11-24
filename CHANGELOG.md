@@ -1,5 +1,20 @@
 # Changelog
 
+## [Unreleased] — One now-playing indicator everywhere (branch `arena/3ab55583-vault-v2`)
+
+### Changed
+- **The "now playing" mark now looks the same everywhere: the artist page's style.** That means three accent
+  bars in front of the title, an accent-coloured title and a light accent wash on rows. The bars bounce while
+  playing and stay still while paused.
+  - **Removed:** the dark scrim over cover thumbnails in lists (album pages, the Music list, history, search), the
+    "Playing" pill on card artwork, and the accent ring around playing cards.
+  - **Where the bars go now:**
+    - in front of the title on cards, list rows, search results, TV episodes and podcast episodes;
+    - in front of the name on group headings (artist page albums, Music artist and genre groups, Liked Songs);
+    - in front of the "Album" label on album pages.
+- `nowPlaying.js` now has a single slot type, `data-np-slot="start"`, placed on the title. It always prepends
+  the bars and has no text label.
+
 ## [Unreleased] — Liked Songs & now-playing fix (branch `arena/69271b81-vault-v2`)
 
 ### Added

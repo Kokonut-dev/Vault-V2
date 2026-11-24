@@ -85,12 +85,12 @@ export async function renderContinue(container) {
         card.dataset.contextMenuFor = item.id;
         card.dataset.npId = item.id;
         card.innerHTML = `
-          <div class="media-card-cover" data-np-slot="cover">
+          <div class="media-card-cover">
             <img loading="lazy" src="${api.getThumbnailUrl(item.id)}" alt="" class="loaded" data-img-fallback="hide">
             ${item.progress ? `<div class="media-card-progress"><div class="media-card-progress-bar" style="width:${item.progress}%"></div></div>` : ''}
           </div>
           <div class="media-card-info">
-            <div class="media-card-title">${escapeHtml(truncate(item.title, 40))}</div>
+            <div class="media-card-title" data-np-slot="start">${escapeHtml(truncate(item.title, 40))}</div>
             <div class="media-card-meta">${item.season ? `S${item.season}E${item.episode} · ` : ''}${item.duration ? formatTime(item.duration) : ''}</div>
           </div>`;
         card.addEventListener('click', () => window.dispatchEvent(new CustomEvent('vault:open-video', { detail: { item } })));

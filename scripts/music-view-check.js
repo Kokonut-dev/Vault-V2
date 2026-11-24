@@ -477,6 +477,30 @@ function assert(condition, message) {
       store.set('currentTrack', null);
     });
 
+    await test('one indicator everywhere: bars in front of the title, never on the artwork', async () => {
+      store.set('currentTrack', lib[2]); store.set('isPlaying', true);
+      for (const [group, mode] of [['all', 'grid'], ['all', 'list'], ['album', 'grid'], ['album', 'list']]) {
+        pick(group); layout(mode); await settle();
+        const badges = [...content.querySelectorAll('.np-badge')];
+        assert(badges.length >= 1, `${group}/${mode}: no indicator`);
+        for (const badge of badges) {
+          assert(!badge.closest('.media-card-cover, .media-list-item-cover'), `${group}/${mode}: indicator drawn on the artwork`);
+          assert(!badge.querySelector('.np-label'), `${group}/${mode}: indicator has a text label`);
+          const title = badge.closest('.media-card-title, .media-list-item-title');
+          assert(title && title.firstElementChild === badge, `${group}/${mode}: indicator is not in front of the title`);
+        }
+      }
+      const page = document.createElement('div');
+      document.body.appendChild(page);
+      await renderDetail(page, 't3');
+      await nextTick(); await settle();
+      const row = page.querySelector('.media-list-item.np-current');
+      assert(row && row.querySelector('.media-list-item-title > .np-badge:first-child'), 'album page row: indicator not in front of the title');
+      assert(!page.querySelector('.media-list-item-cover .np-badge'), 'album page: indicator drawn on the cover');
+      page.remove();
+      store.set('currentTrack', null); await settle();
+    });
+
     await test('a restored track with an outdated id still marks its library copy', async () => {
       // Same song, but the id it had before a rescan / moved folder.
       store.set('currentTrack', { ...lib[2], id: 'old-id-from-a-saved-queue' });

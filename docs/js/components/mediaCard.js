@@ -82,7 +82,7 @@ export function createMediaCard(item, options = {}) {
     : (item.thumbnailPath ? api.getThumbnailUrl(item.id) : versionedCover());
 
   card.innerHTML = `
-    <div class="media-card-cover ${coverType}" data-np-slot="cover">
+    <div class="media-card-cover ${coverType}">
       <img data-src="${coverUrl}" alt="" loading="lazy" decoding="async">
       <div class="media-card-placeholder" aria-hidden="true">${icon(isMusic ? 'music' : isVideo ? 'video' : 'film', { size: 34 })}</div>
       <div class="media-card-overlay">
@@ -97,7 +97,7 @@ export function createMediaCard(item, options = {}) {
       ${item.watched ? `<div class="media-card-watched" title="Watched">${icon('check', { size: 14 })}</div>` : ''}
     </div>
     <div class="media-card-info">
-      <div class="media-card-title" title="${escapeHtml(item.title)}">${escapeHtml(truncate(item.title, 40))}</div>
+      <div class="media-card-title" data-np-slot="start" title="${escapeHtml(item.title)}">${escapeHtml(truncate(item.title, 40))}</div>
       <div class="media-card-meta">${getMeta(item)}</div>
     </div>
   `;

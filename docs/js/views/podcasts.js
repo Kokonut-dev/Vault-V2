@@ -115,7 +115,7 @@ export async function renderPodcasts(container, params = {}) {
           <div class="podcast-episode${episode.played ? ' played' : ''}" data-episode="${escapeHtml(episode.guid)}" data-np-id="${escapeHtml(String(episodeToPlayable(episode, feed).id))}">
             <button class="btn btn-icon" data-ep-play aria-label="Play ${escapeHtml(episode.title)}">${icon('play', { size: 16 })}</button>
             <div class="row-main">
-              <div class="row-title" data-np-slot="inline">${escapeHtml(episode.title)}</div>
+              <div class="row-title" data-np-slot="start">${escapeHtml(episode.title)}</div>
               <div class="row-meta">${episode.published && !Number.isNaN(Date.parse(episode.published)) ? formatRelativeTime(new Date(episode.published).toISOString()) : ''}${parseEpisodeDuration(episode.duration) ? ` · ${formatTime(parseEpisodeDuration(episode.duration))}` : ''}${episode.downloaded ? ' · downloaded' : ''}</div>
             </div>
             <button class="btn btn-ghost btn-sm" data-ep-download ${episode.downloaded ? 'disabled title="Already in your library"' : ''}>${icon(episode.downloaded ? 'check' : 'download', { size: 14 })}<span>${episode.downloaded ? 'Saved' : 'Download'}</span></button>

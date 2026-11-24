@@ -28,7 +28,8 @@
 //      Grid/List (js/utils/viewMode.js); store.js gained `viewModes`.
 // v21: Liked Songs — js/utils/likes.js and views/liked.js; index.html gained
 //      hearts in the player bar and Now Playing.
-const CACHE_NAME = 'vault-v2-shell-v21';
+// v22: one now-playing indicator everywhere (bars in front of the title).
+const CACHE_NAME = 'vault-v2-shell-v22';
 // Media the user saved with "Download for offline" (docs/js/app-extras.js).
 const OFFLINE_CACHE = 'vault-offline';
 const BASE_PATH = '/Vault-V2';
