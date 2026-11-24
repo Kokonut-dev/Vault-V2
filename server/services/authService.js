@@ -183,9 +183,11 @@ function validateGridPattern(pattern) {
   }
 }
 
-function generateChallengeToken(username) {
+function generateChallengeToken(username, { accountId = null } = {}) {
   const config = getConfig();
-  // The second factor can be the grid, TOTP, or a recovery code.
+  // Accounts made with "Create a new account" use their own grid; the
+  // owner's second factor can be the grid, TOTP, or a recovery code.
+  if (accountId) return jwt.sign({ username, step: 'grid', accountId }, config.auth.jwtSecret, { expiresIn: '5m' });
   const step = config.auth.totp?.enabled ? 'second-factor' : 'grid';
   return jwt.sign({ username, step }, config.auth.jwtSecret, { expiresIn: '5m' });
 }

@@ -237,6 +237,7 @@ Vault-V2/
 │   │   ├── transcode.js
 │   │   ├── transfer.js             # /api/transfer — move everything to another server
 │   │   ├── legal.js                # /api/legal — Terms of Use text, status, acceptance, records
+│   │   ├── accounts.js             # /api/accounts — your account, sign-up switch, accounts list, SMTP
 │   │   └── settings.js
 │   ├── services/
 │   │   ├── scanner.js              # Directory scanning + file watcher
@@ -250,6 +251,10 @@ Vault-V2/
 │   │   ├── restream.js             # ffmpeg → HLS for Live TV; global + per-list stream caps
 │   │   ├── torrent.js              # WebTorrent jobs: staging → library, VPN guard, resume
 │   │   ├── terms.js                # Terms of Use: versions, fingerprint, acceptance gate, evidence log
+│   │   ├── accounts.js             # Accounts from "Create a new account" (data/accounts.json)
+│   │   ├── recovery.js             # "Forgot password?": one-time hashed reset links, 30 min
+│   │   ├── mailer.js               # SMTP via nodemailer; password encrypted with data/mail.key
+│   │   ├── profileRemoval.js       # Delete a profile with its sessions, data and account
 │   │   └── authService.js
 │   ├── legal/
 │   │   └── terms-versions.json     # Published Terms versions + SHA-256 of each text
@@ -388,6 +393,32 @@ All responses JSON unless streaming media. Errors: `{ error: string, code: strin
 - **Response 200**: `{ token: string, expiresAt: ISO, user: { username } }` — JWT valid for configurable timeout (default 24h)
 - **Response 401**: `{ error: "Invalid grid pattern" }`
 - **Rate limit**: Same bucket as login.
+
+#### Accounts and recovery
+Besides the server owner's account (`config.auth`), anyone can make an account with **Create a new account**
+(unless the owner turned it off). Each one lives in `data/accounts.json` with its own bcrypt password, grid and
+email, and owns exactly one profile (`profile.accountId`). That profile is never an admin. Signing in always lands
+on it. The account never sees the household's profiles, and the household doesn't see it. Sessions carry
+`accountId` (null = the owner); `authMiddleware` sets `req.accountId` and pins the profile.
+
+- `POST /api/auth/login` tries the owner first, then the accounts. An account's challenge token carries
+  `accountId`, and `/grid` checks that account's own grid (the authenticator app is the owner's only).
+- `POST /api/auth/register` `{ username, email, password, confirmPassword, gridPattern, gridOrderMatters? }` →
+  same answer as `/grid` (signed in). 403 `SIGNUP_DISABLED`; per-field 400/409 errors; 5 accounts per address
+  per hour.
+- `POST /api/auth/recover` `{ identifier, appUrl?, serverUrl? }` → always the same 200 answer. A matching
+  account gets a one-time link (`<app>#reset=<token>`, 30 minutes, max 3 per account per 30 minutes; only the
+  SHA-256 of the token is stored in `data/recovery.json`). It is emailed when SMTP is set up; otherwise (or if
+  sending fails) it is printed in the server window. Links only point at this server's own addresses or at web
+  apps in its CORS list.
+- `POST /api/auth/recover/check` `{ token }` → `{ username, owner, totpRequired }`; 400 `RESET_INVALID`, 410
+  `RESET_USED` / `RESET_EXPIRED`.
+- `POST /api/auth/recover/reset` `{ token, password, confirmPassword, gridPattern, totpCode? | recoveryCode? }`
+  → sets a new password and grid and signs out every device of that account. The owner's authenticator app is
+  still required when it is on. A "password changed" email follows.
+- `/api/accounts`: `GET /me`, `PUT /me/email`, `PUT /me/credentials`, `DELETE /me` (any account, current
+  password required); admin only: `GET /`, `PUT /signup`, `PUT /owner-email`, `DELETE /:id`, `GET|PUT /mail`,
+  `POST /mail/test`.
 
 #### POST /api/auth/logout
 - **Headers**: Authorization Bearer

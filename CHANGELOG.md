@@ -1,5 +1,36 @@
 # Changelog
 
+## [Unreleased] — Create a new account & password recovery by email (branch `arena/8468ebf5-vault-v2`)
+
+### Added
+- **"Create a new account"** on the sign-in screen. Anyone who can reach the server can make their own account
+  (username, email, password of 8+ characters, and an 8-square grid) and is signed in straight away, after
+  accepting the Terms of Use. Each account:
+  - gets one profile of its own and never admin rights;
+  - can't see, switch to or edit the household's profiles, and the household doesn't see or open its profile;
+  - sees and signs out only its own devices;
+  - can change its email, password and grid, or delete itself, in **Settings → Sign-in & security**.
+
+  Up to 50 accounts, 5 new ones per address per hour. They don't count towards the 12 household profiles.
+- **"Forgot password?"** on the sign-in screen. Enter a username or email and Vault sends a one-time link (valid
+  30 minutes, works once). The link opens a page where you choose a new password and a new grid, and every device
+  of that account is signed out. An authenticator app, if it is on, is still required. The screen always gives
+  the same answer, so it can't be used to find out which accounts exist. A "your password was changed" email
+  follows. Works for the owner's account too (set its email in Settings → Sign-in & security).
+- **Settings → Accounts & email** (admins): switch sign-up on or off, see and delete accounts (with their profile
+  and data), and set up email (any SMTP server, password stored encrypted, *Send test*). Until email is set up, or
+  if sending fails, reset links are printed in the server window, so the owner is never locked out.
+
+### Security
+- Reset tokens are 256-bit, stored only as SHA-256 hashes, limited to 3 per account per 30 minutes and 5
+  requests per address per 15 minutes. They go in the URL fragment (never sent to a server or logged), and are
+  removed from the address bar as soon as the page opens.
+- A reset link only points at this server's own addresses or the web apps in its CORS list, never at an address
+  supplied by the request. A link for another server asks before switching.
+- Deleting an account (or its profile) signs out its devices immediately (401 `ACCOUNT_REMOVED`).
+- The owner can't take a username that an account already uses.
+- `data/recovery.json` is left out of transfer packages.
+
 ## [Unreleased] — Reliable GitHub Pages deploys (branch `arena/54f68586-vault-v2`)
 
 ### Fixed

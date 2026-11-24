@@ -79,12 +79,17 @@
           <div class="form-group">
             <label class="form-label" for="password">Password</label>
             <input type="password" id="password" class="form-input" placeholder="••••••••" required autocomplete="current-password">
+            <button type="button" class="auth-link auth-forgot" id="forgot-link">Forgot password?</button>
           </div>
           <div id="login-error" class="auth-error" style="display:none;"></div>
           <button type="submit" class="btn btn-primary btn-lg" style="width:100%;" id="login-btn">
             Continue
           </button>
         </form>
+        <div class="auth-signup" id="signup-offer" hidden>
+          <span class="auth-divider"><span>New here?</span></span>
+          <button type="button" class="btn btn-secondary btn-lg auth-wide" id="signup-link"><span data-icon="user-plus" data-icon-size="18"></span> Create a new account</button>
+        </div>
         <details class="auth-code" id="auth-code">
           <summary>Sign in with a code from another device</summary>
           <form id="auth-code-form" class="auth-code-form" novalidate>

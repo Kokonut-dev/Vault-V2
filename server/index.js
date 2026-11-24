@@ -118,7 +118,7 @@ app.use('/api/', generalLimiter);
 // raw-volume ceiling (the general limiter exempts auth entirely);
 // `authLimiter` is the strict one and counts only wrong credentials,
 // per stage, restoring budget on success.
-for (const credentialPath of ['/api/auth/login', '/api/auth/grid', '/api/auth/second-factor']) {
+for (const credentialPath of ['/api/auth/login', '/api/auth/grid', '/api/auth/second-factor', '/api/auth/register', '/api/auth/recover']) {
   app.use(credentialPath, authFloodLimiter);
   app.use(credentialPath, authLimiter);
 }
@@ -177,6 +177,8 @@ app.use('/api/settings', authMiddleware, require('./routes/settings'));
 app.use('/api/extras', authMiddleware, require('./routes/extras'));
 app.use('/api/series', authMiddleware, require('./routes/series'));
 app.use('/api/profiles', authMiddleware, require('./routes/profiles'));
+// Accounts made with "Create a new account", sign-up and recovery email.
+app.use('/api/accounts', authMiddleware, require('./routes/accounts'));
 app.use('/api/system', authMiddleware, require('./routes/system'));
 app.use('/api/podcasts', authMiddleware, require('./routes/podcasts'));
 app.use('/api/comics', authMiddleware, require('./routes/comics'));

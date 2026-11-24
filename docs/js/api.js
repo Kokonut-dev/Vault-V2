@@ -302,7 +302,7 @@ class ApiClient {
           const isCredentialStep = path.startsWith('/api/auth/login')
             || path.startsWith('/api/auth/grid')
             || path.startsWith('/api/auth/second-factor');
-          if (data.code === 'PROFILE_REMOVED') {
+          if (data.code === 'PROFILE_REMOVED' || data.code === 'ACCOUNT_REMOVED') {
             // The profile this device remembered was deleted: the next
             // sign-in must not ask for it again (profileSession.LAST_PROFILE_KEY).
             try { localStorage.removeItem('vault_last_profile'); } catch { /* private mode */ }
@@ -385,6 +385,70 @@ class ApiClient {
       auth: false,
       body: JSON.stringify({ challengeToken, pattern, ...profile }),
     });
+  }
+
+  // --- "Create a new account" and "Forgot password?" (no sign-in needed)
+  /** Make an account; signs in straight away (same answer as gridChallenge). */
+  register(data) {
+    return this.request('/api/auth/register', { method: 'POST', auth: false, body: data, retry: false });
+  }
+
+  /** Ask for a reset link. `appUrl` (this page) is where the link points. */
+  requestPasswordReset(identifier, appUrl) {
+    return this.request('/api/auth/recover', {
+      method: 'POST', auth: false, retry: false,
+      body: { identifier, appUrl, serverUrl: getApiBaseUrl() },
+    });
+  }
+
+  checkPasswordReset(token) {
+    return this.request('/api/auth/recover/check', { method: 'POST', auth: false, body: { token }, retry: false });
+  }
+
+  /** { token, password, confirmPassword, gridPattern, gridOrderMatters?, totpCode?, recoveryCode? } */
+  resetPassword(data) {
+    return this.request('/api/auth/recover/reset', { method: 'POST', auth: false, body: data, retry: false });
+  }
+
+  // --- Accounts (routes/accounts.js) --------------------------------------
+  getMyAccount() {
+    return this.request('/api/accounts/me', { cache: false });
+  }
+
+  updateMyEmail(email, currentPassword) {
+    return this.request('/api/accounts/me/email', { method: 'PUT', body: { email, currentPassword }, retry: false });
+  }
+
+  updateMyCredentials(data) {
+    return this.request('/api/accounts/me/credentials', { method: 'PUT', body: data, retry: false });
+  }
+
+  deleteMyAccount(currentPassword) {
+    return this.request('/api/accounts/me', { method: 'DELETE', body: { currentPassword }, retry: false });
+  }
+
+  getAccounts() {
+    return this.request('/api/accounts', { cache: false });
+  }
+
+  setSignupEnabled(enabled) {
+    return this.request('/api/accounts/signup', { method: 'PUT', body: { enabled }, retry: false });
+  }
+
+  setOwnerEmail(email) {
+    return this.request('/api/accounts/owner-email', { method: 'PUT', body: { email }, retry: false });
+  }
+
+  deleteAccount(id) {
+    return this.request(`/api/accounts/${encodeURIComponent(id)}`, { method: 'DELETE', retry: false });
+  }
+
+  saveMailSettings(data) {
+    return this.request('/api/accounts/mail', { method: 'PUT', body: data, retry: false });
+  }
+
+  sendTestEmail(to) {
+    return this.request('/api/accounts/mail/test', { method: 'POST', body: { to }, retry: false });
   }
 
   // Terms of Use (services/terms.js on the server)

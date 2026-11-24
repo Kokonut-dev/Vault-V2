@@ -13,7 +13,7 @@ const vm = require('node:vm');
 
 const SW_PATH = path.join(__dirname, '..', '..', 'docs', 'sw.js');
 const ORIGIN = 'https://kokonut-dev.github.io';
-const CURRENT_CACHE = 'vault-v2-shell-v18';
+const CURRENT_CACHE = 'vault-v2-shell-v19';
 
 function keyFor(request) {
   const raw = typeof request === 'string' ? request : request.url;

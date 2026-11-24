@@ -41,7 +41,23 @@ const DEFAULT_CONFIG = {
     totp: { enabled: false, secret: null, recoveryHashes: [] },
     profiles: { enabled: true, requirePinOnSelect: true },
     // Optional Subsonic password (AES-encrypted) so token-auth clients work.
-    subsonic: { enabled: false, username: null, passwordEnc: null }
+    subsonic: { enabled: false, username: null, passwordEnc: null },
+    // The owner's address for "Forgot password?" links (services/recovery.js).
+    email: null,
+    // "Create a new account" on the sign-in screen (services/accounts.js).
+    signup: { enabled: true }
+  },
+  // Outgoing email for recovery links. The SMTP password is stored encrypted
+  // (services/mailer.js); until this is set up, links appear in the server
+  // window instead.
+  mail: {
+    enabled: false,
+    host: '',
+    port: 587,
+    secure: false,
+    user: '',
+    passEnc: null,
+    from: '',
   },
   media: {
     paths: {
@@ -282,8 +298,11 @@ function persistedShape(newConfig) {
       lockoutDurationMinutes: newConfig.auth.lockoutDurationMinutes,
       totp: newConfig.auth.totp,
       profiles: newConfig.auth.profiles,
-      subsonic: newConfig.auth.subsonic
+      subsonic: newConfig.auth.subsonic,
+      email: newConfig.auth.email ?? null,
+      signup: newConfig.auth.signup
     },
+    mail: newConfig.mail,
     media: {
       paths: newConfig.media.paths,
       libraries: newConfig.media.libraries,

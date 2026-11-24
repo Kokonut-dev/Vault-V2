@@ -206,6 +206,8 @@ const OPEN_PATHS = [
   { method: 'POST', pattern: /^\/api\/auth\/refresh$/ },
   { method: 'GET', pattern: /^\/api\/profiles\/?$/ },
   { method: 'POST', pattern: /^\/api\/profiles\/[^/]+\/switch$/ },
+  // Someone who doesn't agree can still delete the account they just made.
+  { method: 'DELETE', pattern: /^\/api\/accounts\/me$/ },
 ];
 
 function gateAllows(method, fullPath) {

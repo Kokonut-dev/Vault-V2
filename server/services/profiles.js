@@ -47,13 +47,34 @@ function ensureDefaults() {
   // settings and no screen can fix it. This heals installs where the owner
   // profile was deleted (or predates the flag): the original `default`
   // profile, or failing that the oldest one, becomes admin again.
-  if (!data.profiles.some(p => p.isAdmin)) {
-    const owner = data.profiles.find(p => p.id === 'default') || data.profiles[0];
+  // Profiles that belong to a self-created account (sign-up) are never
+  // promoted: their owners are other people, not the server's owner.
+  if (!data.profiles.some(p => p.isAdmin && !p.accountId)) {
+    for (const p of data.profiles) if (p.accountId) p.isAdmin = false;
+    let owner = data.profiles.find(p => p.id === 'default' && !p.accountId) || data.profiles.find(p => !p.accountId);
+    if (!owner) {
+      const config = getConfig();
+      owner = {
+        id: data.profiles.some(p => p.id === 'default') ? `p_${randomUUID().slice(0, 8)}` : 'default',
+        name: config?.auth?.username || 'Me',
+        color: COLORS[0], avatar: null, pinHash: null, kids: false, maxRating: null, allowUnrated: true,
+        createdAt: new Date().toISOString(),
+      };
+      data.profiles.unshift(owner);
+    }
     owner.isAdmin = true;
     store.set(data);
   }
   return data;
 }
+
+/** The owner's household profiles (not the ones that came with a sign-up account). */
+function householdProfiles(profiles) {
+  return profiles.filter(p => !p.accountId);
+}
+
+/** Maximum household profiles; accounts from sign-up have their own limit (services/accounts.js). */
+const MAX_HOUSEHOLD_PROFILES = 12;
 
 function adminCount(profiles) {
   return profiles.filter(p => p.isAdmin).length;
@@ -125,9 +146,11 @@ function hashPin(value) {
   return bcrypt.hashSync(pin, 10);
 }
 
-function create({ name, color, avatar = null, kids = false, maxRating, allowUnrated, pin = null, isAdmin = false }) {
+function create({ name, color, avatar = null, kids = false, maxRating, allowUnrated, pin = null, isAdmin = false, accountId = null }) {
   const data = ensureDefaults();
-  if (data.profiles.length >= 12) throw new ProfileError('Maximum of 12 profiles', 'PROFILE_LIMIT');
+  if (!accountId && householdProfiles(data.profiles).length >= MAX_HOUSEHOLD_PROFILES) {
+    throw new ProfileError(`Maximum of ${MAX_HOUSEHOLD_PROFILES} profiles`, 'PROFILE_LIMIT');
+  }
   const isKids = !!kids;
   const limit = maxRating === undefined ? (isKids ? KIDS_DEFAULT_AGE : null) : cleanMaxRating(maxRating);
   const profile = {
@@ -144,6 +167,11 @@ function create({ name, color, avatar = null, kids = false, maxRating, allowUnra
     allowUnrated: allowUnrated === undefined ? !isKids : !!allowUnrated,
     createdAt: new Date().toISOString(),
   };
+  if (accountId) {
+    // A sign-up account's own profile: never admin (see ensureDefaults).
+    profile.accountId = String(accountId);
+    profile.isAdmin = false;
+  }
   data.profiles.push(profile);
   store.set(data);
   events.broadcast('profile:changed', { id: profile.id, action: 'create' });
@@ -170,6 +198,9 @@ function update(id, updates = {}) {
   if (updates.maxRating !== undefined) next.maxRating = cleanMaxRating(updates.maxRating);
   if (updates.allowUnrated !== undefined) next.allowUnrated = !!updates.allowUnrated;
   if (updates.isAdmin !== undefined) {
+    if (updates.isAdmin && current.accountId) {
+      throw new ProfileError('Profiles of accounts made with "Create a new account" can’t be admins.', 'ACCOUNT_NOT_ADMIN');
+    }
     next.isAdmin = !!updates.isAdmin;
     if (!next.isAdmin && current.isAdmin && adminCount(data.profiles) <= 1) {
       throw new ProfileError('Vault needs at least one admin profile. Make another profile an admin first.', 'LAST_ADMIN');
@@ -187,6 +218,9 @@ function remove(id) {
   const target = data.profiles.find(p => p.id === id);
   if (!target) return false;
   if (data.profiles.length <= 1) throw new ProfileError('At least one profile is required', 'LAST_PROFILE');
+  if (!target.accountId && householdProfiles(data.profiles).length <= 1) {
+    throw new ProfileError('At least one of your own profiles is required', 'LAST_PROFILE');
+  }
   if (target.isAdmin && adminCount(data.profiles) <= 1) {
     throw new ProfileError('This is the only admin profile. Make another profile an admin before deleting it.', 'LAST_ADMIN');
   }
@@ -271,6 +305,11 @@ function listPublic() {
   return list().map(toPublic);
 }
 
+/** The household's own profiles (not those of accounts made with sign-up). */
+function listHousehold() {
+  return householdProfiles(list());
+}
+
 // ---------------------------------------------------------------------------
 // Age limits
 // ---------------------------------------------------------------------------
@@ -345,6 +384,8 @@ module.exports = {
   setTerms,
   list,
   listPublic,
+  listHousehold,
+  MAX_HOUSEHOLD_PROFILES,
   get,
   getDefault,
   create,
