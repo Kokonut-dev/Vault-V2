@@ -45,6 +45,7 @@ const sessions = require('../services/sessions');
 const setupGuard = require('../services/setupGuard');
 const clientAddress = require('../utils/clientAddress');
 const { authMiddleware } = require('../middleware/auth');
+require('./helpers/terms').autoAcceptTerms(); // not a Terms of Use test (see test/terms.test.js)
 const { requireAdmin } = require('../middleware/requireAdmin');
 const transferRouter = require('../routes/transfer');
 const authRouter = require('../routes/auth');

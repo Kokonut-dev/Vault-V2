@@ -46,6 +46,7 @@ const zip = require('../utils/zipStream');
 const authService = require('../services/authService');
 const sessions = require('../services/sessions');
 const { authMiddleware } = require('../middleware/auth');
+require('./helpers/terms').autoAcceptTerms(); // not a Terms of Use test (see test/terms.test.js)
 const transferRouter = require('../routes/transfer');
 
 function tokenFor(profileId) {

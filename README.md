@@ -193,14 +193,15 @@ All off until you configure them, all in **Settings**:
 
 ## First run — the setup wizard
 
-The first time you open Vault, a 6-step wizard appears:
+The first time you open Vault, a 7-step wizard appears:
 
 1. **Welcome** → **Get Started**
 2. **Connect to Server** — `http://localhost:4000` is filled in. Click **Test & Continue**. If it can't connect, check the terminal still says `Vault server ready!`.
 3. **Create Admin Account** — a username (3+ characters: letters, numbers, `_`, `-`) and a password you'll remember.
 4. **Security Grid** — your second password: click **exactly 8** of the 16 squares in a pattern you'll remember. With **Order matters** on, you must click them in the same order every time (more secure). **Write the pattern down.**
 5. **Media & Preferences** — pick a theme and media folders. The defaults (`./media/movies`, `./media/music`, `./media/videos`) live inside `Vault-V2/server/media/` and are created for you.
-6. **Ready to Launch** — review and click **Complete Setup**.
+6. **Terms of Use** — read the [Terms of Use](https://kokonut-dev.github.io/Vault-V2/terms.html) to the end and tick the boxes to accept them. You can't finish setup without accepting.
+7. **Ready to Launch** — review and click **Complete Setup**.
 
 You're signed in automatically. Next time: username + password, then your 8 squares.
 
@@ -279,6 +280,8 @@ npm install
 ```
 
 Then restart Vault: **Settings → Connection → Restart**, or `Ctrl + C` in the terminal and `npm start` again. Your account, library and settings (`server/config.json`, `server/data/`) are kept.
+
+If the update brings new or changed [Terms of Use](https://kokonut-dev.github.io/Vault-V2/terms.html), everyone is asked to read and accept them the next time they sign in or pick their profile. Nothing works for that profile until they do (the server refuses its requests, including from Subsonic apps).
 
 ---
 
@@ -577,6 +580,12 @@ GET  /rest/*                         Subsonic-compatible API for music apps
 
 ---
 
+## Terms of Use
+
+Using Vault means accepting the [Terms of Use](https://kokonut-dev.github.io/Vault-V2/terms.html) (also in [`docs/terms.html`](docs/terms.html)). In short: Vault comes with no content, **you alone are responsible for what you use it for, including any piracy, not the website, the creator or any contributor**, it comes "as is", and Dutch law applies (consumers keep their mandatory rights). Every profile accepts them for itself; a parent or guardian accepts for a kids' profile. Each acceptance is kept in `server/data/terms-acceptances.json` (admins: `GET /api/legal/acceptances`).
+
+**Changing the Terms** (maintainers): edit the `<article id="terms-document">` in `docs/terms.html`, raise its `data-version` and `data-effective`, then add the new version and its fingerprint to `server/legal/terms-versions.json` (`node -e "const t=require('./server/services/terms');const p=t.parse(require('fs').readFileSync('docs/terms.html','utf8'));console.log(p.version,p.effective,p.sha256)"`). If the text and the fingerprint don't match, the server refuses access for everyone until fixed, so an unreviewed edit can never be treated as accepted.
+
 ## License
 
-MIT — see [LICENSE](LICENSE).
+MIT — see [LICENSE](LICENSE). The MIT licence covers the code; the Terms of Use cover using Vault.

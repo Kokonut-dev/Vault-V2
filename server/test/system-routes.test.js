@@ -44,6 +44,7 @@ const scanner = require('../services/scanner');
 const authService = require('../services/authService');
 const sessions = require('../services/sessions');
 const { authMiddleware } = require('../middleware/auth');
+require('./helpers/terms').autoAcceptTerms(); // not a Terms of Use test (see test/terms.test.js)
 
 function tokenFor(profileId) {
   const session = sessions.create({ username: 'admin', profileId, req: { headers: {}, ip: '127.0.0.1' }, label: 'test' });

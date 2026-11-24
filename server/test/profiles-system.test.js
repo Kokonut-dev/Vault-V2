@@ -76,6 +76,7 @@ const contentRating = require('../services/contentRating');
 const sessions = require('../services/sessions');
 const extras = require('../services/extras');
 const { authMiddleware } = require('../middleware/auth');
+require('./helpers/terms').autoAcceptTerms(); // not a Terms of Use test (see test/terms.test.js)
 
 const P = (id, extra = {}) => ({ id, name: id, color: '#5B87C9', avatar: null, pinHash: null, isAdmin: false, kids: false, maxRating: null, ...extra });
 function seed(list) {

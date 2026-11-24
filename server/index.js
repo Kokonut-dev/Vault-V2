@@ -150,6 +150,8 @@ app.use('/api/setup', require('./routes/setup'));
 
 // Auth routes (no auth middleware)
 app.use('/api/auth', require('./routes/auth'));
+// Terms of Use: public text, plus per-profile status and acceptance.
+app.use('/api/legal', require('./routes/legal'));
 
 // Protected routes
 app.use('/api/library', authMiddleware, require('./routes/library'));

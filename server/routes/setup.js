@@ -246,7 +246,34 @@ router.post('/complete', async (req, res) => {
       server: serverSettings,
       corsOrigins,
       theme,
+      acceptTerms,
     } = req.body;
+
+    // Signing up means agreeing to the Terms of Use: a new server is only set
+    // up by someone who read and accepted the current version (the wizard
+    // sends back the version and fingerprint it showed). Re-configuring an
+    // existing server is done by a signed-in admin, who already accepted.
+    const termsService = require('../services/terms');
+    const currentTerms = termsService.current();
+    if (needsSetup) {
+      if (!currentTerms) {
+        return res.status(503).json({ error: 'The Terms of Use could not be loaded on this server.', code: 'TERMS_UNAVAILABLE' });
+      }
+      const ok = acceptTerms && typeof acceptTerms === 'object'
+        && acceptTerms.readToEnd === true
+        && acceptTerms.version === currentTerms.version
+        && acceptTerms.sha256 === currentTerms.sha256;
+      if (!ok) {
+        const outdated = acceptTerms && acceptTerms.version && acceptTerms.version !== currentTerms.version;
+        return res.status(outdated ? 409 : 400).json({
+          error: outdated
+            ? 'The Terms of Use have changed. Please read the current version.'
+            : 'Please read and accept the Terms of Use to set up Vault.',
+          code: outdated ? 'TERMS_OUTDATED' : 'TERMS_NOT_ACCEPTED',
+          terms: { version: currentTerms.version, effective: currentTerms.effective },
+        });
+      }
+    }
 
     // Validation
     if (!username || !password || !gridPattern) {
@@ -431,6 +458,19 @@ router.post('/complete', async (req, res) => {
     const session = sessionStore.create({ username: cleanUsername, profileId: 'default', req, label: 'Setup' });
     const token = authService.generateAccessToken(cleanUsername, { sid: session.id, profileId: 'default' });
     const decoded = authService.verifyToken(token);
+
+    // The owner's acceptance, recorded like any other (evidence included).
+    if (needsSetup) {
+      termsService.accept({
+        profileId: 'default',
+        version: acceptTerms.version,
+        sha256: acceptTerms.sha256,
+        readToEnd: true,
+        user: cleanUsername,
+        session,
+        ip,
+      });
+    }
 
     logger.info(`Setup completed by ${cleanUsername} from ${ip} — config saved to ${CONFIG_PATH}`);
 

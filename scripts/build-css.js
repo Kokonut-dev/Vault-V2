@@ -54,6 +54,7 @@ const SHEETS = [
   // so the Content-Security-Policy can forbid inline styles.
   'auth-gate.css',
   'views.css',
+  'terms.css', // Terms of Use gate and reader (components/termsGate.js)
 ];
 
 // One marker string per sheet (verified unique across sources) — proves the
@@ -78,6 +79,7 @@ const MARKERS = {
   'responsive.css': 'fit-guard',
   'auth-gate.css': 'auth-prompt-open',
   'views.css': 'upload-type-card',
+  'terms.css': 'terms-reader-scroll',
 };
 
 function loadCleanCss() {

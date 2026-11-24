@@ -77,6 +77,7 @@ async function setup(t) {
   library.init();
 
   const { authMiddleware } = require('../middleware/auth');
+  require('./helpers/terms').autoAcceptTerms(); // not a Terms of Use test (see test/terms.test.js)
   const app = express();
   app.use(express.json());
   app.use(authMiddleware);

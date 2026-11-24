@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; script-src-attr 'none'; style-src 'self'; style-src-elem 'self'; style-src-attr 'none'; img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'none'">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="referrer" content="no-referrer">
+  <meta name="description" content="The Terms of Use for Vault, the self-hosted media server, its apps and its website.">
+  <title>Terms of Use — Vault</title>
+  <link rel="icon" href="icons/icon-192.png">
+  <link rel="stylesheet" href="css/legal.css">
+  <script src="js/legal-page.js" defer></script>
+</head>
+<body>
+  <a class="skip-link" href="#terms-document">Skip to the terms</a>
+  <header class="legal-header">
+    <a class="legal-brand" href="./">Vault</a>
+    <nav class="legal-nav" aria-label="Page">
+      <button type="button" class="legal-print" data-legal-print hidden>Print or save as PDF</button>
+      <a href="./">Open Vault</a>
+    </nav>
+  </header>
+
+  <main class="legal-main">
+    <!--
+      The <article> below is the binding text. Vault's server reads it to show
+      the terms in the app and to know which version must be accepted. If you
+      change ANYTHING inside it, give it a new data-version and data-effective
+      date, and add the new version to server/legal/terms-versions.json
+      (`npm test` fails otherwise). Everyone is then asked to accept again.
+    -->
+    <article id="terms-document" class="legal-document" data-version="1.0" data-effective="2026-11-18">
+<h1>Vault Terms of Use</h1>
+<p class="legal-meta">Version 1.0 · Effective 18 November 2026</p>
+
+<div class="legal-summary">
+<h2>The key points</h2>
+<p>This summary helps you find your way. It is not a substitute for the full Terms below, which are what you agree to.</p>
+<ul>
+<li><strong>Vault is a tool that you run yourself.</strong> It comes with no films, music, shows, channels or other content. The people who make Vault never see, store, send or control what you put in it.</li>
+<li><strong>You alone are responsible for what you do with it.</strong> All piracy, and any other infringement committed with Vault, is the sole responsibility of the user who commits it. It is not the responsibility of the website, the creator of Vault or anyone else who contributed to it.</li>
+<li><strong>Only use content you have the right to use.</strong> In the European Union, downloading or streaming from an illegal source is generally against the law, even just for yourself.</li>
+<li><strong>Vault is free and comes "as is".</strong> As far as the law allows, there is no warranty and the creator's liability is limited (Sections 8 and 9). You cover the creator if your use of Vault leads to a claim against them (Section 10).</li>
+<li><strong>Dutch law applies.</strong> If you are a consumer, you keep the protections of the law where you live (Section 13).</li>
+</ul>
+</div>
+
+<section id="s1">
+<h2>1. About these Terms</h2>
+<p><strong>1.1 Agreement.</strong> These Terms of Use (the "Terms") are a legally binding agreement between you and the Vault Parties (defined below). They apply to every use of Vault and of the Website.</p>
+<p><strong>1.2 Definitions.</strong> In these Terms:</p>
+<ul>
+<li>"<strong>Vault</strong>" or the "<strong>Software</strong>" means the Vault media server software and its web, progressive web, desktop and any other apps or clients, including all updates, whatever their source.</li>
+<li>"<strong>Website</strong>" means the pages published for Vault at kokonut-dev.github.io/Vault-V2 (including the hosted web app and the landing page) and the project's source code repository at github.com/Kokonut-dev/Vault-V2.</li>
+<li>"<strong>Creator</strong>" means Kokonut-dev, the developer who publishes Vault.</li>
+<li>"<strong>Vault Parties</strong>" means the Creator, every person who has contributed to or maintains Vault or the Website, and their respective heirs, successors, assigns, agents and representatives.</li>
+<li>"<strong>Operator</strong>" means the person who installs, runs or controls a Vault server.</li>
+<li>"<strong>you</strong>" or "<strong>User</strong>" means any person who uses Vault or the Website, including every Operator and every person who uses a profile, device or app connected to a Vault server.</li>
+<li>"<strong>Content</strong>" means any file, recording, work, stream, channel, broadcast, link, playlist, torrent, feed, metadata, artwork, text or other material that you access, add, upload, import, download, record, convert, play, stream, restream, share or otherwise handle with Vault.</li>
+<li>"<strong>Piracy</strong>" means obtaining, copying, downloading, uploading, seeding, streaming, restreaming, broadcasting, communicating to the public, making available, distributing, selling or otherwise using any work or other protected material without the permission of the rights holder and without a legal exception that actually applies to you.</li>
+</ul>
+<p><strong>1.3 Acceptance.</strong> You accept these Terms by ticking the agreement boxes and selecting "Agree" in Vault, and in any case by installing, accessing or using Vault or the Website. If you do not agree, you must not use Vault or the Website, and Vault will not let you continue. Your electronic acceptance has the same legal effect as a handwritten signature, to the fullest extent the applicable law allows (including Regulation (EU) No 910/2014, Article 6:227a of the Dutch Civil Code and the U.S. Electronic Signatures in Global and National Commerce Act).</p>
+<p><strong>1.4 Age and capacity.</strong> You confirm that you are at least 18 years old, or the age of majority where you live if that is higher, and that you have the legal capacity to enter into this agreement. A person below that age may only use Vault through a profile for which a parent or legal guardian has accepted these Terms on their behalf, and only under that parent's or guardian's supervision. By accepting for a minor, the parent or guardian also accepts these Terms personally and is responsible for the minor's use of Vault.</p>
+<p><strong>1.5 Organisations.</strong> If you accept these Terms on behalf of a company or other organisation, you confirm that you have the authority to bind it, and "you" also means that organisation.</p>
+<p><strong>1.6 Open-source licence.</strong> The source code of Vault is licensed under the MIT License. Nothing in these Terms limits any right that the MIT License grants in that source code. These Terms govern your use of Vault and the Website, set out the rules for lawful use, and allocate responsibility for how Vault is used. If you modify, fork, package or distribute Vault, you are solely responsible for your version and for its use, and the Vault Parties are not responsible for it.</p>
+</section>
+
+<section id="s2">
+<h2>2. What Vault is, and what it is not</h2>
+<p><strong>2.1 Self-hosted software.</strong> Vault is software that runs on hardware chosen and controlled by the Operator. It is a general-purpose tool for organising and playing media, in the same way as a media player, a file manager or a video recorder.</p>
+<p><strong>2.2 No content and no control.</strong> The Vault Parties:</p>
+<ul>
+<li>do not host, store, cache, upload, transmit, index, curate, select, recommend, sell, license or otherwise provide any Content;</li>
+<li>ship no films, music, series, channels, playlists, streams, torrents or other Content with Vault, and do not link to any source of infringing Content;</li>
+<li>operate no server that your Content passes through (the Website consists of pages hosted by GitHub, Inc.);</li>
+<li>have no access to, knowledge of or control over the Content on any Vault server, who uses that server or how it is used;</li>
+<li>cannot monitor, block or remove Content on any Vault server; and</li>
+<li>receive no payment or other benefit from your use of Vault.</li>
+</ul>
+<p><strong>2.3 Made for lawful use.</strong> Vault is designed for Content you are entitled to use. Examples include your own recordings and photos; music, films and books that you own or license, copied only where the law allows it; works in the public domain or under licences such as Creative Commons; podcasts; and broadcasts that you are licensed to receive. Features such as the torrent client, Live TV and IPTV lists, link and playlist import, Google Drive import, conversion, restreaming, remote access, sharing and SyncPlay are general-purpose features with substantial lawful uses. Their presence is not an invitation, encouragement, instruction or permission to infringe anyone's rights.</p>
+<p><strong>2.4 No endorsement.</strong> No feature, name, description, screenshot, example or statement by any Vault Party, in Vault, on the Website or anywhere else, means that any Vault Party endorses, encourages or authorises any particular Content, source or use, or that any use is lawful.</p>
+</section>
+
+<section id="s3">
+<h2>3. Your responsibility for Content, including piracy</h2>
+<p><strong>3.1 You alone are responsible.</strong> <strong>All piracy, and any other infringement of copyright, related rights, database rights, trade marks or other intellectual property rights, committed with or through Vault, is the sole responsibility of the User who commits it.</strong> Where the Operator of the server enables, permits or tolerates it, the Operator is responsible as well. <strong>It is not the responsibility of the Website, the Creator or any other Vault Party.</strong> The same applies to any breach of a licence, of the terms of a broadcaster or streaming service, or of the law, and to any circumvention of technical protection measures, committed with or through Vault. You are solely responsible for all Content and for everything you do with Vault.</p>
+<p><strong>3.2 Your promises.</strong> For all Content you handle with Vault, you represent and warrant that:</p>
+<ul>
+<li>you own it or hold every right, licence, consent and permission needed for everything you do with it;</li>
+<li>your use complies with all laws that apply to you, including the laws of the country you are in; and</li>
+<li>you have checked for yourself whether your use is lawful. The Vault Parties give no legal advice and make no promise that any use is lawful where you are. For example, under the case law of the Court of Justice of the European Union, downloading or streaming from an illegal source is generally unlawful in the European Union, even for private use.</li>
+</ul>
+<p><strong>3.3 No authorisation.</strong> The Vault Parties do not authorise, encourage, induce, assist or condone Piracy or any other infringement, and nothing done or said by a Vault Party may be understood as doing so. These Terms give you no rights in any Content owned by anyone else.</p>
+<p><strong>3.4 What you must not do.</strong> You must not use Vault, or allow it to be used, to:</p>
+<ol type="a">
+<li>commit Piracy or any other infringement of anyone's rights;</li>
+<li>circumvent, remove or disable any digital rights management, technical protection measure or rights-management information (for example, contrary to Articles 6 and 7 of Directive 2001/29/EC, Articles 29a and 29b of the Dutch Copyright Act, or 17 U.S.C. § 1201). Vault does not remove such protections, and you must not combine it with tools that do;</li>
+<li>add, play or restream IPTV lists, channels or streams that you are not licensed to receive, or retransmit subscription or pay-TV broadcasts without the rights holder's permission;</li>
+<li>download, seed or share Content through the torrent client, or any other feature, without the rights holder's permission;</li>
+<li>use remote access, profiles, pairing, sharing, SyncPlay or any other feature to make Content available to the public, to anyone outside the circle of people the law allows, or in exchange for payment;</li>
+<li>store, play or distribute any illegal Content, including child sexual abuse material, terrorist content, or intimate images shared without consent. These are absolutely prohibited;</li>
+<li>harass anyone, infringe anyone's privacy, or process anyone's personal data unlawfully;</li>
+<li>break the terms of any third-party service that you use with Vault;</li>
+<li>access, probe or attack any system or network without permission, distribute malware, or use Vault's link-fetching features to reach systems you are not authorised to use;</li>
+<li>break export control or sanctions laws; or</li>
+<li>use the name "Vault", the Vault logo or any Vault Party's name in a way that suggests their endorsement.</li>
+</ol>
+<p><strong>3.5 Operators.</strong> The Operator decides who may use their server, through profiles, devices, pairing and remote access, and what Content is on it. To the fullest extent the law allows, the Operator is responsible for that use as if it were their own. The Operator must make sure that every person using their server accepts these Terms, and must comply with the law in running the server. That includes acting on lawful notices from rights holders or authorities, removing infringing Content from their server, and complying with data protection law.</p>
+<p><strong>3.6 No agency.</strong> The Vault Parties are not your agents, advisers, partners or service providers, and do not act on your behalf.</p>
+</section>
+
+<section id="s4">
+<h2>4. Copyright complaints and legal notices</h2>
+<p><strong>4.1 Content on a Vault server.</strong> Because the Vault Parties do not host or control any Content (Section 2.2), they cannot remove Content from any Vault server. Complaints about Content on a Vault server must be sent to the Operator of that server and, where appropriate, to that Operator's internet provider or to the competent authorities.</p>
+<p><strong>4.2 The Website and the source code.</strong> If you believe that the Website or Vault's source code itself infringes your rights, you can use GitHub's copyright (DMCA) takedown process for content hosted on GitHub, or contact the Creator through the repository at github.com/Kokonut-dev/Vault-V2. Use a private security advisory for anything that should not be public. Do not post personal data in a public issue.</p>
+<p><strong>4.3 Notices to you.</strong> The Vault Parties may give you notices by publishing them in Vault, on the Website or in the repository.</p>
+</section>
+
+<section id="s5">
+<h2>5. Third-party services</h2>
+<p><strong>5.1 Your choice, their terms.</strong> Vault can connect, at your choice, to services and networks operated by others. Examples include The Movie Database (TMDB), MusicBrainz, Google Drive, Cloudflare, IPTV list and podcast providers, BitTorrent networks and Subsonic-compatible apps. Your use of each is governed by its own terms and privacy policy, which you must follow. The Vault Parties do not control, endorse or answer for any third-party service, its content or its availability.</p>
+<p><strong>5.2 Torrent networks.</strong> Torrent networks are public. Other participants, including rights holders and their agents, can see your IP address and what you download and share. Using a VPN does not make an unlawful use lawful.</p>
+<p><strong>5.3 TMDB.</strong> This product uses the TMDB API but is not endorsed or certified by TMDB.</p>
+</section>
+
+<section id="s6">
+<h2>6. Privacy</h2>
+<p><strong>6.1 The Vault Parties collect nothing.</strong> The Vault Parties do not receive or process your Content or your personal data through Vault. Vault contains no analytics or telemetry. What you put in Vault stays on the Operator's server and devices.</p>
+<p><strong>6.2 The Operator.</strong> The Operator is responsible for the personal data of the people who use their server. To prove that these Terms were accepted, Vault stores a record on the Operator's server only. It contains the profile, the version of the Terms, the time, the device and its network address.</p>
+<p><strong>6.3 The Website.</strong> The Website is hosted by GitHub, Inc., which may process technical data, such as IP addresses, under its own privacy statement.</p>
+</section>
+
+<section id="s7">
+<h2>7. Security</h2>
+<p>You are responsible for securing your server, network, devices, passwords and backups, for keeping Vault and your systems up to date, and for the consequences of enabling remote access or sharing. No software is completely secure, and the Vault Parties do not promise that Vault is free of vulnerabilities.</p>
+</section>
+
+<section id="s8">
+<h2>8. No warranty</h2>
+<p><strong>8.1</strong> To the maximum extent permitted by applicable law, Vault and the Website are provided free of charge, "as is" and "as available", with all faults and without any warranty or condition of any kind, whether express, implied or statutory. This includes any warranty of merchantability, satisfactory quality, fitness for a particular purpose, title, non-infringement, accuracy, availability, security, compatibility or freedom from errors, and any warranty that your data or Content will not be lost or damaged. No advice or information obtained from any Vault Party creates any warranty.</p>
+<p><strong>8.2</strong> Keep your own backups. You use Vault at your own risk.</p>
+<p><strong>8.3</strong> Nothing in this Section excludes or limits any warranty, guarantee or right that cannot be excluded or limited under the law that applies to you.</p>
+</section>
+
+<section id="s9">
+<h2>9. Limitation of liability</h2>
+<p><strong>9.1 Excluded losses.</strong> To the maximum extent permitted by applicable law, the Vault Parties are not liable for any indirect, incidental, special, consequential, exemplary or punitive damages. Nor are they liable for any loss of data, Content, profits, revenue, savings, business or goodwill, or for any claim brought by a third party (including any rights holder), arising out of or relating to Vault, the Website, your Content, the conduct of any User or Operator, or any third-party service. This applies whatever the basis of the claim (contract, tort including negligence, strict liability, statute or otherwise), even if the Vault Party was told such damage was possible.</p>
+<p><strong>9.2 Cap.</strong> To the maximum extent permitted by applicable law, the total liability of all Vault Parties together, for all claims relating to Vault, the Website or these Terms, is limited to the greater of (a) the amount you paid to the Vault Parties for Vault in the twelve months before the claim arose (normally nothing), and (b) fifty euros (EUR 50).</p>
+<p><strong>9.3 What is never limited.</strong> Nothing in these Terms excludes or limits liability:</p>
+<ul>
+<li>for death or personal injury caused by negligence;</li>
+<li>for fraud or fraudulent misrepresentation;</li>
+<li>for damage caused by the intent or gross negligence (deliberate recklessness) of a Vault Party; or</li>
+<li>that cannot be excluded or limited under the law that applies to you, including mandatory consumer protection law.</li>
+</ul>
+<p><strong>9.4 Why.</strong> Vault is made available free of charge by volunteers. The exclusions and limitations in Sections 8, 9 and 10 reflect that, and are an essential basis on which Vault is offered.</p>
+</section>
+
+<section id="s10">
+<h2>10. Indemnity</h2>
+<p><strong>10.1</strong> To the maximum extent permitted by applicable law, you will indemnify, defend and hold harmless each Vault Party against all claims, demands, actions, proceedings, damages, losses, liabilities, fines, penalties, settlements, costs and expenses (including reasonable lawyers' fees) arising out of or relating to:</p>
+<ol type="a">
+<li>your Content;</li>
+<li>your use or misuse of Vault or the Website;</li>
+<li>any Piracy or other infringement committed by you, or through a server you operate;</li>
+<li>your breach of these Terms; or</li>
+<li>your breach of any law or of anyone's rights.</li>
+</ol>
+<p><strong>10.2</strong> A Vault Party may choose to conduct its own defence, in which case you will cooperate. You may not settle any claim in a way that imposes an obligation on, or admits fault for, a Vault Party without that Vault Party's written consent.</p>
+<p><strong>10.3</strong> If you are a consumer, this Section applies only to damage that is attributable to you and only to the extent the mandatory law that protects you allows.</p>
+</section>
+
+<section id="s11">
+<h2>11. Changes to Vault and to these Terms</h2>
+<p><strong>11.1 Vault.</strong> The Vault Parties may change, suspend or discontinue Vault or the Website at any time, and have no obligation to provide updates, support or maintenance.</p>
+<p><strong>11.2 These Terms.</strong> The Creator may update these Terms. Each new version has a new version number and effective date. Vault will ask you to read and accept the new version before you can continue to use it. If you do not accept, you must stop using Vault. Your earlier acceptance continues to govern your earlier use, and an update does not apply to disputes that arose before it took effect.</p>
+</section>
+
+<section id="s12">
+<h2>12. Ending this agreement</h2>
+<p>You may stop using Vault at any time. Your permission to use Vault under these Terms ends automatically if you break them, and an Operator may withdraw your access to their server. Sections 1, 3, 4, 6 and 8 to 14 continue to apply after this agreement ends.</p>
+</section>
+
+<section id="s13">
+<h2>13. Governing law and disputes</h2>
+<p><strong>13.1 Law.</strong> These Terms, and any dispute or claim arising out of or in connection with them, Vault or the Website (including non-contractual disputes or claims), are governed by the laws of the Netherlands. The United Nations Convention on Contracts for the International Sale of Goods does not apply.</p>
+<p><strong>13.2 Courts.</strong> The competent court of the District Court of Midden-Nederland (Rechtbank Midden-Nederland), location Utrecht, has exclusive jurisdiction, subject to Section 13.3.</p>
+<p><strong>13.3 Consumers.</strong> If you are a consumer, this choice of law does not deprive you of the protection of the mandatory provisions of the law of the country where you have your habitual residence (Article 6(2) of Regulation (EC) No 593/2008, "Rome I"). You may also bring proceedings in, and may only be sued in, the courts of the country where you are domiciled where the law gives you that right (including Articles 17 to 19 of Regulation (EU) No 1215/2012).</p>
+</section>
+
+<section id="s14">
+<h2>14. General</h2>
+<p><strong>14.1 Entire agreement.</strong> These Terms, together with the MIT License and the terms of any third-party service you use, are the entire agreement between you and the Vault Parties about Vault and the Website.</p>
+<p><strong>14.2 Severability.</strong> If any provision of these Terms is held invalid or unenforceable, the rest remains in full force. Where the law permits, the invalid provision is replaced by a valid provision that comes as close as possible to its original purpose. If you are a consumer, an unfair term does not bind you, and the remaining Terms continue to apply.</p>
+<p><strong>14.3 No waiver.</strong> A failure or delay in enforcing any provision is not a waiver of it.</p>
+<p><strong>14.4 Assignment.</strong> You may not transfer your rights or obligations under these Terms. The Creator may transfer them to a successor maintainer of Vault, but this will not reduce your rights as a consumer.</p>
+<p><strong>14.5 Rights of the Vault Parties.</strong> Every Vault Party may rely on and enforce Sections 2, 3, 8, 9 and 10 directly, as a third-party beneficiary (including under Article 6:253 of the Dutch Civil Code).</p>
+<p><strong>14.6 Language.</strong> These Terms are written in English. If a translation is provided, the English version prevails, unless the law that protects you as a consumer requires otherwise.</p>
+<p><strong>14.7 Interpretation.</strong> Headings and the summary are for convenience only. "Including" means "including without limitation".</p>
+<p><strong>14.8 Contact.</strong> You can contact the Creator through the repository at github.com/Kokonut-dev/Vault-V2.</p>
+</section>
+
+<section id="s15">
+<h2>15. Your confirmation</h2>
+<p>By accepting these Terms, you confirm all of the following:</p>
+<ul>
+<li>you have read them in full, and had the opportunity to save or print a copy and to seek independent legal advice;</li>
+<li>you understand them; and</li>
+<li>you agree to be bound by them, in particular Section 3 (you alone are responsible for all piracy and other infringement), Section 8 (no warranty), Section 9 (limitation of liability) and Section 10 (indemnity).</li>
+</ul>
+</section>
+    </article>
+  </main>
+
+  <footer class="legal-footer">
+    <p>Vault is free, open-source software (MIT License). <a href="https://github.com/Kokonut-dev/Vault-V2">Source code on GitHub</a></p>
+  </footer>
+</body>
+</html>

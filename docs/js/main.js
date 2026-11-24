@@ -20,6 +20,7 @@ import { runViewCleanups } from './utils/lifecycle.js';
 import { swapView } from './utils/pageTransition.js';
 import { icon, hydrateIcons } from './utils/icons.js';
 import { installImageFallbacks, activateAsyncStylesheets } from './utils/imageFallback.js';
+import { ensureTermsAccepted, termsGateOpen } from './components/termsGate.js';
 
 // No inline event handlers (CSP): image fallbacks and the async onboarding
 // stylesheet are wired up here, before any view renders.
@@ -326,14 +327,47 @@ async function checkAuth() {
 
 let appReady = false;
 
-function showApp() {
+async function showApp() {
   if (authGate) authGate.style.display = 'none';
-  if (appEl) appEl.style.display = 'flex';
   // Hide onboarding if still present
   const obGate = document.getElementById('onboarding-gate');
   if (obGate) obGate.remove();
+  // Terms of Use first: nobody gets into the app without accepting the
+  // current version (the server refuses everything else until then too).
+  if (!(await passTermsGate())) return;
+  if (appEl) appEl.style.display = 'flex';
   initApp();
 }
+
+/** Show the Terms of Use if this profile hasn't accepted them. False = declined. */
+async function passTermsGate() {
+  let accepted = false;
+  try {
+    accepted = await ensureTermsAccepted();
+  } catch (err) {
+    toast.error(err.message);
+  }
+  if (!accepted) await declineTerms();
+  return accepted;
+}
+
+/** Declined (or can't be shown): sign this device out, back to the sign-in screen. */
+async function declineTerms() {
+  try { await api.logout(); } catch { /* signed out locally either way */ }
+  api.clearTokenCache();
+  store.clearAuth();
+  if (appEl) appEl.style.display = 'none';
+  showAuthGate();
+  toast.info('You need to accept the Terms of Use to use Vault.');
+}
+
+// The server asks for the terms (another profile, or the terms were updated
+// while the app was open). After accepting, reload so every view refetches.
+window.addEventListener('vault:terms-required', async () => {
+  if (termsGateOpen()) return;
+  const accepted = await passTermsGate();
+  if (accepted && appReady) window.location.reload();
+});
 
 function showAuthGate() {
   if (authGate) authGate.style.display = 'flex';

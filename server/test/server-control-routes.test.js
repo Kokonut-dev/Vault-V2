@@ -42,6 +42,7 @@ profiles.toPublic = (p) => (p ? { id: p.id, name: p.name, isAdmin: p.isAdmin } :
 const authService = require('../services/authService');
 const sessions = require('../services/sessions');
 const { authMiddleware } = require('../middleware/auth');
+require('./helpers/terms').autoAcceptTerms(); // not a Terms of Use test (see test/terms.test.js)
 const { requireAdmin } = require('../middleware/requireAdmin');
 const authRouter = require('../routes/auth');
 

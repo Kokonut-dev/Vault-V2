@@ -179,6 +179,12 @@ function bindProfile(req, res) {
     error(req, res, 50, 'The Vault profile Subsonic uses was removed. Choose another in Vault → System → Services.');
     return false;
   }
+  // Subsonic apps can't show the Terms of Use, so the profile they browse as
+  // must have accepted the current version in Vault first.
+  if (!require('./terms').isAccepted(profileId)) {
+    error(req, res, 50, 'The Vault profile Subsonic uses has not accepted the current Terms of Use. Open Vault, sign in as that profile and accept them.');
+    return false;
+  }
   req.profileId = profileId;
   return true;
 }

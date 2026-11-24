@@ -1,0 +1,9 @@
+{
+  "_comment": "Every published version of docs/terms.html (the <article id=terms-document>). Changing the text needs a new data-version there and a new entry here; npm test checks it. Never edit or remove a published entry.",
+  "versions": {
+    "1.0": {
+      "effective": "2026-11-18",
+      "sha256": "b0d62468ddd013f5cac9414a6eee111c94d253db01cf76494e1d950f747ce868"
+    }
+  }
+}
