@@ -284,7 +284,8 @@ function assert(condition, message) {
     assert(played().length === 0, `expanding a genre started playback (${played().length} vault:play events)`);
     assert(list.hidden === false, 'genre track list did not expand');
     assert(jazz.querySelector('.genre-toggle').getAttribute('aria-expanded') === 'true', 'aria-expanded not updated');
-    const rows = [...list.querySelectorAll('.media-list-item')].map((r) => r.dataset.id);
+    // Cards in Grid mode, rows in List mode — either way the genre's songs.
+    const rows = [...list.querySelectorAll('.media-card, .media-list-item')].map((r) => r.dataset.id);
     assert(rows.join(',') === 't3,t4', `Jazz should list t3,t4 — got ${rows.join(',') || '(no rows)'}`);
 
     jazz.querySelector('.genre-toggle').click();
@@ -341,6 +342,158 @@ function assert(condition, message) {
     assert(!c.querySelector('#albums-grid') && !c.querySelector('.genre-group'),
       'a bogus grouping still rendered a grouped view');
     store.set('musicGroupBy', 'album', true); // leave the store as we found it
+  });
+
+  // ------------------------------------------------------- Grid / List
+  console.log('[music-view-check] Grid / List works in every grouping');
+
+  {
+    localStorage.removeItem('vault_view_modes');
+    store.set('viewModes', {});
+    store.set('musicGroupBy', 'all');
+    const c = mount();
+    const pick = (name) => { c.querySelector(`[data-filter="${name}"]`).click(); };
+    const layout = (mode) => { c.querySelector(`.view-toggle [data-view="${mode}"]`).click(); };
+    const content = c.querySelector('#music-content');
+    const count = (sel) => content.querySelectorAll(sel).length;
+
+    await test('All Tracks: Grid shows cards, List shows rows', () => {
+      pick('all'); layout('grid');
+      assert(count('.media-card') === 6 && count('.media-list-item') === 0, `grid: ${count('.media-card')} cards / ${count('.media-list-item')} rows`);
+      layout('list');
+      assert(count('.media-list-item') === 6 && count('.media-card') === 0, `list: ${count('.media-card')} cards / ${count('.media-list-item')} rows`);
+    });
+
+    await test('Artists: the songs follow the Grid/List switch', () => {
+      pick('artist'); layout('list');
+      assert(count('.media-list-item') === 6 && count('.media-card') === 0, `list: ${count('.media-card')} cards / ${count('.media-list-item')} rows`);
+      layout('grid');
+      assert(count('.media-card') === 6 && count('.media-list-item') === 0, `grid: ${count('.media-card')} cards / ${count('.media-list-item')} rows`);
+    });
+
+    await test('Albums: Grid shows album cards, List shows album rows', () => {
+      pick('album'); layout('grid');
+      assert(count('#albums-grid .media-card') === 3, `grid: ${count('#albums-grid .media-card')} album cards`);
+      layout('list');
+      const rows = [...content.querySelectorAll('.media-list--albums .media-list-item')];
+      assert(rows.length === 3 && count('.media-card') === 0, `list: ${rows.length} album rows, ${count('.media-card')} cards`);
+      events.length = 0;
+      rows.find((r) => r.textContent.includes('First Light')).click();
+      assert(opened().length === 1 && played().length === 0, `row click: ${opened().length} opens, ${played().length} plays`);
+      rows.find((r) => r.textContent.includes('First Light')).querySelector('.media-list-play').click();
+      assert(played().length === 1 && played()[0].detail.queue.length === 3, 'album row Play should queue the 3 First Light tracks');
+    });
+
+    await test('Genres: an open genre redraws in the new layout and stays open', () => {
+      pick('genre'); layout('list');
+      const jazz = () => [...content.querySelectorAll('.genre-group')].find((g) => g.textContent.includes('Jazz'));
+      jazz().querySelector('.genre-toggle').click();
+      assert(jazz().querySelectorAll('.media-list-item').length === 2, 'list: Jazz should show 2 rows');
+      layout('grid');
+      assert(!jazz().querySelector('.genre-tracks').hidden, 'Jazz closed after switching layout');
+      assert(jazz().querySelectorAll('.media-card').length === 2 && jazz().querySelectorAll('.media-list-item').length === 0, 'grid: Jazz should show 2 cards');
+      jazz().querySelector('.genre-toggle').click();
+    });
+
+    await test('the choice is remembered per page', () => {
+      assert(JSON.parse(localStorage.getItem('vault_view_modes') || '{}').music === 'grid', `vault_view_modes = ${localStorage.getItem('vault_view_modes')}`);
+      const buttons = [...c.querySelectorAll('.view-toggle [data-view]')];
+      assert(buttons.every((b) => b.getAttribute('aria-pressed') === String(b.classList.contains('active'))), 'aria-pressed out of sync');
+    });
+  }
+
+  // ------------------------------------------------------ now playing
+  console.log('[music-view-check] now-playing marks on every music view');
+
+  {
+    const raf = (fn) => setTimeout(fn, 0);
+    if (typeof globalThis.requestAnimationFrame !== 'function') globalThis.requestAnimationFrame = raf;
+    globalThis.MutationObserver = window.MutationObserver;
+    if (typeof globalThis.CSS === 'undefined') globalThis.CSS = window.CSS || { escape: (v) => String(v) };
+    const { initNowPlaying } = await import(`${DOCS}utils/nowPlaying.js`);
+    initNowPlaying();
+    const settle = () => new Promise((r) => setTimeout(r, 30));
+    store.set('musicGroupBy', 'all');
+    const c = mount();
+    const content = c.querySelector('#music-content');
+    const pick = (name) => c.querySelector(`[data-filter="${name}"]`).click();
+    const layout = (mode) => c.querySelector(`.view-toggle [data-view="${mode}"]`).click();
+    store.set('currentTrack', lib[2]); // t3 "Dusk" — Nova / Second Wind / Jazz
+    store.set('isPlaying', true);
+
+    const marked = () => [...content.querySelectorAll('.np-current')];
+
+    await test('All Tracks marks the playing song (grid and list)', async () => {
+      pick('all'); layout('grid'); await settle();
+      let m = marked();
+      assert(m.length === 1 && m[0].dataset.id === 't3' && m[0].querySelector('.np-badge'), `grid marks: ${m.map((e) => e.dataset.id)}`);
+      layout('list'); await settle();
+      m = marked();
+      assert(m.length === 1 && m[0].dataset.id === 't3' && m[0].getAttribute('aria-current') === 'true', `list marks: ${m.map((e) => e.dataset.id)}`);
+    });
+
+    await test('Albums marks the album the song is on (grid and list)', async () => {
+      pick('album'); layout('grid'); await settle();
+      let m = marked();
+      assert(m.length === 1 && m[0].textContent.includes('Second Wind') && m[0].querySelector('.np-badge'), `grid marks: ${m.length}`);
+      layout('list'); await settle();
+      m = marked();
+      assert(m.length === 1 && m[0].textContent.includes('Second Wind'), `list marks: ${m.length}`);
+    });
+
+    await test('Artists and Genres mark the group and the song', async () => {
+      pick('artist'); layout('list'); await settle();
+      const titles = marked().filter((e) => e.classList.contains('music-group-title')).map((e) => e.textContent.trim());
+      assert(titles.length === 1 && titles[0].startsWith('Nova'), `artist headings marked: ${JSON.stringify(titles)}`);
+      assert(marked().some((e) => e.dataset.id === 't3'), 'the song row is not marked');
+      pick('genre'); await settle();
+      const heads = marked().map((e) => e.textContent.trim());
+      assert(heads.length === 1 && heads[0].includes('Jazz'), `genre heads marked: ${JSON.stringify(heads)}`);
+    });
+
+    await test('pausing stops the bars, a new song moves the mark, stopping clears it', async () => {
+      pick('all'); layout('list'); await settle();
+      store.set('isPlaying', false); await settle();
+      let m = marked();
+      assert(m.length === 1 && !m[0].classList.contains('np-playing') && !m[0].querySelector('.np-badge.is-playing'), 'still animating while paused');
+      store.set('currentTrack', lib[0]); store.set('isPlaying', true); await settle();
+      m = marked();
+      assert(m.length === 1 && m[0].dataset.id === 't1' && m[0].classList.contains('np-playing'), `after switching: ${m.map((e) => e.dataset.id)}`);
+      assert(!content.querySelector('[data-id="t3"] .np-badge'), 'old song kept its badge');
+      store.set('currentTrack', null); await settle();
+      assert(marked().length === 0 && !content.querySelector('.np-badge'), 'marks left after stopping');
+    });
+
+    await test('the album page marks the playing track', async () => {
+      store.set('currentTrack', lib[1]); store.set('isPlaying', true);
+      const page = document.createElement('div');
+      document.body.appendChild(page);
+      await renderDetail(page, 't1');
+      await nextTick(); await settle();
+      const rows = [...page.querySelectorAll('.media-list-item.np-current')].map((r) => r.dataset.id);
+      assert(rows.join(',') === 't2', `album page marked rows: ${rows.join(',') || '(none)'}`);
+      assert(page.querySelector('.album-header-meta.np-current'), 'album header not marked');
+      page.remove();
+      store.set('currentTrack', null);
+    });
+  }
+
+  // -------------------------------------------- big library (windowed grid)
+  console.log('[music-view-check] Grid → List on a big library');
+
+  await test('switching to List stops the windowed grid', async () => {
+    globalThis.getComputedStyle = window.getComputedStyle.bind(window);
+    const big = Array.from({ length: 200 }, (_, i) => ({ id: `b${i}`, type: 'music', title: `Big ${i}`, artist: 'Many', album: 'Lots', genre: 'Pop', track: i + 1, duration: 60, filename: `b${i}.mp3`, path: `/m/b${i}.mp3`, fileSize: 1 }));
+    store.setLibrary(big);
+    store.set('musicGroupBy', 'all');
+    const c = mount();
+    const content = c.querySelector('#music-content');
+    c.querySelector('.view-toggle [data-view="grid"]').click();
+    assert(content._vaultVirtualGrid && content.classList.contains('virtual-grid'), 'expected a windowed grid for 200 songs');
+    c.querySelector('.view-toggle [data-view="list"]').click();
+    assert(!content._vaultVirtualGrid && !content.classList.contains('virtual-grid'), 'the windowed grid was left running under the list');
+    assert(content.querySelectorAll('.media-list-item').length === 200, `list rows: ${content.querySelectorAll('.media-list-item').length}`);
+    store.setLibrary(lib);
   });
 
   console.log(`\n[music-view-check] ${checks - failed}/${checks} checks OK`);

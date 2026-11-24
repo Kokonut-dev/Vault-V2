@@ -5,9 +5,12 @@ import { store } from '../store.js';
 import { renderMediaGrid } from '../components/mediaGrid.js';
 import { renderMediaList } from '../components/mediaList.js';
 import { api } from '../api.js';
-import { escapeHtml, escapeAttr } from '../utils/format.js';
+import { escapeHtml, escapeAttr, durationSeconds, formatTotalDuration } from '../utils/format.js';
 import { subscribeView, onUnmount } from '../utils/lifecycle.js';
 import { icon } from '../utils/icons.js';
+import { wireViewToggle } from '../utils/viewMode.js';
+import { releaseVirtualGrid } from '../utils/virtualGrid.js';
+import { npIds } from '../utils/nowPlaying.js';
 
 export function renderMusic(container) {
   container.className = 'page';
@@ -24,8 +27,8 @@ export function renderMusic(container) {
     </div>
     <div class="view-controls">
       <div class="view-toggle">
-        <button class="active" data-view="grid">Grid</button>
-        <button data-view="list">List</button>
+        <button type="button" class="active" data-view="grid">Grid</button>
+        <button type="button" data-view="list">List</button>
       </div>
       <label class="sr-only" for="sort-select">Sort by</label>
       <select class="form-select" id="sort-select" style="width:auto;">
@@ -45,10 +48,11 @@ export function renderMusic(container) {
   const content = container.querySelector('#music-content');
   const sortSelect = container.querySelector('#sort-select');
   const filterInput = container.querySelector('#filter-input');
-  const viewButtons = container.querySelectorAll('.view-toggle button');
   const filterButtons = container.querySelectorAll('[data-filter]');
   
-  let viewMode = store.get('viewMode') || 'grid';
+  // Grid/List applies to every grouping: All Tracks, Artists, Albums and
+  // Genres (it used to change only All Tracks and did nothing on the others).
+  let viewMode = wireViewToggle(container, 'music', (mode) => { viewMode = mode; render(); });
   let sort = 'addedAt';
   let order = 'desc';
   let filter = '';
@@ -58,17 +62,6 @@ export function renderMusic(container) {
   const GROUPS = ['all', 'artist', 'album', 'genre'];
   const savedGroupBy = store.get('musicGroupBy');
   let groupBy = GROUPS.includes(savedGroupBy) ? savedGroupBy : 'all';
-  
-  viewButtons.forEach(btn => {
-    btn.classList.toggle('active', btn.dataset.view === viewMode);
-    btn.addEventListener('click', () => {
-      viewMode = btn.dataset.view;
-      viewButtons.forEach(b => b.classList.remove('active'));
-      btn.classList.add('active');
-      store.set('viewMode', viewMode, true);
-      render();
-    });
-  });
   
   filterButtons.forEach(btn => {
     btn.classList.toggle('active', btn.dataset.filter === groupBy);
@@ -132,6 +125,8 @@ export function renderMusic(container) {
   }
   
   function render() {
+    // Whatever was drawn before (a windowed grid included) is replaced.
+    releaseVirtualGrid(content);
     if (groupBy === 'artist') {
       renderArtists();
       return;
@@ -194,61 +189,143 @@ export function renderMusic(container) {
   }
 
   
-  function renderArtists() {
-    const items = getFiltered();
-    const artists = {};
-    items.forEach(item => {
-      const artist = item.artist || 'Unknown Artist';
-      if (!artists[artist]) artists[artist] = [];
-      artists[artist].push(item);
+  const openDetail = (item) => window.dispatchEvent(new CustomEvent('vault:open-detail', { detail: { item } }));
+  const playFrom = (tracks, item) => window.dispatchEvent(new CustomEvent('vault:play', {
+    detail: { item, queue: tracks, index: Math.max(0, tracks.findIndex(i => i.id === item.id)) },
+  }));
+
+  /** Same grouping for artists / albums / genres; first-seen order. */
+  function groupTracks(items, keyOf) {
+    const groups = new Map();
+    items.forEach((item) => {
+      const key = keyOf(item);
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key).push(item);
     });
-    
+    return [...groups.entries()];
+  }
+
+  function showEmpty() {
+    content.innerHTML = `
+      <div class="empty-state">
+        <div class="empty-state-icon">${icon('music', { size: 30 })}</div>
+        <div class="empty-state-title">${filter ? 'No matches' : 'No music yet'}</div>
+        <div class="empty-state-message">${filter ? 'Nothing matches that filter.' : 'Upload some tracks to get started.'}</div>
+      </div>`;
+  }
+
+  /**
+   * The songs of one artist or genre, drawn the way the Grid/List switch says.
+   * Grid cards open the song and their Play button plays it; list rows play
+   * on click. Either way the group is the queue.
+   */
+  function renderGroupTracks(el, tracks) {
+    if (viewMode === 'grid') {
+      renderMediaGrid(el, tracks, { onClick: openDetail, onPlay: (item) => playFrom(tracks, item) });
+    } else {
+      renderMediaList(el, tracks, { onClick: (item) => playFrom(tracks, item), onPlay: (item) => playFrom(tracks, item) });
+    }
+  }
+
+  function renderArtists() {
+    const artists = groupTracks(getFiltered(), item => item.artist || 'Unknown Artist')
+      .sort((a, b) => a[0].localeCompare(b[0]));
+    if (!artists.length) { showEmpty(); return; }
+
     content.innerHTML = '';
-    Object.entries(artists).sort((a, b) => a[0].localeCompare(b[0])).forEach(([artist, tracks]) => {
-      const section = document.createElement('div');
-      section.style.marginBottom = '32px';
+    artists.forEach(([artist, tracks]) => {
+      const section = document.createElement('section');
+      section.className = 'music-group';
+      const known = artist !== 'Unknown Artist';
+      const artistPath = `/artist/${encodeURIComponent(artist)}`;
       section.innerHTML = `
-        <h3 style="font-size:18px; font-weight:700; margin-bottom:12px;">${escapeHtml(artist)} <span style="color:var(--text-tertiary); font-weight:400; font-size:14px;">${tracks.length} tracks</span></h3>
-        <div class="artist-tracks"></div>
+        <h3 class="music-group-title" data-np-ids="${escapeAttr(npIds(tracks))}">
+          <span class="music-group-name" data-np-slot="inline">${known
+            ? `<a href="${escapeAttr(artistPath.slice(1))}" data-route="${escapeAttr(artistPath)}">${escapeHtml(artist)}</a>`
+            : escapeHtml(artist)}</span>
+          <span class="music-group-count">${tracks.length} ${tracks.length === 1 ? 'track' : 'tracks'}</span>
+        </h3>
+        <div class="music-group-tracks"></div>
       `;
-      const tracksContainer = section.querySelector('.artist-tracks');
-      renderMediaList(tracksContainer, tracks, {
-        onClick: (item) => window.dispatchEvent(new CustomEvent('vault:play', { detail: { item, queue: tracks, index: tracks.findIndex(i => i.id === item.id) } }))
-      });
+      renderGroupTracks(section.querySelector('.music-group-tracks'), tracks);
       content.appendChild(section);
     });
   }
-  
-  function renderAlbums() {
-    const items = getFiltered();
-    const albums = {};
-    items.forEach(item => {
-      const album = item.album || 'Unknown Album';
-      if (!albums[album]) albums[album] = [];
-      albums[album].push(item);
+
+  /** "Album artist" as the album page names it. */
+  function albumArtistOf(tracks) {
+    const tags = [...new Set(tracks.map(t => t.albumArtist).filter(Boolean))];
+    if (tags.length === 1) return tags[0];
+    const artists = [...new Set(tracks.map(t => t.artist).filter(Boolean))];
+    return artists.length > 1 ? 'Various Artists' : (artists[0] || '');
+  }
+
+  function albumCoverUrl(tracks) {
+    const cover = tracks.find(t => t.coverArtPath || t.posterPath) || tracks[0];
+    const albumVersion = Math.max(0, ...tracks.map(t => new Date(t.updatedAt || 0).getTime() || 0));
+    return (typeof api.getCoverUrlVersioned === 'function' && albumVersion)
+      ? api.getCoverUrlVersioned(cover.id, albumVersion)
+      : api.getCoverUrl(cover.id);
+  }
+
+  // An album is a collection, not a track: activating it opens the album
+  // page, which lists its tracks. Playback stays behind the explicit Play
+  // button so a click to browse can't start audio by surprise.
+  function albumActions(tracks) {
+    const cover = tracks.find(t => t.coverArtPath || t.posterPath) || tracks[0];
+    return {
+      open: () => openDetail(cover),
+      play: () => playFrom(tracks, tracks[0]),
+    };
+  }
+
+  function wireAlbumElement(el, playButton, { open, play }) {
+    playButton.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      play();
     });
-    
+    el.addEventListener('click', (e) => {
+      if (e.target.closest('button')) return;
+      open();
+    });
+    el.addEventListener('keydown', (e) => {
+      // Only when the card/row itself has focus, so Enter/Space on the nested
+      // Play button doesn't also open the album.
+      if (e.target !== el) return;
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        open();
+      }
+    });
+  }
+
+  function renderAlbums() {
+    const albums = groupTracks(getFiltered(), item => item.album || 'Unknown Album');
+    if (!albums.length) { showEmpty(); return; }
+    if (viewMode === 'list') renderAlbumList(albums);
+    else renderAlbumGrid(albums);
+  }
+
+  function renderAlbumGrid(albums) {
     content.innerHTML = '<div class="media-grid" id="albums-grid"></div>';
     const grid = content.querySelector('#albums-grid');
-    
-    Object.entries(albums).forEach(([album, tracks]) => {
+
+    albums.forEach(([album, tracks]) => {
       const card = document.createElement('div');
       card.className = 'media-card';
       card.dataset.type = 'music';
-      const cover = tracks.find(t => t.coverArtPath || t.posterPath) || tracks[0];
-      const albumVersion = Math.max(0, ...tracks.map(t => new Date(t.updatedAt || 0).getTime() || 0));
-      const coverUrl = (typeof api.getCoverUrlVersioned === 'function' && albumVersion)
-        ? api.getCoverUrlVersioned(cover.id, albumVersion)
-        : api.getCoverUrl(cover.id);
+      card.dataset.npIds = npIds(tracks);
+      const artist = albumArtistOf(tracks);
       card.innerHTML = `
-        <div class="media-card-cover music">
-          <img src="${coverUrl}" alt="" loading="lazy" class="loaded" data-img-fallback="placeholder">
+        <div class="media-card-cover music" data-np-slot="cover">
+          <img src="${albumCoverUrl(tracks)}" alt="" loading="lazy" class="loaded" data-img-fallback="placeholder">
           <div class="media-card-placeholder" aria-hidden="true">${icon('music', { size: 34 })}</div>
           <div class="media-card-overlay"><button class="media-card-play" type="button" aria-label="Play ${escapeAttr(album)}">${icon('play', { size: 20 })}</button></div>
         </div>
         <div class="media-card-info">
           <div class="media-card-title">${escapeHtml(album)}</div>
-          <div class="media-card-meta">${escapeHtml(cover.artist || tracks[0].artist || '')} • ${tracks.length} tracks</div>
+          <div class="media-card-meta">${artist ? `${escapeHtml(artist)} • ` : ''}${tracks.length} ${tracks.length === 1 ? 'track' : 'tracks'}</div>
         </div>
       `;
       // role=group, not button: the card contains a real Play <button>, and
@@ -272,92 +349,105 @@ export function renderMusic(container) {
         }
       }
 
-      // An album card is a collection, not a track: activating it opens the
-      // album page, which lists its tracks. Playback stays behind the explicit
-      // play button so a click to browse can't start audio by surprise.
-      const openAlbum = () => window.dispatchEvent(new CustomEvent('vault:open-detail', { detail: { item: cover } }));
-      const playAlbum = () => window.dispatchEvent(new CustomEvent('vault:play', { detail: { item: tracks[0], queue: tracks, index: 0 } }));
-
-      card.querySelector('.media-card-play').addEventListener('click', (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        playAlbum();
-      });
-
-      card.addEventListener('click', (e) => {
-        if (e.target.closest('.media-card-play')) return;
-        openAlbum();
-      });
-
-      card.addEventListener('keydown', (e) => {
-        // Guard: only when the card itself has focus, so Enter/Space on the
-        // nested play button doesn't also trigger the open action.
-        if (e.target !== card) return;
-        if (e.key === 'Enter' || e.key === ' ') {
-          e.preventDefault();
-          openAlbum();
-        }
-      });
-
+      wireAlbumElement(card, card.querySelector('.media-card-play'), albumActions(tracks));
       grid.appendChild(card);
     });
   }
-  
+
+  function renderAlbumList(albums) {
+    const list = document.createElement('div');
+    list.className = 'media-list media-list--library media-list--albums';
+    list.innerHTML = `
+      <div class="media-list-header">
+        <span class="media-list-col media-list-col--title">Album</span>
+        <span class="media-list-col media-list-col--artist">Artist</span>
+        <span class="media-list-col media-list-col--duration">Tracks</span>
+        <span class="media-list-col media-list-col--year">Year</span>
+      </div>`;
+
+    albums.forEach(([album, tracks]) => {
+      const artist = albumArtistOf(tracks);
+      const years = tracks.map(t => Number(t.year)).filter(Boolean);
+      const year = years.length ? Math.max(...years) : '';
+      const seconds = tracks.reduce((sum, t) => sum + durationSeconds(t.duration), 0);
+      const row = document.createElement('div');
+      row.className = 'media-list-item';
+      row.dataset.npIds = npIds(tracks);
+      row.setAttribute('role', 'group');
+      row.setAttribute('tabindex', '0');
+      row.setAttribute('aria-label', [album, artist, `${tracks.length} ${tracks.length === 1 ? 'track' : 'tracks'}`].filter(Boolean).join(', '));
+      row.setAttribute('aria-description', 'Press Enter to open the album');
+      row.innerHTML = `
+        <div class="media-list-item-main">
+          <button class="media-list-play" type="button" aria-label="Play ${escapeAttr(album)}">${icon('play', { size: 13 })}</button>
+          <div class="media-list-item-cover" data-np-slot="cover">
+            <img src="${albumCoverUrl(tracks)}" alt="" loading="lazy" data-img-fallback="hide">
+          </div>
+          <div class="media-list-item-text">
+            <div class="media-list-item-title">${escapeHtml(album)}</div>
+            ${seconds ? `<div class="media-list-item-artist">${escapeHtml(formatTotalDuration(seconds))}</div>` : ''}
+          </div>
+        </div>
+        <div class="media-list-cell media-list-cell--artist" title="${escapeAttr(artist)}">${escapeHtml(artist) || '<span class="media-list-none">—</span>'}</div>
+        <div class="media-list-cell media-list-cell--duration">${tracks.length}</div>
+        <div class="media-list-cell media-list-cell--year">${year || '<span class="media-list-none">—</span>'}</div>
+      `;
+      wireAlbumElement(row, row.querySelector('.media-list-play'), albumActions(tracks));
+      list.appendChild(row);
+    });
+
+    content.replaceChildren(list);
+  }
+
   // Genres have no page of their own, so a genre row expands into its track
   // list instead of navigating. Same rule as the album cards: browsing a group
-  // never starts audio by surprise — playback is the explicit button.
+  // never starts audio by surprise — playback is the explicit button. Open
+  // genres stay open when the list is redrawn (Grid/List switch, new scan).
   let genreUid = 0;
+  const openGenres = new Set();
   function renderGenres() {
-    const items = getFiltered();
-    const genres = {};
-    items.forEach(item => {
-      const genre = item.genre || 'Unknown';
-      if (!genres[genre]) genres[genre] = [];
-      genres[genre].push(item);
-    });
-    
+    const genres = groupTracks(getFiltered(), item => item.genre || 'Unknown')
+      .sort((a, b) => a[0].localeCompare(b[0]));
+    if (!genres.length) { showEmpty(); return; }
+
     content.innerHTML = '';
-    Object.entries(genres).sort((a, b) => a[0].localeCompare(b[0])).forEach(([genre, tracks]) => {
+    genres.forEach(([genre, tracks]) => {
       const listId = `genre-tracks-${++genreUid}`;
       const section = document.createElement('div');
       section.className = 'genre-group';
-      section.style.marginBottom = '12px';
       section.innerHTML = `
-        <div style="display:flex; align-items:center; gap:8px; background:rgba(var(--glass-tint),0.05); padding:8px 8px 8px 12px; border-radius:12px;">
-          <button class="btn btn-ghost btn-sm genre-toggle" type="button" aria-expanded="false" aria-controls="${listId}" style="flex:1; justify-content:flex-start;">
-            <span class="genre-caret" aria-hidden="true" style="display:inline-flex; transition:transform var(--duration-fast) var(--ease-out);">${icon('chevron-right', { size: 14 })}</span>
-            <span>${escapeHtml(genre)}</span>
+        <div class="genre-head" data-np-ids="${escapeAttr(npIds(tracks))}">
+          <button class="btn btn-ghost btn-sm genre-toggle" type="button" aria-expanded="false" aria-controls="${listId}">
+            <span class="genre-caret" aria-hidden="true">${icon('chevron-right', { size: 14 })}</span>
+            <span class="genre-name" data-np-slot="inline">${escapeHtml(genre)}</span>
           </button>
-          <span style="color:var(--text-tertiary); font-size:13px;">${tracks.length} tracks</span>
+          <span class="music-group-count">${tracks.length} ${tracks.length === 1 ? 'track' : 'tracks'}</span>
           <button class="btn btn-secondary btn-sm genre-play" type="button" aria-label="Play ${escapeAttr(genre)}">${icon('play', { size: 14 })}<span>Play</span></button>
         </div>
-        <div id="${listId}" class="genre-tracks" hidden style="margin-top:8px;"></div>
+        <div id="${listId}" class="genre-tracks" hidden></div>
       `;
-      
+
       const toggle = section.querySelector('.genre-toggle');
-      const caret = section.querySelector('.genre-caret');
       const listEl = section.querySelector('.genre-tracks');
       let built = false;
-      
+
       const setOpen = (open) => {
         listEl.hidden = !open;
         toggle.setAttribute('aria-expanded', String(open));
-        caret.style.transform = open ? 'rotate(90deg)' : '';
-        // Build the rows on first open only — one genre can hold the whole library.
+        section.classList.toggle('is-open', open);
+        if (open) openGenres.add(genre); else openGenres.delete(genre);
+        // Build the songs on first open only — one genre can hold the whole library.
         if (open && !built) {
           built = true;
-          renderMediaList(listEl, tracks, {
-            onClick: (item) => window.dispatchEvent(new CustomEvent('vault:play', { detail: { item, queue: tracks, index: tracks.findIndex(i => i.id === item.id) } }))
-          });
+          renderGroupTracks(listEl, tracks);
         }
       };
-      
+
       toggle.addEventListener('click', () => setOpen(listEl.hidden));
-      section.querySelector('.genre-play').addEventListener('click', () => {
-        window.dispatchEvent(new CustomEvent('vault:play', { detail: { item: tracks[0], queue: tracks, index: 0 } }));
-      });
-      
+      section.querySelector('.genre-play').addEventListener('click', () => playFrom(tracks, tracks[0]));
+
       content.appendChild(section);
+      if (openGenres.has(genre)) setOpen(true);
     });
   }
   

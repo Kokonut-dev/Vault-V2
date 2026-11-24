@@ -340,6 +340,7 @@ function createHero(item, progress) {
   const hero = document.createElement('section');
   hero.className = 'hero home-hero-banner';
   hero.setAttribute('aria-labelledby', 'hero-title');
+  hero.dataset.npId = item.id; // "Playing" next to the overline while it plays
   const music = item.type === 'music' || isAudio(item);
   // Backdrop endpoint falls back server-side: backdrop → cover → poster → frame.
   const backdropUrl = item.backdrop && String(item.backdrop).startsWith('http')
@@ -356,7 +357,7 @@ function createHero(item, progress) {
   hero.innerHTML = `
     <img class="hero-backdrop${music ? ' is-cover' : ''}" src="${backdropUrl}" alt="" data-img-fallback="hide">
     <div class="hero-body">
-      <p class="hero-overline">${overline}</p>
+      <p class="hero-overline" data-np-slot="inline">${overline}</p>
       <h2 class="hero-title" id="hero-title">${escapeHtml(item.seriesTitle && isEpisode(item) ? item.seriesTitle : item.title)}</h2>
       <div class="hero-meta">
         <span>${kind}</span>

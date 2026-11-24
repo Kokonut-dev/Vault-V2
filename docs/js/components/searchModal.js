@@ -190,8 +190,8 @@ export class SearchModal {
           ${items.map(item => {
             const idx = globalIndex++;
             return `
-              <div class="search-item ${idx === this.selectedIndex ? 'selected' : ''}" data-index="${idx}" data-id="${item.id}">
-                <div class="search-item-cover">
+              <div class="search-item ${idx === this.selectedIndex ? 'selected' : ''}" data-index="${idx}" data-id="${item.id}" data-np-id="${this.escape(String(item.id))}">
+                <div class="search-item-cover" data-np-slot="cover">
                   <img data-src="${api.getThumbnailUrl(item.id) || api.getCoverUrl(item.id)}" alt="" loading="lazy">
                 </div>
                 <div class="search-item-info">
@@ -264,8 +264,8 @@ export class SearchModal {
           <div class="search-section">
             <div class="search-section-title">Recently Played</div>
             ${items.map(item => `
-              <div class="search-item" data-id="${item.id}">
-                <div class="search-item-cover"><img data-src="${api.getThumbnailUrl(item.id)}" alt=""></div>
+              <div class="search-item" data-id="${item.id}" data-np-id="${this.escape(String(item.id))}">
+                <div class="search-item-cover" data-np-slot="cover"><img data-src="${api.getThumbnailUrl(item.id)}" alt=""></div>
                 <div class="search-item-info">
                   <div class="search-item-title">${this.escape(item.title)}</div>
                   <div class="search-item-meta">${this.escape(item.artist || '')}</div>

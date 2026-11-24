@@ -109,8 +109,10 @@ export function renderPlaylists(container) {
       playlists.forEach(pl => {
         const card = document.createElement('div');
         card.className = 'media-card';
+        // "Playing" badge when the playing song is in this playlist.
+        card.dataset.npIds = (pl.items || []).filter(id => typeof id === 'string' || typeof id === 'number').join(' ');
         card.innerHTML = `
-          <div class="media-card-cover" style="background:rgba(var(--glass-tint),0.05); display:flex; align-items:center; justify-content:center;">
+          <div class="media-card-cover" data-np-slot="cover" style="background:rgba(var(--glass-tint),0.05); display:flex; align-items:center; justify-content:center;">
             ${pl.coverArt ? `<img src="${playlistCoverUrl(pl.id, pl.updatedAt || '')}" alt="" style="width:100%;height:100%;object-fit:cover;" data-img-fallback="hide">` : icon(pl.type === 'collection' ? 'layout-grid' : 'music', { size: 32 })}
           </div>
           <div class="media-card-info">

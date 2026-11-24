@@ -15,6 +15,19 @@ const DEFAULT_OPTIONS = {
   threshold: 120, // below this, render everything
 };
 
+/**
+ * Stop the windowed grid a container holds (if any) before something else is
+ * drawn into it. Without this, switching Grid → List left the old grid's
+ * scroll/resize listeners running (rebuilding cards nobody could see) and the
+ * container kept its `virtual-grid` flex layout.
+ */
+export function releaseVirtualGrid(container) {
+  if (!container) return;
+  container._vaultVirtualGrid?.destroy?.();
+  container._vaultVirtualGrid = null;
+  container.classList.remove('virtual-grid');
+}
+
 export function createVirtualGrid(container, options = {}) {
   const opts = { ...DEFAULT_OPTIONS, ...options };
   let items = [];

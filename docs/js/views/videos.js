@@ -5,6 +5,7 @@ import { store } from '../store.js';
 import { renderMediaGrid } from '../components/mediaGrid.js';
 import { renderMediaList } from '../components/mediaList.js';
 import { subscribeView, onUnmount } from '../utils/lifecycle.js';
+import { wireViewToggle } from '../utils/viewMode.js';
 
 export function renderVideos(container) {
   container.className = 'page';
@@ -15,8 +16,8 @@ export function renderVideos(container) {
     </div>
     <div class="view-controls">
       <div class="view-toggle">
-        <button class="active" data-view="grid">Grid</button>
-        <button data-view="list">List</button>
+        <button type="button" class="active" data-view="grid">Grid</button>
+        <button type="button" data-view="list">List</button>
       </div>
       <input type="text" class="form-input" id="filter-input" placeholder="Filter videos..." style="width:200px;">
     </div>
@@ -25,22 +26,10 @@ export function renderVideos(container) {
   
   const content = container.querySelector('#videos-content');
   const filterInput = container.querySelector('#filter-input');
-  const viewButtons = container.querySelectorAll('.view-toggle button');
   
-  let viewMode = store.get('viewMode') || 'grid';
+  let viewMode = wireViewToggle(container, 'videos', (mode) => { viewMode = mode; render(); });
   let filter = '';
   let filterTimer = null;
-  
-  viewButtons.forEach(btn => {
-    btn.classList.toggle('active', btn.dataset.view === viewMode);
-    btn.addEventListener('click', () => {
-      viewMode = btn.dataset.view;
-      viewButtons.forEach(b => b.classList.remove('active'));
-      btn.classList.add('active');
-      store.set('viewMode', viewMode, true);
-      render();
-    });
-  });
   
   filterInput.addEventListener('input', (e) => {
     clearTimeout(filterTimer);

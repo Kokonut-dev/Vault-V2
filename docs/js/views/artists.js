@@ -11,6 +11,7 @@ import { icon } from '../utils/icons.js';
 import { escapeHtml, formatDuration, durationSeconds, truncate, plural, formatTotalDuration } from '../utils/format.js';
 import { attachContextMenu } from '../components/contextMenu.js';
 import { toast } from '../components/toast.js';
+import { npIds } from '../utils/nowPlaying.js';
 
 function musicItems() {
   return (store.get('library') || []).filter(item => item.type === 'music');
@@ -64,13 +65,15 @@ export function renderArtists(container) {
         const artistPath = `/artist/${encodeURIComponent(artist)}`;
         card.href = artistPath;
         card.dataset.route = artistPath;
+        // "Playing" badge on the artist whose song is playing (utils/nowPlaying.js).
+        card.dataset.npIds = npIds(tracks);
         const coverTrack = tracks.find(t => t.coverArtPath || t.posterPath) || tracks[0];
         const artistVersion = Math.max(0, ...tracks.map(t => new Date(t.updatedAt || 0).getTime() || 0));
         const coverUrl = (typeof api.getCoverUrlVersioned === 'function' && artistVersion)
           ? api.getCoverUrlVersioned(coverTrack.id, artistVersion)
           : api.getCoverUrl(coverTrack.id);
         card.innerHTML = `
-          <div class="media-card-cover music">
+          <div class="media-card-cover music" data-np-slot="cover">
             <img loading="lazy" src="${coverUrl}" alt="" class="loaded" data-img-fallback="placeholder">
             <div class="media-card-placeholder" aria-hidden="true">${icon('mic', { size: 34 })}</div>
           </div>
@@ -154,8 +157,8 @@ function albumBlock(album, artist, index) {
           ? `<div class="artist-album-cover" aria-hidden="true">${cover}</div>`
           : `<a class="artist-album-cover" href="${albumHref}" data-route="${albumHref}" tabindex="-1" aria-hidden="true">${cover}</a>`}
         <div class="artist-album-info">
-          <h2 class="artist-album-title" id="artist-album-${index}">
-            ${loose ? escapeHtml(title) : `<a href="${albumHref}" data-route="${albumHref}">${escapeHtml(title)}</a>`}
+          <h2 class="artist-album-title" id="artist-album-${index}" data-np-ids="${escapeHtml(npIds(album.tracks))}">
+            ${loose ? escapeHtml(title) : `<a href="${albumHref}" data-route="${albumHref}">${escapeHtml(title)}</a>`}<span class="np-slot" data-np-slot="inline"></span>
           </h2>
           <div class="artist-album-meta">${meta.map(m => `<span>${escapeHtml(String(m))}</span>`).join('')}</div>
           <div class="artist-album-actions">
@@ -171,7 +174,7 @@ function albumBlock(album, artist, index) {
             loose && track.album && track.album !== 'Unknown Album' ? track.album : null,
           ].filter(Boolean).join(' · ');
           return `
-          <li class="track-row" data-track="${track.id}" tabindex="0" aria-label="${escapeHtml(track.title)}${track.duration ? `, ${formatDuration(track.duration)}` : ''}">
+          <li class="track-row" data-track="${track.id}" data-np-id="${escapeHtml(String(track.id))}" tabindex="0" aria-label="${escapeHtml(track.title)}${track.duration ? `, ${formatDuration(track.duration)}` : ''}">
             <span class="track-num">
               <span class="track-num-n" aria-hidden="true">${track.track || i + 1}</span>
               <span class="track-eq" aria-hidden="true"><i></i><i></i><i></i></span>
@@ -285,25 +288,10 @@ export async function renderArtist(container, name) {
         attachContextMenu(row, track);
       });
     });
-    markPlaying();
-  };
-
-  // Highlight the playing track (accent title + animated bars instead of its number).
-  const markPlaying = () => {
-    const current = store.get('currentTrack');
-    const playing = Boolean(store.get('isPlaying'));
-    container.querySelectorAll('.track-row').forEach((row) => {
-      const on = Boolean(current && row.dataset.track === String(current.id));
-      row.classList.toggle('is-current', on);
-      row.classList.toggle('is-playing', on && playing);
-      if (on) row.setAttribute('aria-current', 'true'); else row.removeAttribute('aria-current');
-    });
   };
 
   paint();
   subscribeView(store, 'library', paint);
-  subscribeView(store, 'currentTrack', markPlaying);
-  subscribeView(store, 'isPlaying', markPlaying);
 }
 
 export default { renderArtists, renderArtist };

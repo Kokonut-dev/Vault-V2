@@ -81,13 +81,14 @@ export function renderHistory(container) {
     items.forEach(item => {
       const row = document.createElement('div');
       row.className = 'media-list-item';
+      row.dataset.npId = item.id;
       const watchedDate = new Date(item.history.watchedAt);
       const timeAttrs = Number.isNaN(watchedDate.getTime())
         ? ''
         : `datetime="${watchedDate.toISOString()}" title="${watchedDate.toLocaleString()}"`;
       row.innerHTML = `
         <div class="media-list-item-main">
-          <div class="media-list-item-cover">
+          <div class="media-list-item-cover" data-np-slot="cover">
             <img src="${api.getThumbnailUrl(item.id)}" alt="" loading="lazy">
           </div>
           <div>
