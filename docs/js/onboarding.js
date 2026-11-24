@@ -1,14 +1,15 @@
 /**
- * Onboarding Wizard — 6 steps
+ * Onboarding Wizard — 7 steps
  * Handles first-time setup flow for Vault V2
- * 
+ *
  * Steps:
  * 1. Welcome
  * 2. Server Connection
  * 3. Admin Account
  * 4. Security Grid
  * 5. Media & Preferences
- * 6. Review & Complete
+ * 6. Terms of Use (read to the end and accept: required to sign up)
+ * 7. Review & Complete
  */
 
 import { api } from './api.js';
@@ -19,11 +20,16 @@ import { toast } from './components/toast.js';
 import { copyText } from './utils/clipboard.js';
 import { icon, setIconLabel } from './utils/icons.js';
 import { THEME_META, themeSwatch, themeManager } from './themes.js';
+import { createTermsReader } from './components/termsGate.js';
 
 export class OnboardingManager {
   constructor() {
     this.currentStep = 1;
-    this.totalSteps = 6;
+    this.totalSteps = 7;
+    // Step 6: the Terms of Use shown (from the server being set up) and
+    // what was ticked. Kept when going Back so nobody has to re-read.
+    this.terms = null;
+    this.termsState = null;
     this.data = {
       apiUrl: getApiBaseUrl(),
       username: '',
@@ -226,6 +232,15 @@ export class OnboardingManager {
         break;
 
       case 6:
+        titleEl.textContent = 'Terms of Use';
+        subtitleEl.textContent = 'Read them to the end and accept them to create your Vault';
+        body.innerHTML = `<div class="onboarding-step active" id="ob-terms"><p class="onboarding-hint">Loading the Terms of Use…</p></div>`;
+        setIconLabel(nextBtn, 'arrow-right', 'Agree and continue', { size: 16, position: 'end' });
+        nextBtn.disabled = !this.termsState?.complete;
+        this.bindTermsStep();
+        break;
+
+      case 7:
         titleEl.textContent = 'Ready to Launch';
         subtitleEl.textContent = 'Review your settings and complete setup';
         body.innerHTML = this.renderReviewStep();
@@ -243,6 +258,38 @@ export class OnboardingManager {
 
       default:
         break;
+    }
+  }
+
+  /** Step 6: load the server's Terms of Use into the reader. */
+  async bindTermsStep() {
+    const host = document.getElementById('ob-terms');
+    const nextBtn = document.getElementById('onboarding-next');
+    if (!host) return;
+    try {
+      const terms = await api.getTerms();
+      if (this.currentStep !== 6 || !document.contains(host)) return;
+      // A different version than last time: start again.
+      if (!this.terms || this.terms.sha256 !== terms.sha256) this.termsState = null;
+      this.terms = terms;
+      const reader = createTermsReader({
+        terms,
+        embedded: true,
+        initial: this.termsState || {},
+        onChange: (state) => {
+          this.termsState = state;
+          if (nextBtn) nextBtn.disabled = !state.complete;
+        },
+      });
+      host.replaceChildren(reader.element);
+      if (nextBtn) nextBtn.disabled = !reader.state().complete;
+    } catch (err) {
+      if (this.currentStep !== 6 || !document.contains(host)) return;
+      host.innerHTML = `
+        <div class="onboarding-error">${icon('alert-circle', { size: 14, className: 'icon icon-inline' })} The Terms of Use could not be loaded: ${escapeHtml(err.message)}</div>
+        <button type="button" class="btn btn-secondary btn-sm" id="ob-terms-retry">Try again</button>`;
+      host.querySelector('#ob-terms-retry')?.addEventListener('click', () => this.renderStep());
+      if (nextBtn) nextBtn.disabled = true;
     }
   }
 
@@ -884,7 +931,7 @@ export class OnboardingManager {
         <div id="ob-complete-status" style="margin-top:16px;"></div>
 
         <div class="onboarding-hint" style="margin-top:16px; text-align:center;">
-          By completing setup, you confirm that you've saved your grid pattern securely.<br>
+          By completing setup, you confirm that you've saved your grid pattern securely${this.termsState?.complete ? `, and you accept the Vault Terms of Use (version ${escapeHtml(this.termsState.version)})` : ''}.<br>
           <strong>Enablement: true</strong> — Vault will be ready for deployment.
         </div>
       </div>
@@ -927,6 +974,11 @@ export class OnboardingManager {
         toast.error('Please select exactly 8 squares');
         return;
       }
+    }
+
+    if (this.currentStep === 6 && !this.termsState?.complete) {
+      toast.error('Please read the Terms of Use to the end and tick the boxes to accept them');
+      return;
     }
 
     if (this.currentStep < this.totalSteps) {
@@ -1003,6 +1055,10 @@ export class OnboardingManager {
         server: {
           port: this.data.serverPort,
         },
+        // Exactly what was shown and agreed to in step 6 (the server checks it).
+        acceptTerms: this.termsState?.complete
+          ? { version: this.termsState.version, sha256: this.termsState.sha256, readToEnd: true }
+          : null,
       };
 
       const result = await api.completeSetup(payload);
@@ -1046,6 +1102,14 @@ export class OnboardingManager {
       }, 1200);
 
     } catch (err) {
+      if (err.code === 'TERMS_OUTDATED' || err.code === 'TERMS_NOT_ACCEPTED') {
+        // The terms changed (or weren't accepted): back to step 6 to read them.
+        this.termsState = null;
+        this.currentStep = 6;
+        this.renderStep();
+        toast.error(err.message);
+        return;
+      }
       if (statusEl) {
         statusEl.innerHTML = `<div class="onboarding-error">${icon('alert-circle', { size: 14, className: 'icon icon-inline' })} Setup failed: ${escapeHtml(err.message)}</div>`;
       }

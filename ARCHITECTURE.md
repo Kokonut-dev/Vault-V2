@@ -236,6 +236,7 @@ Vault-V2/
 │   │   ├── playlists.js
 │   │   ├── transcode.js
 │   │   ├── transfer.js             # /api/transfer — move everything to another server
+│   │   ├── legal.js                # /api/legal — Terms of Use text, status, acceptance, records
 │   │   └── settings.js
 │   ├── services/
 │   │   ├── scanner.js              # Directory scanning + file watcher
@@ -248,7 +249,10 @@ Vault-V2/
 │   │   ├── livetv.js               # M3U lists (main + livetv.sources[]), merged XMLTV guides
 │   │   ├── restream.js             # ffmpeg → HLS for Live TV; global + per-list stream caps
 │   │   ├── torrent.js              # WebTorrent jobs: staging → library, VPN guard, resume
+│   │   ├── terms.js                # Terms of Use: versions, fingerprint, acceptance gate, evidence log
 │   │   └── authService.js
+│   ├── legal/
+│   │   └── terms-versions.json     # Published Terms versions + SHA-256 of each text
 │   ├── vendor/                     # webrtc-polyfill stand-in (keeps WebTorrent installs pure JS)
 │   ├── data/                       # Created at runtime, gitignored
 │   │   └── .gitkeep
@@ -567,6 +571,38 @@ All responses JSON unless streaming media. Errors: `{ error: string, code: strin
 - **Headers**: Auth
 - **Response**: Server-Sent Events stream `text/event-stream`
 - **Events**: `library:update`, `scan:start`, `scan:complete`, `upload:progress`
+
+### Legal (Terms of Use)
+
+The binding text is the `<article id="terms-document" data-version data-effective>` in `docs/terms.html`. The server
+normalises it and compares its SHA-256 with `server/legal/terms-versions.json`; on any mismatch (or a missing file)
+the gate fails closed.
+
+#### GET /api/legal/terms
+- **No auth**. **Response 200**: `{ version, effective, sha256, html }`. **503** `TERMS_UNAVAILABLE`.
+
+#### GET /api/legal/status
+- **Auth**. **Response 200**: `{ available, version, effective, sha256, accepted, acceptedVersion, acceptedAt, guardianRequired, profile }`.
+
+#### POST /api/legal/terms/accept
+- **Auth**. **Body**: `{ version, sha256, readToEnd: true, guardian }` (`guardian: true` is required for a kids' profile).
+- **Response 200**: `{ accepted: true, version, sha256, acceptedAt, guardian, profileId }`.
+- **Errors**: 409 `TERMS_OUTDATED` (the text changed: show it again), 400 `TERMS_NOT_READ` / `TERMS_GUARDIAN_REQUIRED`,
+  404 `TERMS_PROFILE_REMOVED`, 503 `TERMS_UNAVAILABLE`.
+- Stored on the profile (`profile.terms`) and appended to `data/terms-acceptances.json`: profile, username, version,
+  fingerprint, time, session, device, IP and user agent. Never editable through `PATCH /api/profiles/:id`.
+
+#### GET /api/legal/acceptances
+- **Admin**. **Response 200**: `{ records }`, newest first.
+
+#### The gate
+`authMiddleware` refuses every authenticated request from a profile that hasn't accepted the current version with
+**403** `{ code: "TERMS_REQUIRED", terms: { version, effective } }` (or `TERMS_UNAVAILABLE`; **503**
+`TERMS_CHECK_FAILED` if the check itself fails). Open while not accepted: `GET /api/legal/*`,
+`POST /api/legal/terms/accept`, `POST /api/auth/refresh`, `GET /api/profiles`, `POST /api/profiles/:id/switch`.
+Subsonic (`/rest`) answers error 50. `POST /api/setup/complete` requires `acceptTerms: { version, sha256, readToEnd: true }`.
+The web client shows the gate (`components/termsGate.js`) after sign-in and on any `TERMS_REQUIRED` response;
+declining signs out.
 
 ---
 

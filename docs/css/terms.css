@@ -1,0 +1,110 @@
+/* Terms of Use: the full-screen gate shown before anyone can use Vault, and
+   the same reader inside the setup wizard (components/termsGate.js). Theme
+   colours only, so every theme keeps its AAA contrast. */
+.terms-gate {
+  position: fixed;
+  inset: 0;
+  z-index: 1000; /* above the sign-in gate, toasts' backdrop and every modal */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: clamp(8px, 3vw, 32px);
+  background: var(--scrim, rgba(0, 0, 0, 0.72));
+}
+body.terms-gate-open { overflow: hidden; }
+
+.terms-gate-card {
+  display: flex;
+  flex-direction: column;
+  width: min(820px, 100%);
+  max-height: 100%;
+  background: var(--bg-elevated);
+  color: var(--text-primary);
+  border: 1px solid var(--border-strong);
+  border-radius: 16px;
+  box-shadow: var(--shadow-strong);
+  overflow: hidden;
+}
+.terms-gate-header { padding: 20px 24px 12px; border-bottom: 1px solid var(--border-subtle); }
+.terms-gate-header h1 { margin: 0 0 6px; font-size: 22px; line-height: 1.25; }
+.terms-gate-header p { margin: 0; color: var(--text-secondary); font-size: 14px; line-height: 1.5; }
+.terms-gate-footer { padding: 14px 24px 18px; border-top: 1px solid var(--border-subtle); }
+
+/* The reader (gate and setup wizard) */
+.terms-reader { display: flex; flex-direction: column; min-height: 0; flex: 1; }
+.terms-reader-scroll {
+  flex: 1;
+  min-height: 160px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 4px 24px 16px;
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  font-size: 15px;
+  line-height: 1.65;
+}
+.terms-reader-scroll:focus-visible { outline: 3px solid var(--border-focus); outline-offset: -3px; }
+.terms-reader-embedded .terms-reader-scroll {
+  max-height: min(46vh, 420px);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+}
+.terms-reader-scroll h1 { font-size: 20px; margin: 16px 0 2px; }
+.terms-reader-scroll h2 { font-size: 17px; margin: 22px 0 6px; }
+.terms-reader-scroll p, .terms-reader-scroll li { margin: 0 0 8px; }
+.terms-reader-scroll ul, .terms-reader-scroll ol { padding-left: 22px; margin: 0 0 10px; }
+/* The app's reset strips list markers; legal text needs them back. */
+.terms-reader-scroll ul { list-style: disc; }
+.terms-reader-scroll ol { list-style: decimal; }
+.terms-reader-scroll ol[type="a"] { list-style: lower-alpha; }
+.terms-reader-scroll a { color: var(--accent-text); }
+.terms-reader-scroll .legal-meta { color: var(--text-secondary); }
+.terms-reader-scroll .legal-summary {
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 2px 16px 6px;
+  margin: 8px 0 4px;
+}
+.terms-reader-end { height: 1px; }
+
+.terms-reader-progress {
+  margin: 10px 0 6px;
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+.terms-reader-progress.is-done { color: var(--success); }
+.terms-reader-checks { display: grid; gap: 10px; margin: 6px 0 4px; }
+.terms-reader-check {
+  display: grid;
+  grid-template-columns: 22px 1fr;
+  gap: 10px;
+  align-items: start;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--text-primary);
+  cursor: pointer;
+}
+.terms-reader-check input { width: 18px; height: 18px; margin: 2px 0 0; accent-color: var(--accent-solid); cursor: pointer; }
+.terms-reader-check input:disabled { cursor: not-allowed; }
+.terms-reader-check input:disabled + span { color: var(--text-tertiary); }
+.terms-reader-links { margin: 8px 0 0; font-size: 13px; color: var(--text-secondary); }
+.terms-reader-links a { color: var(--accent-text); }
+
+.terms-gate-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  justify-content: flex-end;
+  margin-top: 14px;
+}
+.terms-gate-error { margin: 10px 0 0; color: var(--error); font-size: 14px; }
+.terms-gate-error:empty { display: none; }
+
+@media (max-width: 600px) {
+  .terms-gate { padding: 0; }
+  .terms-gate-card { border-radius: 0; height: 100%; border: 0; }
+  .terms-gate-header, .terms-gate-footer { padding-left: 16px; padding-right: 16px; }
+  .terms-reader-scroll { padding: 4px 16px 12px; }
+  .terms-gate-actions .btn { flex: 1 1 auto; justify-content: center; }
+}

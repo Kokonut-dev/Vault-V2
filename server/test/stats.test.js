@@ -73,7 +73,9 @@ test('stats.build aggregates listening activity and ranks tracks/artists', () =>
         'track-3': 200,
       },
       daily: {
-        '2026-11-17': {
+        // Today (UTC, like stats.js): a fixed date fell out of the 'week'
+        // window a few days after the test was written.
+        [new Date().toISOString().slice(0, 10)]: {
           seconds: 350,
           items: {
             'track-1': 100,

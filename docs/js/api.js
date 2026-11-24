@@ -326,6 +326,12 @@ class ApiClient {
         const data = await res.json().catch(() => ({}));
 
         if (!res.ok) {
+          // The signed-in profile hasn't accepted the current Terms of Use
+          // (first use, a profile switch, or the terms were updated): the
+          // app shows them (components/termsGate.js, main.js).
+          if (res.status === 403 && data.code === 'TERMS_REQUIRED') {
+            window.dispatchEvent(new CustomEvent('vault:terms-required', { detail: data.terms || null }));
+          }
           const err = new Error(data.error || `Request failed: ${res.status}`);
           err.status = res.status;
           err.code = data.code || 'REQUEST_FAILED';
@@ -379,6 +385,22 @@ class ApiClient {
       auth: false,
       body: JSON.stringify({ challengeToken, pattern, ...profile }),
     });
+  }
+
+  // Terms of Use (services/terms.js on the server)
+  /** Public: the current text, version and fingerprint. */
+  getTerms() {
+    return this.request('/api/legal/terms', { auth: false, cache: 'no-store' });
+  }
+
+  /** Has the signed-in profile accepted the current version? */
+  getTermsStatus() {
+    return this.request('/api/legal/status', { cache: 'no-store' });
+  }
+
+  /** { version, sha256, readToEnd: true, guardian } — what was shown and agreed to. */
+  acceptTerms(body) {
+    return this.request('/api/legal/terms/accept', { method: 'POST', body, retry: false });
   }
 
   logout() {

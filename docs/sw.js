@@ -22,7 +22,9 @@
 // v16: the sign-in form opens setup when a fresh server refuses remote sign-in.
 // v17: strict CSP — index.html's inline start-up code moved to js/boot-head.js
 //      and js/main.js (both in the shell list); media links use media tokens.
-const CACHE_NAME = 'vault-v2-shell-v17';
+// v18: Terms of Use — main.js imports js/components/termsGate.js, and the
+//      stand-alone terms.html page is cached so it can be read offline.
+const CACHE_NAME = 'vault-v2-shell-v18';
 // Media the user saved with "Download for offline" (docs/js/app-extras.js).
 const OFFLINE_CACHE = 'vault-offline';
 const BASE_PATH = '/Vault-V2';
@@ -57,6 +59,10 @@ const SHELL_ASSETS = [
   `${BASE_PATH}/js/utils/staleModule.js`,
   `${BASE_PATH}/js/utils/pageTransition.js`,
   `${BASE_PATH}/js/utils/imageFallback.js`,
+  `${BASE_PATH}/js/components/termsGate.js`,
+  `${BASE_PATH}/terms.html`,
+  `${BASE_PATH}/css/legal.css`,
+  `${BASE_PATH}/js/legal-page.js`,
 ];
 
 self.addEventListener('install', (event) => {

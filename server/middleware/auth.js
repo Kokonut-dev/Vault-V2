@@ -147,6 +147,21 @@ function authMiddleware(req, res, next) {
       return res.status(401).json({ error: 'This profile was deleted', code: 'PROFILE_REMOVED' });
     }
 
+    // Terms of Use: until this profile has accepted the current version, it
+    // can only read and accept them (or switch profile). Covers every app,
+    // TV and media link, not just the web client (services/terms.js).
+    const terms = require('../services/terms');
+    let termsOk;
+    try {
+      termsOk = terms.gateAllows(req.method, fullPath(req)) || terms.isAccepted(profileId);
+    } catch (err) {
+      // Fail closed, but don't report a server fault as a bad sign-in (a 401
+      // would sign the device out).
+      console.warn('[Auth] Terms of Use check failed:', err.message);
+      return res.status(503).json({ error: 'Vault could not check the Terms of Use. Try again in a moment.', code: 'TERMS_CHECK_FAILED' });
+    }
+    if (!termsOk) return res.status(403).json(terms.requiredBody());
+
     req.user = { ...decoded, profileId };
     req.token = token;
     req.profileId = profileId;

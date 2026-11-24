@@ -89,6 +89,7 @@ test('authenticated album, playlist, and new-media cover uploads are reachable',
 
   // Require after the stubs so upload.js and auth.js capture the test config.
   const { authMiddleware } = require('../middleware/auth');
+  require('./helpers/terms').autoAcceptTerms(); // not a Terms of Use test (see test/terms.test.js)
   const libraryRoutes = require('../routes/library');
   const playlistRoutes = require('../routes/playlists');
   const uploadRoutes = require('../routes/upload');

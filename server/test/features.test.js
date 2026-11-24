@@ -236,6 +236,7 @@ test('moved-file detection refuses to guess', async () => {
 // ------------------------------------------------------------- Subsonic
 
 test('Subsonic browses as the chosen profile, with its age limits', async () => {
+  require('./helpers/terms').autoAcceptTerms(); // not a Terms of Use test (see test/terms.test.js)
   const authService = require('../services/authService');
   const origValidate = authService.validateCredentials;
   authService.validateCredentials = (u, p) => u === 'admin' && p === 'pw';

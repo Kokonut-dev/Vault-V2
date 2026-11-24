@@ -321,7 +321,28 @@ async function flush() {
   await store.flush();
 }
 
+/**
+ * Record a Terms of Use acceptance on the profile (services/terms.js is the
+ * only caller). Not part of update(): no profile edit can set or fake it.
+ */
+function setTerms(id, terms) {
+  const data = ensureDefaults();
+  const profile = data.profiles.find(p => p.id === id);
+  if (!profile) return null;
+  profile.terms = {
+    version: String(terms.version),
+    sha256: String(terms.sha256),
+    acceptedAt: String(terms.acceptedAt),
+    guardian: !!terms.guardian,
+  };
+  store.set(data);
+  // Written at once (not debounced): it's the record that someone agreed.
+  if (typeof store.saveNow === 'function') store.saveNow();
+  return profile.terms;
+}
+
 module.exports = {
+  setTerms,
   list,
   listPublic,
   get,

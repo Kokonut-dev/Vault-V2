@@ -1,5 +1,36 @@
 # Changelog
 
+## [Unreleased] — Terms of Use (branch `arena/80672d05-vault-v2`)
+
+### Added — Terms of Use you must read and accept
+- **The Terms** (`docs/terms.html`, version 1.0, effective 18 November 2026), also a stand-alone page that can be
+  printed or saved as PDF. Linked from the sign-in screen and the landing page.
+  - Vault comes with no content; **all piracy and other infringement is the sole responsibility of the user who
+    commits it, not of the website, Kokonut-dev (the creator) or any contributor**; a list of prohibited uses.
+  - No warranty, a liability cap and an indemnity, each "as far as the law allows" with the carve-outs Dutch/EU law
+    requires (intent, gross negligence, death or injury, mandatory consumer rights).
+  - Dutch law, Rechtbank Midden-Nederland (Utrecht); consumers keep the protection of the law where they live.
+  - 18+, or a parent/guardian accepts for a minor's (kids') profile. Contact via the GitHub repository.
+- **Signing up**: the setup wizard has a new step 6, *Terms of Use* (7 steps now). Setup can't complete without it;
+  the server checks the accepted version and fingerprint.
+- **Signing back in after the update**: every profile is asked to accept the current version before anything
+  works. Each profile accepts for itself; a guardian box is required for kids' profiles. Declining signs out.
+- **Read to the end, then agree**: the boxes unlock only after the text is scrolled to the end; *Agree* needs every
+  box. Escape doesn't close it.
+- **Enforced by the server**, not just hidden in the UI: every authenticated API call answers 403 `TERMS_REQUIRED`
+  until the profile accepts; Subsonic apps get error 50. If the Terms file is missing or its text doesn't match the
+  published fingerprint (`server/legal/terms-versions.json`), nobody gets in (fails closed).
+- **Evidence**: each acceptance is logged in `server/data/terms-acceptances.json` (profile, user, version,
+  SHA-256 of the exact text, time, session/device, IP, user agent, guardian). Admins: `GET /api/legal/acceptances`.
+- **Changed Terms**: a new version means everyone accepts again; earlier acceptances stay on record.
+- Service worker shell cache v18 (adds `termsGate.js` and the Terms page for offline reading).
+- Tests: `server/test/terms.test.js` (server, 11) and `server/test/terms-gate-ui.test.js` (web client, 9). Checked in
+  headless Chromium against a live server: sign-up through the wizard, sign-in after the update, decline, accept;
+  no CSP violations.
+
+### Fixed
+- `server/test/stats.test.js` used a fixed date that fell out of the "this week" window; it now uses today.
+
 ## [3.0.0] — in progress (branch `arena/0deefe55-vault-v2`)
 
 ### Security — no inline scripts, and no sign-in tokens in web addresses

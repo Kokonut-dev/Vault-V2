@@ -112,6 +112,7 @@ body.auth-prompt-open .modal-backdrop { z-index: 410; }
 }
 .auth-about { margin-top: 10px; }
 .auth-about a { color: var(--accent-text); text-underline-offset: 2px; }
+.auth-terms { font-size: 12px; color: var(--text-secondary); line-height: 1.5; }
 .grid-container {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
