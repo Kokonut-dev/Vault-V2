@@ -48,6 +48,8 @@ class Store {
         order: 'desc',
       },
       viewMode: localStorage.getItem('vault_view_mode') || 'grid',
+      // Grid/List per page ({ music: 'list', movies: 'grid', … }) — see utils/viewMode.js.
+      viewModes: safeParse('vault_view_modes', {}),
       // Music page grouping (all / artist / album / genre) — remembered so
       // navigating into an album and back keeps the same list.
       musicGroupBy: localStorage.getItem('vault_music_group_by') || 'all',
@@ -125,6 +127,7 @@ class Store {
       glassIntensity: 'vault_glass',
       grainIntensity: 'vault_grain',
       viewMode: 'vault_view_mode',
+      viewModes: 'vault_view_modes',
       musicGroupBy: 'vault_music_group_by',
       volume: 'vault_volume',
       shuffle: 'vault_shuffle',

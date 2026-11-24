@@ -24,7 +24,9 @@
 //      and js/main.js (both in the shell list); media links use media tokens.
 // v18: Terms of Use — main.js imports js/components/termsGate.js, and the
 //      stand-alone terms.html page is cached so it can be read offline.
-const CACHE_NAME = 'vault-v2-shell-v19';
+// v20: now-playing marks on every page (js/utils/nowPlaying.js) and per-page
+//      Grid/List (js/utils/viewMode.js); store.js gained `viewModes`.
+const CACHE_NAME = 'vault-v2-shell-v20';
 // Media the user saved with "Download for offline" (docs/js/app-extras.js).
 const OFFLINE_CACHE = 'vault-offline';
 const BASE_PATH = '/Vault-V2';

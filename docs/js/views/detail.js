@@ -12,6 +12,7 @@ import { copyText } from '../utils/clipboard.js';
 import { icon, setIcon } from '../utils/icons.js';
 import { uploadAlbumCover } from '../utils/coverUpload.js';
 import { openEditDetails, canEditDetails, decodeEntities } from '../components/editDetails.js';
+import { npIds } from '../utils/nowPlaying.js';
 
 export async function renderDetail(container, id) {
   container.className = 'page';
@@ -214,8 +215,8 @@ function renderMusicDetail(container, item) {
       <div class="album-header-cover">
         <img src="${coverUrl}" alt="" data-img-fallback="hide">
       </div>
-      <div class="album-header-meta">
-        <span class="quality-badge">${isAlbumView ? 'Album' : 'Track'}</span>
+      <div class="album-header-meta" data-np-ids="${escapeHtml(npIds(isAlbumView ? albumTracks : [item]))}">
+        <div class="album-header-kind"><span class="quality-badge">${isAlbumView ? 'Album' : 'Track'}</span><span class="np-slot" data-np-slot="inline"></span></div>
         <h1 class="album-header-title">${escapeHtml(isAlbumView ? albumKey : item.title)}</h1>
         <div class="album-header-sub">
           ${byline ? `<span>${escapeHtml(byline)}</span>` : ''}

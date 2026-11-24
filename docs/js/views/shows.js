@@ -131,8 +131,9 @@ export async function renderShowDetail(container, key) {
   function episodeRow(episode) {
     const row = document.createElement('div');
     row.className = `episode-row${episode.watched ? ' watched' : ''}`;
+    row.dataset.npId = episode.id;
     row.innerHTML = `
-      <div class="episode-thumb">
+      <div class="episode-thumb" data-np-slot="cover">
         <img loading="lazy" src="${api.getThumbnailUrl(episode.id)}" alt="" data-img-fallback="hide">
         ${episode.progress ? `<div class="media-card-progress"><div class="media-card-progress-bar" style="width:${episode.progress}%"></div></div>` : ''}
       </div>

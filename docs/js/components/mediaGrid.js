@@ -4,7 +4,8 @@
 import { createMediaCard } from './mediaCard.js';
 import { escapeHtml } from '../utils/format.js';
 import { icon } from '../utils/icons.js';
-import { createVirtualGrid } from '../utils/virtualGrid.js';
+import { createVirtualGrid, releaseVirtualGrid } from '../utils/virtualGrid.js';
+import { onUnmount } from '../utils/lifecycle.js';
 
 /** Above this many items the grid switches to windowed rendering (F-12). */
 const VIRTUAL_THRESHOLD = 150;
@@ -12,6 +13,7 @@ const VIRTUAL_THRESHOLD = 150;
 export function renderMediaGrid(container, items, options = {}) {
   const { onPlay, onClick, emptyMessage = 'No items found', virtual } = options;
   
+  releaseVirtualGrid(container);
   container.innerHTML = '';
   
   if (!items || items.length === 0) {
@@ -28,7 +30,6 @@ export function renderMediaGrid(container, items, options = {}) {
   // Large libraries: only keep the visible slice of cards in the DOM.
   // Below the threshold we keep the simple path (and its stagger animation).
   if (virtual !== false && items.length > VIRTUAL_THRESHOLD) {
-    container._vaultVirtualGrid?.destroy?.();
     const grid = createVirtualGrid(container, {
       itemHeight: options.itemHeight || 300,
       columns: options.columns || 0,
@@ -37,11 +38,10 @@ export function renderMediaGrid(container, items, options = {}) {
     });
     grid.setItems(items, item => createMediaCard(item, { onPlay, onClick }));
     container._vaultVirtualGrid = grid;
+    // Its window listeners must not outlive the page.
+    onUnmount(() => grid.destroy());
     return grid;
   }
-  container._vaultVirtualGrid?.destroy?.();
-  container._vaultVirtualGrid = null;
-
   const grid = document.createElement('div');
   grid.className = 'media-grid stagger';
   
@@ -56,6 +56,7 @@ export function renderMediaGrid(container, items, options = {}) {
 }
 
 export function renderSkeletonGrid(container, count = 12) {
+  releaseVirtualGrid(container);
   container.innerHTML = '';
   const grid = document.createElement('div');
   grid.className = 'media-grid';

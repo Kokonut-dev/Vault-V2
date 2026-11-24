@@ -1,5 +1,33 @@
 # Changelog
 
+## [Unreleased] — Now playing on every page & Grid/List fixes (branch `arena/fd11e94b-vault-v2`)
+
+### Added
+- **The "now playing" mark shows wherever the playing song or video appears**, not only on artist pages:
+  - Music: All Tracks (grid and list), and the album, artist or genre that contains the song.
+  - Album pages: the playing track's row, and an indicator by the "Album" label.
+  - The Artists page (artist card) and artist pages (album heading plus track row, as before).
+  - Home, playlists (playlist card and its rows), favourites, history, podcast episodes, TV episodes, My List
+    "Next up" and search results.
+
+  Cards get a "Playing" pill on the artwork, list rows get bars over the cover and an accent title, and group
+  headings get bars next to the name. The bars stop while paused and move as soon as the next song starts. Rows
+  say `aria-current="true"` to screen readers.
+- One shared module (`docs/js/utils/nowPlaying.js`) does the marking for the whole app. A view only labels its
+  elements (`data-np-id`, `data-np-ids`, `data-np-slot`), so new pages get the mark without subscribing to the
+  player.
+
+### Fixed
+- **Grid / List on the Music page did nothing in Artists, Albums and Genres.** It now applies everywhere:
+  - Artists and Genres show their songs as cards or rows.
+  - Albums shows album cards or an album list (album, artist, tracks, year; click opens, Play plays).
+  - An open genre stays open when you switch.
+- Switching a big library (over 150 items) from Grid to List left the old windowed grid running in the
+  background, still rebuilding hidden cards on every scroll. It is now stopped, and it is also stopped when you
+  leave the page.
+- Grid / List is remembered **per page**. Picking List on Music no longer also switches Movies & Series and
+  Videos. The buttons announce which one is on (`aria-pressed`).
+
 ## [Unreleased] — Create a new account & password recovery by email (branch `arena/8468ebf5-vault-v2`)
 
 ### Added

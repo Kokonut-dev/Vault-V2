@@ -40,6 +40,8 @@ export function createMediaCard(item, options = {}) {
   // navigation layers (docs/js/app-extras.js).
   card.dataset.itemId = item.id;
   card.dataset.contextMenuFor = item.id;
+  // Shows the "Playing" badge while this item plays (utils/nowPlaying.js).
+  card.dataset.npId = item.id;
   if (item.watched) card.classList.add('watched');
   // The file is gone (drive unplugged, moved outside the library…); the item
   // stays with its history until a scan removes it — see scanner.scanAll.
@@ -79,7 +81,7 @@ export function createMediaCard(item, options = {}) {
     : (item.thumbnailPath ? api.getThumbnailUrl(item.id) : versionedCover());
 
   card.innerHTML = `
-    <div class="media-card-cover ${coverType}">
+    <div class="media-card-cover ${coverType}" data-np-slot="cover">
       <img data-src="${coverUrl}" alt="" loading="lazy" decoding="async">
       <div class="media-card-placeholder" aria-hidden="true">${icon(isMusic ? 'music' : isVideo ? 'video' : 'film', { size: 34 })}</div>
       <div class="media-card-overlay">

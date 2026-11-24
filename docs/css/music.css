@@ -152,7 +152,7 @@ a.artist-album-cover:hover { transform: translateY(-2px); }
 .track-row + .track-row { margin-top: 1px; }
 .track-row:hover,
 .track-row:focus-visible { background: rgba(var(--glass-tint), 0.07); }
-.track-row.is-current { background: color-mix(in srgb, var(--accent-solid) 10%, transparent); }
+.track-row.np-current { background: color-mix(in srgb, var(--accent-solid) 10%, transparent); }
 
 .track-num {
   display: grid;
@@ -182,20 +182,20 @@ a.artist-album-cover:hover { transform: translateY(-2px); }
 .track-row:focus-within .track-play { opacity: 1; transform: none; }
 .track-row:hover .track-num-n,
 .track-row:focus-within .track-num-n,
-.track-row.is-current .track-num-n,
+.track-row.np-current .track-num-n,
 .track-row:hover .track-eq,
 .track-row:focus-within .track-eq { visibility: hidden; }
 
 /* Playing indicator: three bars that bounce while the track plays. */
 .track-eq { display: none; align-items: flex-end; gap: 2px; height: 14px; }
-.track-row.is-current .track-eq { display: flex; }
+.track-row.np-current .track-eq { display: flex; }
 .track-eq i { width: 3px; height: 45%; border-radius: 1px; background: var(--accent); }
-.track-row.is-playing .track-eq i { animation: trackEq 0.9s ease-in-out infinite alternate; }
-.track-row.is-playing .track-eq i:nth-child(2) { animation-delay: -0.3s; }
-.track-row.is-playing .track-eq i:nth-child(3) { animation-delay: -0.6s; }
+.track-row.np-playing .track-eq i { animation: trackEq 0.9s ease-in-out infinite alternate; }
+.track-row.np-playing .track-eq i:nth-child(2) { animation-delay: -0.3s; }
+.track-row.np-playing .track-eq i:nth-child(3) { animation-delay: -0.6s; }
 @keyframes trackEq { from { height: 25%; } to { height: 100%; } }
 @media (prefers-reduced-motion: reduce) {
-  .track-row.is-playing .track-eq i { animation: none; height: 70%; }
+  .track-row.np-playing .track-eq i { animation: none; height: 70%; }
 }
 
 .track-main { min-width: 0; display: grid; gap: 2px; }
@@ -207,7 +207,7 @@ a.artist-album-cover:hover { transform: translateY(-2px); }
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.track-row.is-current .track-title { color: var(--accent-text); }
+.track-row.np-current .track-title { color: var(--accent-text); }
 .track-sub {
   font-size: var(--text-xs);
   color: var(--text-secondary);
@@ -374,3 +374,84 @@ a.artist-album-cover:hover { transform: translateY(-2px); }
 @media (hover: none) {
   .media-list-item .media-list-play { display: none; }
 }
+
+/* ============================================================
+   Now playing — every page (utils/nowPlaying.js)
+   Elements carry data-np-id / data-np-ids; the matching ones get
+   .np-current (+ .np-playing while sound plays) and, where they have a
+   data-np-slot, an .np-badge with the same bouncing bars as the artist page.
+   ============================================================ */
+.np-badge { display: inline-flex; align-items: center; gap: 5px; pointer-events: none; }
+.np-eq { display: inline-flex; align-items: flex-end; gap: 2px; height: 12px; flex: 0 0 auto; }
+.np-eq i { width: 3px; height: 45%; border-radius: 1px; background: currentColor; }
+.np-badge.is-playing .np-eq i { animation: trackEq 0.9s ease-in-out infinite alternate; }
+.np-badge.is-playing .np-eq i:nth-child(2) { animation-delay: -0.3s; }
+.np-badge.is-playing .np-eq i:nth-child(3) { animation-delay: -0.6s; }
+.np-label { font-size: 11px; font-weight: var(--fw-strong, 600); line-height: 1; letter-spacing: 0.01em; }
+
+/* Inline (next to a name or title): just the bars, in the accent colour. */
+[data-np-slot="inline"] > .np-badge { color: var(--accent-text); margin-left: 8px; vertical-align: middle; }
+[data-np-slot="inline"] > .np-badge .np-label { display: none; }
+.np-slot:empty { display: none; }
+.np-slot { display: inline-flex; align-items: center; }
+
+/* On artwork: a pill on big cards, a scrim over small thumbnails. */
+[data-np-slot="cover"] { position: relative; }
+[data-np-slot="cover"] > .np-badge {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  z-index: 3;
+  padding: 4px 8px;
+  border-radius: 999px;
+  background: var(--accent-solid);
+  color: var(--on-accent);
+  box-shadow: var(--shadow-lift, 0 2px 8px rgb(0 0 0 / 0.25));
+}
+.media-list-item-cover > .np-badge,
+.search-item-cover > .np-badge,
+.episode-thumb > .np-badge {
+  inset: 0;
+  top: 0;
+  left: 0;
+  padding: 0;
+  border-radius: inherit;
+  justify-content: center;
+  background: rgb(0 0 0 / 0.55);
+  color: #fff;
+  box-shadow: none;
+}
+.media-list-item-cover > .np-badge .np-label,
+.search-item-cover > .np-badge .np-label { display: none; }
+.episode-thumb > .np-badge .np-eq { height: 16px; }
+
+/* The item itself: accent title, a quiet accent wash on rows. */
+.media-card.np-current .media-card-cover { box-shadow: 0 0 0 2px var(--accent-solid), 0 1px 2px var(--shadow-color); }
+.media-card.np-current .media-card-title,
+.media-list-item.np-current .media-list-item-title,
+.search-item.np-current .search-item-title,
+.podcast-episode.np-current .row-title,
+.episode-row.np-current .episode-title { color: var(--accent-text); }
+.media-list-item.np-current,
+.media-list-item.np-current:nth-child(even) { background: color-mix(in srgb, var(--accent-solid) 10%, transparent); }
+.album-header-kind { display: flex; align-items: center; gap: 4px; justify-self: start; }
+
+@media (prefers-reduced-motion: reduce) {
+  .np-badge.is-playing .np-eq i { animation: none; height: 70%; }
+}
+
+/* Music page groupings (Artists / Genres). */
+.music-group { margin-bottom: 32px; }
+.music-group-title { display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 10px; font-size: 18px; font-weight: 700; margin-bottom: 12px; }
+.music-group-title a { color: inherit; text-decoration: none; }
+.music-group-title a:hover,
+.music-group-title a:focus-visible { text-decoration: underline; }
+.music-group-name { display: inline-flex; align-items: center; min-width: 0; }
+.music-group-count { color: var(--text-tertiary); font-weight: 400; font-size: 14px; }
+.genre-group { margin-bottom: 12px; }
+.genre-head { display: flex; align-items: center; gap: 8px; background: rgba(var(--glass-tint), 0.05); padding: 8px 8px 8px 12px; border-radius: 12px; }
+.genre-head .genre-toggle { flex: 1; justify-content: flex-start; }
+.genre-caret { display: inline-flex; transition: transform var(--duration-fast) var(--ease-out); }
+.genre-group.is-open .genre-caret { transform: rotate(90deg); }
+.genre-name { display: inline-flex; align-items: center; }
+.genre-tracks { margin-top: 8px; }

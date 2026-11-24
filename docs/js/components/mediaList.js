@@ -5,10 +5,13 @@ import { api } from '../api.js';
 import { formatDuration, escapeHtml } from '../utils/format.js';
 import { icon } from '../utils/icons.js';
 import { attachContextMenu } from './contextMenu.js';
+import { releaseVirtualGrid } from '../utils/virtualGrid.js';
 
 export function renderMediaList(container, items, options = {}) {
   const { onPlay, onClick, sortField = 'title', sortOrder = 'asc', onSort, hideAlbum = false } = options;
   
+  // The same container may have held a (windowed) grid a moment ago.
+  releaseVirtualGrid(container);
   container.innerHTML = '';
   
   if (!items || items.length === 0) {
@@ -64,6 +67,8 @@ export function renderMediaList(container, items, options = {}) {
     const row = document.createElement('div');
     row.className = 'media-list-item';
     row.dataset.id = item.id;
+    // Highlighted + animated bars on the cover while it plays (utils/nowPlaying.js).
+    row.dataset.npId = item.id;
     // Focusable group (Enter/Space open it) — not role=button, because the
     // row contains its own Play <button> (nested-interactive, C-11).
     row.setAttribute('role', 'group');
@@ -84,7 +89,7 @@ export function renderMediaList(container, items, options = {}) {
     row.innerHTML = `
       <div class="media-list-item-main">
         <button class="media-list-play" type="button" aria-label="Play">${icon('play', { size: 13 })}</button>
-        <div class="media-list-item-cover">
+        <div class="media-list-item-cover" data-np-slot="cover">
           <img src="${coverSrc}" alt="" loading="lazy" data-img-fallback="hide">
         </div>
         <div class="media-list-item-text">

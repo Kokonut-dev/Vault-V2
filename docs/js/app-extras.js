@@ -22,6 +22,7 @@ import { initListenTracker } from './components/listenTracker.js';
 import { initVideoExtras } from './components/videoExtras.js';
 import { initSyncPlayControl } from './components/syncplayControl.js';
 import { initPlaybackPrefs } from './components/playbackPrefs.js';
+import { initNowPlaying } from './utils/nowPlaying.js';
 import { confirmDialog } from './components/confirmDialog.js';
 import { icon } from './utils/icons.js';
 import { router } from './router.js';
@@ -586,6 +587,7 @@ export function initAppExtras() {
   initListenTracker();
   initPlaybackPrefs();
   initGridKeyboardNav();
+  initNowPlaying();
 
   window.vaultExtras = {
     downloadItemForOffline,
