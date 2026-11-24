@@ -86,6 +86,11 @@ router.get('/status', optionalAuthMiddleware, (req, res) => {
       // A device other than the server itself must type the code shown in
       // the server window before it can set Vault up.
       setupCodeRequired: needsSetup ? setupGuard.required(req) : false,
+      // The sign-in screen offers "Create a new account" only when it works.
+      signup: !needsSetup && require('../services/accounts').signupEnabled(),
+      // ... and "Forgot password?" always once set up (without mail the link
+      // is shown in the server window).
+      recovery: !needsSetup,
       version: require('../package.json').version || '3.0.0',
       timestamp: new Date().toISOString(),
       current: currentConfig,

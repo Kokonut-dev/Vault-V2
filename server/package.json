@@ -46,6 +46,7 @@
     "morgan": "^1.10.0",
     "multer": "^1.4.5-lts.1",
     "music-metadata": "^11.16.1",
+    "nodemailer": "^10.6.1",
     "validator": "^13.11.0",
     "webrtc-polyfill": "file:./vendor/webrtc-polyfill-stub"
   },

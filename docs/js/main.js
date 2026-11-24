@@ -21,6 +21,7 @@ import { swapView } from './utils/pageTransition.js';
 import { icon, hydrateIcons } from './utils/icons.js';
 import { installImageFallbacks, activateAsyncStylesheets } from './utils/imageFallback.js';
 import { ensureTermsAccepted, termsGateOpen } from './components/termsGate.js';
+import { mountAccountForms, takeResetLink } from './components/accountForms.js';
 
 // No inline event handlers (CSP): image fallbacks and the async onboarding
 // stylesheet are wired up here, before any view renders.
@@ -60,6 +61,11 @@ if (changeServerBtn) {
       setApiBaseUrl(newUrl.trim());
       updateServerDisplay();
       updateMixedContentWarning();
+// A reset link for another server switched the server address.
+window.addEventListener('vault:server-changed', () => {
+  updateServerDisplay();
+  updateMixedContentWarning();
+});
       toast.info(`Server URL set to ${newUrl.trim()}. Please login again.`);
     }
   });
@@ -121,6 +127,66 @@ const gridClear = document.getElementById('grid-clear');
 const gridSubmit = document.getElementById('grid-submit');
 
 let selectedSquares = [];
+
+// --- Sign-in screen steps: password, grid, and the account forms ----------
+// (components/accountForms.js builds "Create a new account", "Forgot
+// password?" and the page a reset link opens.)
+function showStep(name) {
+  const target = document.getElementById(`${name}-step`);
+  if (!target) return;
+  authGate?.querySelectorAll('.auth-step').forEach(step => step.classList.toggle('active', step === target));
+  if (name === 'login') {
+    if (loginError) loginError.style.display = 'none';
+    document.getElementById('username')?.focus();
+  }
+}
+
+let accountForms = null;
+function getAccountForms() {
+  if (!accountForms) {
+    accountForms = mountAccountForms(authGate.querySelector('.auth-container'), {
+      showStep,
+      onSignedIn: (result) => {
+        toast.success(`Welcome, ${result.profile?.name || result.user?.username || 'to Vault'}! Your account is ready.`);
+        showStep('login');
+        showApp();
+      },
+      onResetDone: (username) => {
+        // Every device of the account was signed out, this one included.
+        api.clearTokenCache();
+        store.clearAuth();
+        try { localStorage.removeItem('vault_token'); } catch { /* private mode */ }
+        showAuthGate();
+        const user = document.getElementById('username');
+        if (user && username) user.value = username;
+        toast.success('Password and grid changed. Sign in with them now.');
+        document.getElementById(username ? 'password' : 'username')?.focus();
+      },
+    });
+  }
+  return accountForms;
+}
+
+/** "Create a new account" only shows when the server allows it. */
+function updateSignupOffer(status) {
+  const offer = document.getElementById('signup-offer');
+  if (offer) offer.hidden = !status?.signup;
+}
+
+async function refreshSignupOffer() {
+  try {
+    updateSignupOffer(await api.getSetupStatus());
+  } catch {
+    updateSignupOffer(null);
+  }
+}
+
+document.getElementById('forgot-link')?.addEventListener('click', () => {
+  getAccountForms().openForgot(document.getElementById('username')?.value.trim() || '');
+});
+document.getElementById('signup-link')?.addEventListener('click', () => {
+  getAccountForms().openRegister();
+});
 
 function initGrid() {
   if (!gridContainer) return;
@@ -308,6 +374,7 @@ async function checkAuth() {
     if (authGate) authGate.style.display = 'flex';
     if (appEl) appEl.style.display = 'none';
     checkServerOnGate();
+    refreshSignupOffer();
     return false;
   }
 
@@ -322,6 +389,7 @@ async function checkAuth() {
   if (authGate) authGate.style.display = 'flex';
   if (appEl) appEl.style.display = 'none';
   checkServerOnGate();
+  refreshSignupOffer();
   return false;
 }
 
@@ -374,10 +442,8 @@ function showAuthGate() {
   if (appEl) appEl.style.display = 'none';
   const obGate = document.getElementById('onboarding-gate');
   if (obGate) obGate.remove();
-  if (loginStep) {
-    loginStep.classList.add('active');
-    gridStep.classList.remove('active');
-  }
+  if (loginStep) showStep('login');
+  refreshSignupOffer();
 }
 
 async function showOnboarding() {
@@ -937,8 +1003,15 @@ document.getElementById('auth-code-form')?.addEventListener('submit', async (e) 
 });
 
 async function start() {
+  // A "Forgot password?" link (#reset=…): taken out of the address bar first.
+  const resetLink = takeResetLink();
   // Setup listeners once
   setupOnboardingListeners();
+  if (resetLink) {
+    showAuthGate();
+    getAccountForms().openReset(resetLink);
+    return;
+  }
   await redeemPairingLink();
 
   // Show loading state? Hide both initially

@@ -307,6 +307,11 @@ router.put('/credentials', requireAdmin, (req, res) => {
       if (cleanUsername.length < 3) {
         return res.status(400).json({ error: 'Username must be at least 3 characters' });
       }
+      // Must not clash with an account made with "Create a new account".
+      const taken = require('../services/accounts').findByUsername(cleanUsername);
+      if (taken) {
+        return res.status(409).json({ error: 'That username is already used by another account', code: 'USERNAME_TAKEN', fields: { newUsername: 'That username is already used by another account' } });
+      }
       config.auth.username = cleanUsername;
       changed = true;
     }

@@ -45,7 +45,7 @@ const VERSION = 1;
 const MANIFEST = 'vault-transfer.json';
 
 // Top-level names in server/data that must not travel.
-const SKIP_DATA = new Set(['backups', 'trash', 'trash.json', 'bruteforce.json', 'library.db', 'library.db-wal', 'library.db-shm', 'library.db-journal']);
+const SKIP_DATA = new Set(['backups', 'trash', 'trash.json', 'bruteforce.json', 'recovery.json', 'library.db', 'library.db-wal', 'library.db-shm', 'library.db-journal']);
 const CACHE_DIRS = ['covers', 'lyrics'];
 const JUNK = /^(\.DS_Store|Thumbs\.db|desktop\.ini|\._.+|\.Spotlight-V100|\.Trashes|\.fseventsd|\.TemporaryItems|\.AppleDouble|__MACOSX|.+\.vault-partial|\.vault-transfer-upload-.+)$/i;
 const ID_RE = /(?<![0-9a-f])[0-9a-f]{32}(?![0-9a-f])/g;

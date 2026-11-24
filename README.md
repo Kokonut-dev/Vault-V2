@@ -167,6 +167,7 @@ Check with `ffmpeg -version` and `ffprobe -version` in a **new** terminal, then 
 |---|---|
 | express, helmet, cors, express-rate-limit, morgan | The web server, security headers/CSP, CORS, rate limits, request log |
 | jsonwebtoken, bcryptjs, validator | Sign-in tokens, password hashing, input checks |
+| nodemailer | Sending "Forgot password?" emails through your own mail server |
 | multer, mime-types, fs-extra | Uploads (including whole folders), content types, file moves |
 | chokidar | Watching your media folders for new files |
 | music-metadata | Tags and cover art from audio files |
@@ -315,7 +316,8 @@ For private files, add an API key or OAuth client ID in **Settings → Links & i
 - **SyncPlay** — watch together in sync
 - **Your Stats** — what you've watched and listened to
 - **Server** (admins) — health, background jobs, logs, disk usage, backups, library index
-- **Settings** — appearance (6 themes), playback, EQ, subtitles, security, devices, connection
+- **Settings** — appearance (6 themes), playback, EQ, subtitles, security, recovery email, devices, connection, accounts & email
+- **Accounts** — **Create a new account** on the sign-in screen gives family and friends their own sign-in; **Forgot password?** emails a reset link
 
 **Keyboard shortcuts** — press `?` in the app for the full list.
 
@@ -365,6 +367,8 @@ Vault is built so that using it doesn't open up your home network. Here is what 
 - **Guessing doesn't work.** After 5 wrong tries, that device is locked out for 15 minutes. Each stage counts separately: password, second step, setup code and Subsonic. Behind the tunnel, each visitor is counted by their own address, not as one shared one.
 - **Every device is listed** in **Settings → Devices**, with its address and a *Remote access* badge if it came in through the Anywhere address. Sign any device out there; changing your password signs out every other device.
 - **Profiles keep their limits.** A kids' profile can't change server settings, turn on remote access or add a device with more rights than it has.
+- **Accounts other people create are kept apart.** Anyone who can open the sign-in page can use **Create a new account** (turn it off in **Settings → Accounts & email**, especially while *Anywhere* is on). Such an account has its own password and grid and one profile. It never gets admin rights, and it can't see or open your profiles (you can't open theirs either). You can delete it at any time.
+- **Forgot your password?** The link on the sign-in screen sends a one-time reset link (valid 30 minutes) to the account's email. You choose a new password and grid, and every device of that account is signed out. An authenticator app, if you turned one on, is still needed. Until you set up email in **Settings → Accounts & email** (any SMTP server; for Gmail or Outlook use an app password), the link appears in the server window instead, so the owner can always get back in. The answer on screen never reveals whether an account exists.
 
 **Sharing access**
 

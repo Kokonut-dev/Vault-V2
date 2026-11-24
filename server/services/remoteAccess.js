@@ -332,6 +332,11 @@ function publicState() {
   };
 }
 
+/** The public tunnel address while remote access is on, else null. */
+function currentUrl() {
+  return state.status === 'on' && state.url ? state.url : null;
+}
+
 /** What protects the server while it is reachable — shown next to the address. */
 function securitySummary() {
   const config = getConfig();
@@ -478,6 +483,7 @@ function autoStart() {
 }
 
 module.exports = {
+  currentUrl,
   lanAddresses,
   lanInfo,
   listensOnAllInterfaces,

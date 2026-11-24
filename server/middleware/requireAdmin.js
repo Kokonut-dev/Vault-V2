@@ -8,12 +8,13 @@ const profiles = require('../services/profiles');
 function isAdminProfile(profileId) {
   // A profile that doesn't exist (deleted, or a stale token) is never admin —
   // not even when it is called "default".
+  // The profile of an account made with "Create a new account" never is.
   const profile = profiles.get(profileId || 'default');
-  return Boolean(profile?.isAdmin);
+  return Boolean(profile?.isAdmin && !profile.accountId);
 }
 
 function requireAdmin(req, res, next) {
-  if (isAdminProfile(req.profileId)) return next();
+  if (!req.accountId && isAdminProfile(req.profileId)) return next();
   return res.status(403).json({
     error: 'Only an admin profile can change server settings',
     code: 'ADMIN_REQUIRED',

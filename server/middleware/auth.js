@@ -31,14 +31,31 @@ function mediaScopeAllows(req) {
  * Returns null when that profile no longer exists.
  */
 function resolveProfileId(decoded) {
-  let profileId = decoded.profileId || 'default';
-  if (decoded.sid) {
-    const session = sessions.get(decoded.sid);
-    if (session?.profileId) profileId = session.profileId;
-  }
+  return resolveIdentity(decoded).profileId || null;
+}
+
+/**
+ * Who a token acts as: { profileId, accountId } or { error }.
+ * `accountId` is null for the server owner's account. An account made with
+ * "Create a new account" always acts as its own profile, whatever the token
+ * or session says, and stops working the moment the account is deleted.
+ */
+function resolveIdentity(decoded) {
+  const session = decoded.sid ? sessions.get(decoded.sid) : null;
+  const accountId = session ? (session.accountId || null) : (decoded.accountId || null);
   // Lazy: services/profiles pulls in config and the JSON store.
   const profiles = require('../services/profiles');
-  return profiles.get(profileId) ? profileId : null;
+  if (accountId) {
+    const account = require('../services/accounts').get(accountId);
+    if (!account) return { error: 'ACCOUNT_REMOVED' };
+    return profiles.get(account.profileId) ? { profileId: account.profileId, accountId } : { error: 'PROFILE_REMOVED' };
+  }
+  let profileId = decoded.profileId || 'default';
+  if (session?.profileId) profileId = session.profileId;
+  const profile = profiles.get(profileId);
+  // The owner's devices never land on an account's profile by accident of a
+  // stale token: only through an explicit switch (which updates the session).
+  return profile ? { profileId, accountId: null } : { error: 'PROFILE_REMOVED' };
 }
 
 const BLACKLIST_PATH = path.join(require('../utils/dataDir').DATA_DIR, 'token-blacklist.json');
@@ -142,10 +159,14 @@ function authMiddleware(req, res, next) {
       return res.status(401).json({ error: 'This token only plays media', code: 'INVALID_TOKEN' });
     }
 
-    const profileId = resolveProfileId(decoded);
-    if (!profileId) {
+    const identity = resolveIdentity(decoded);
+    if (identity.error === 'ACCOUNT_REMOVED') {
+      return res.status(401).json({ error: 'This account was deleted', code: 'ACCOUNT_REMOVED' });
+    }
+    if (!identity.profileId) {
       return res.status(401).json({ error: 'This profile was deleted', code: 'PROFILE_REMOVED' });
     }
+    const { profileId, accountId } = identity;
 
     // Terms of Use: until this profile has accepted the current version, it
     // can only read and accept them (or switch profile). Covers every app,
@@ -162,9 +183,10 @@ function authMiddleware(req, res, next) {
     }
     if (!termsOk) return res.status(403).json(terms.requiredBody());
 
-    req.user = { ...decoded, profileId };
+    req.user = { ...decoded, profileId, accountId };
     req.token = token;
     req.profileId = profileId;
+    req.accountId = accountId;
     next();
   } catch (err) {
     if (err.name === 'TokenExpiredError') {
@@ -206,14 +228,15 @@ function optionalAuthMiddleware(req, res, next) {
       req.user = null;
       return next();
     }
-    const profileId = resolveProfileId(decoded);
+    const { profileId, accountId = null } = resolveIdentity(decoded);
     if (!profileId || decoded.scope === 'media') {
       req.user = null;
       return next();
     }
-    req.user = { ...decoded, profileId };
+    req.user = { ...decoded, profileId, accountId };
     req.token = token;
     req.profileId = profileId;
+    req.accountId = accountId;
   } catch {
     req.user = null;
   }
@@ -246,4 +269,4 @@ function isTokenBlacklisted(token) {
   return blacklist.has(token);
 }
 
-module.exports = { authMiddleware, optionalAuthMiddleware, blacklistToken, isTokenBlacklisted, resolveProfileId };
+module.exports = { authMiddleware, optionalAuthMiddleware, blacklistToken, isTokenBlacklisted, resolveProfileId, resolveIdentity };

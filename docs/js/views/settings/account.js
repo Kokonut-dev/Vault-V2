@@ -101,7 +101,117 @@ export function securitySection() {
       </div>
     </div>`);
   twofa.append(totp);
-  s.body.append(creds, twofa);
+
+  // Recovery email ("Forgot password?" on the sign-in screen sends the link here).
+  const emailGroup = group('Recovery email', { description: 'Where “Forgot password?” sends a link to choose a new password and grid.' });
+  emailGroup.dataset.keywords = 'email recovery forgot password reset link mail address';
+  const emailForm = el(`<form class="settings-form" id="email-form" novalidate>
+      <p class="setting-help" id="email-current" role="status">Loading…</p>
+    </form>`);
+  emailForm.append(
+    row({ id: 'recovery-email', label: 'Email address', keywords: 'email address',
+      control: '<input class="form-input" id="recovery-email" type="email" autocomplete="email" maxlength="254" spellcheck="false">' }),
+    row({ id: 'email-pass', label: 'Current password', help: 'Required to change the address.', keywords: 'current password',
+      control: '<input class="form-input" id="email-pass" type="password" autocomplete="current-password">' }),
+    el(`<div class="settings-actions"><button type="submit" class="btn btn-primary" id="save-email">${icon('mail', { size: 15 })}<span>Save email</span></button></div>`),
+  );
+  emailGroup.append(emailForm);
+
+  // Accounts made with "Create a new account" can delete themselves.
+  const leave = group('Delete my account', { description: 'Removes your account, its profile, watch history and favourites from this server. This can’t be undone.' });
+  leave.dataset.keywords = 'delete remove close account leave';
+  leave.hidden = true;
+  leave.append(el(`<div class="settings-actions"><button type="button" class="btn btn-danger btn-sm" id="delete-account">${icon('trash', { size: 14 })}<span>Delete my account…</span></button></div>`));
+
+  s.body.append(emailGroup, creds, twofa, leave);
+
+  // Who is signed in: the server owner's account, or one made with sign-up
+  // (no username change or authenticator app; sign-in changes go to
+  // /api/accounts/me/credentials).
+  let me = null;
+  const emailInputs = { email: emailForm.querySelector('#recovery-email'), currentPassword: emailForm.querySelector('#email-pass') };
+  Object.values(emailInputs).forEach(input => input.addEventListener('input', () => clearFieldError(input)));
+  function renderEmail() {
+    const current = emailForm.querySelector('#email-current');
+    const address = me?.email;
+    current.textContent = '';
+    if (address) {
+      current.append('Links go to ', Object.assign(document.createElement('strong'), { textContent: address }), '.');
+    } else {
+      current.textContent = me?.owner
+        ? 'No email yet: reset links for your account only appear in the server window.'
+        : 'No email yet: add one so “Forgot password?” can reach you.';
+    }
+    if (me && !me.mailReady && address) {
+      current.append(me.owner
+        ? ' Email sending isn’t set up yet (Settings → Accounts & email), so links are shown in the server window for now.'
+        : ' This server can’t send email yet, so its owner sees reset links in the server window.');
+    }
+    if (!emailInputs.email.value) emailInputs.email.value = address || '';
+  }
+  async function loadMe() {
+    try {
+      me = await api.getMyAccount();
+    } catch {
+      me = { owner: true, email: null, mailReady: false, unknown: true };
+    }
+    renderEmail();
+    if (me.owner) {
+      refresh();
+      return;
+    }
+    form.querySelector('#new-user')?.closest('.setting-row')?.setAttribute('hidden', '');
+    const help = form.querySelector('#new-pass-help');
+    if (help) help.textContent = 'At least 8 characters. Leave empty to keep the current one.';
+    twofa.hidden = true;
+    leave.hidden = false;
+  }
+
+  emailForm.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    Object.values(emailInputs).forEach(clearFieldError);
+    const email = emailInputs.email.value.trim();
+    const errors = {};
+    if (email && !emailInputs.email.checkValidity()) errors.email = 'Enter a valid email address';
+    if (!email && me && !me.owner) errors.email = 'Your account needs an email address';
+    if (!emailInputs.currentPassword.value) errors.currentPassword = 'Enter your current password';
+    if (applyFieldErrors(emailInputs, errors)) return;
+    const btn = emailForm.querySelector('#save-email');
+    busy(btn, true, 'Saving…');
+    try {
+      const res = await api.updateMyEmail(email, emailInputs.currentPassword.value);
+      me = { ...(me || {}), email: res.email || null };
+      emailInputs.currentPassword.value = '';
+      emailInputs.email.value = res.email || '';
+      renderEmail();
+      flashStatus(s, res.email ? 'Recovery email saved' : 'Recovery email removed');
+    } catch (err) {
+      if (!applyFieldErrors(emailInputs, err.fields || {})) flashStatus(s, err.message, 'error');
+    } finally {
+      busy(btn, false);
+    }
+  });
+
+  leave.querySelector('#delete-account').addEventListener('click', async () => {
+    const password = await promptModal({
+      title: 'Delete your account?',
+      message: 'Your profile, watch history, favourites and playlists on this server are removed, and every device is signed out. Enter your password to confirm.',
+      label: 'Password',
+      inputType: 'password',
+      autocomplete: 'current-password',
+      confirmLabel: 'Delete account',
+    });
+    if (!password) return;
+    try {
+      await api.deleteMyAccount(password);
+      toast.success('Your account was deleted');
+      api.clearTokenCache();
+      store.clearAuth();
+      window.dispatchEvent(new CustomEvent('vault:auth-required'));
+    } catch (err) {
+      flashStatus(s, err.message, 'error');
+    }
+  });
 
   // --- credentials wiring
   const inputs = {
@@ -123,8 +233,9 @@ export function securitySection() {
       if (username.length < 3) errors.newUsername = 'Usernames need at least 3 characters';
       else payload.newUsername = username;
     }
+    const minPassword = me && !me.owner ? 8 : 6;
     if (password) {
-      if (password.length < 6) errors.newPassword = 'Use at least 6 characters';
+      if (password.length < minPassword) errors.newPassword = `Use at least ${minPassword} characters`;
       else if (password !== inputs.confirm.value) errors.confirm = 'The two passwords don’t match';
       else payload.newPassword = password;
     }
@@ -147,7 +258,10 @@ export function securitySection() {
     const btn = form.querySelector('#save-creds');
     busy(btn, true, 'Updating…');
     try {
-      const result = await api.updateCredentials(payload);
+      const separate = me && !me.owner;
+      const result = separate
+        ? await api.updateMyCredentials({ currentPassword: payload.currentPassword, newPassword: payload.newPassword, newGridPattern: payload.newGridPattern })
+        : await api.updateCredentials(payload);
       // A new password or grid rotates the server's signing key and signs
       // out other devices; this one gets a fresh token to stay signed in.
       if (result?.token) {
@@ -160,7 +274,9 @@ export function securitySection() {
       flashStatus(s, `Sign-in details updated.${others}`);
       toast.success('Sign-in details updated');
     } catch (err) {
-      if (!applyFieldErrors(inputs, err.fields || (err.code === 'WRONG_PASSWORD' ? { currentPassword: err.message } : {}))) {
+      const fields = err.fields ? { ...err.fields } : (err.code === 'WRONG_PASSWORD' ? { currentPassword: err.message } : {});
+      if (fields.password) fields.newPassword = fields.password;
+      if (!applyFieldErrors(inputs, fields)) {
         flashStatus(s, err.message, 'error');
       }
     } finally {
@@ -289,7 +405,7 @@ export function securitySection() {
   codeInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); totp.querySelector('#totp-enable').click(); } });
   totp.querySelector('#totp-cancel').addEventListener('click', () => { setup.hidden = true; actions.hidden = false; actions.querySelector('button')?.focus(); });
 
-  refresh();
+  loadMe();
   return s;
 }
 
@@ -402,7 +518,7 @@ async function loadSessions(host, s) {
   host.innerHTML = `<ul class="session-items">${sessions.map(session => {
     const current = session.current || session.id === currentSid;
     const name = session.device || describeAgent(session.userAgent) || 'Unknown device';
-    const meta = [session.ip, session.lastSeen ? `active ${formatRelativeTime(session.lastSeen)}` : session.createdAt ? `signed in ${formatRelativeTime(session.createdAt)}` : ''].filter(Boolean).join(' · ');
+    const meta = [session.account ? `account ${session.account}` : '', session.ip, session.lastSeen ? `active ${formatRelativeTime(session.lastSeen)}` : session.createdAt ? `signed in ${formatRelativeTime(session.createdAt)}` : ''].filter(Boolean).join(' · ');
     return `<li class="session-item${current ? ' is-current' : ''}">
       <span class="session-icon" aria-hidden="true">${icon(current ? 'monitor' : 'globe', { size: 18 })}</span>
       <div class="session-text"><p class="session-name">${escapeHtml(name)}${current ? ' <span class="chip">This device</span>' : ''}${session.remote ? ` <span class="chip" title="Signed in through remote access (the Cloudflare address)">${icon('globe', { size: 12 })} Remote access</span>` : ''}</p>

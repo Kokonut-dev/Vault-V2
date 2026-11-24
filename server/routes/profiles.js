@@ -4,6 +4,7 @@ const profiles = require('../services/profiles');
 const libraryService = require('../services/library');
 const extras = require('../services/extras');
 const sessions = require('../services/sessions');
+const { removeProfileCompletely } = require('../services/profileRemoval');
 const events = require('../services/events');
 const logger = require('../utils/logger');
 const { AGE_LIMITS } = require('../services/contentRating');
@@ -33,9 +34,29 @@ function sendProfileError(res, err) {
   return res.status(500).json({ error: 'Profile change failed' });
 }
 
+/**
+ * Accounts made with "Create a new account" are separate from the household:
+ * they see only their own profile, and the household's profiles don't list,
+ * open or edit theirs (an admin can delete an account in Settings).
+ */
+function visibleProfiles(req) {
+  if (req.accountId) return [profiles.get(req.profileId)].filter(Boolean);
+  return profiles.listHousehold();
+}
+
+function separateAccount(req, profileId) {
+  const target = profiles.get(profileId);
+  if (!target) return false;
+  if (req.accountId) return target.id !== req.profileId;
+  return Boolean(target.accountId);
+}
+
+const SEPARATE = { error: 'That profile belongs to a separate account', code: 'SEPARATE_ACCOUNT' };
+
 router.get('/', (req, res) => {
   res.json({
-    profiles: profiles.listPublic(),
+    profiles: visibleProfiles(req).map(profiles.toPublic),
+    separateAccount: Boolean(req.accountId),
     activeProfileId: req.profileId || 'default',
     colors: profiles.COLORS,
     ageLimits: AGE_LIMITS,
@@ -61,6 +82,14 @@ router.post('/', requireAdmin, (req, res) => {
 router.put('/:id', (req, res) => {
   const body = req.body || {};
   const self = req.profileId || 'default';
+  if (separateAccount(req, req.params.id)) return res.status(403).json(SEPARATE);
+  if (req.accountId) {
+    // Name, colour, picture and PIN of your own profile; nothing else.
+    const blocked = PRIVILEGED_FIELDS.filter(key => body[key] !== undefined);
+    if (blocked.length) {
+      return res.status(403).json({ error: 'Accounts can’t change admin rights or rating limits', code: 'ADMIN_REQUIRED', fields: blocked });
+    }
+  }
   if (!isAdminProfile(self)) {
     if (req.params.id !== self) {
       return res.status(403).json({ error: 'Only an admin profile can change other profiles', code: 'ADMIN_REQUIRED' });
@@ -93,28 +122,23 @@ router.delete('/:id', requireAdmin, async (req, res) => {
   if (id === (req.profileId || 'default')) {
     return res.status(400).json({ error: 'Switch to another profile before deleting this one', code: 'PROFILE_IN_USE' });
   }
+  // The dialog promises the profile's data goes with it, and a device still
+  // signed in as the deleted profile must not keep working as a ghost. A
+  // profile of a separate account takes the account with it.
+  let result;
   try {
-    const ok = profiles.remove(id);
-    if (!ok) return res.status(404).json({ error: 'Profile not found', code: 'NOT_FOUND' });
+    result = await removeProfileCompletely(id);
   } catch (err) {
     return sendProfileError(res, err);
   }
-  // The dialog promises the profile's data goes with it, and a device still
-  // signed in as the deleted profile must not keep working as a ghost.
-  const signedOut = sessions.revokeProfile(id);
-  const watchlist = extras.removeProfileWatchlist(id);
-  const bookmarks = extras.removeProfileBookmarks(id);
-  try {
-    await libraryService.removeProfileData(id);
-  } catch (err) {
-    logger.warn(`[Profiles] could not remove data for ${id}: ${err.message}`);
-  }
-  res.json({ message: 'Profile removed', id, signedOut, watchlistRemoved: watchlist, bookmarksRemoved: bookmarks });
+  if (!result) return res.status(404).json({ error: 'Profile not found', code: 'NOT_FOUND' });
+  res.json({ message: 'Profile removed', id, ...result });
 });
 
 router.post('/:id/switch', (req, res) => {
   const profile = profiles.get(req.params.id);
   if (!profile) return res.status(404).json({ error: 'Profile not found', code: 'NOT_FOUND' });
+  if (separateAccount(req, profile.id)) return res.status(403).json(SEPARATE);
 
   if (profiles.hasPin(req.params.id)) {
     // 403 (or 429 when locked), not 401: the client treats any 401 as an
@@ -131,6 +155,7 @@ router.post('/:id/switch', (req, res) => {
     sid: req.user.sid,
     profileId: profile.id,
     remember: !!req.user.remember,
+    ...(req.accountId ? { accountId: req.accountId } : {}),
   });
 
   // The session is what the auth middleware trusts, so older tokens from
@@ -146,6 +171,7 @@ router.get('/:id/summary', (req, res) => {
   const profileId = req.params.id;
   const self = req.profileId || 'default';
   // History is private: only the profile itself or an admin may read it.
+  if (separateAccount(req, profileId)) return res.status(403).json(SEPARATE);
   if (profileId !== self && !isAdminProfile(self)) {
     return res.status(403).json({ error: 'You can only see your own profile summary', code: 'ADMIN_REQUIRED' });
   }

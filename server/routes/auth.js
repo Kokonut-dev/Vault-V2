@@ -4,7 +4,9 @@ const crypto = require('crypto');
 const authService = require('../services/authService');
 const profiles = require('../services/profiles');
 const sessions = require('../services/sessions');
-const { blacklistToken, isTokenBlacklisted, authMiddleware, resolveProfileId } = require('../middleware/auth');
+const accounts = require('../services/accounts');
+const recovery = require('../services/recovery');
+const { blacklistToken, isTokenBlacklisted, authMiddleware, resolveIdentity } = require('../middleware/auth');
 const { sanitizeString } = require('../utils/validators');
 const logger = require('../utils/logger');
 
@@ -25,8 +27,20 @@ function lockoutResponse(res, ip, stage) {
   });
 }
 
-function validateSecondFactor(challengeToken, body) {
+function validateSecondFactor(decoded, body) {
   const { pattern, code, recoveryCode } = body;
+
+  // Accounts made with "Create a new account" sign in with their own grid
+  // (the authenticator app is the owner's only).
+  if (decoded.accountId) {
+    const account = accounts.get(decoded.accountId);
+    if (!account) return { ok: false, status: 401, error: 'Invalid or expired challenge token. Please log in again.', code: 'INVALID_CHALLENGE' };
+    if (!Array.isArray(pattern) || pattern.length !== 8 || !pattern.every(v => Number.isInteger(v) && v >= 0 && v <= 15)) {
+      return { ok: false, status: 400, error: 'Pattern must be array of 8 numbers 0-15', code: 'INVALID_PATTERN' };
+    }
+    if (!accounts.verifyGrid(account, pattern)) return { ok: false, status: 401, error: 'Invalid grid pattern', code: 'INVALID_GRID' };
+    return { ok: true, method: 'grid' };
+  }
 
   if (pattern) {
     if (!Array.isArray(pattern) || pattern.length !== 8) {
@@ -76,7 +90,11 @@ router.post('/login', (req, res) => {
   const cleanUsername = sanitizeString(username, 100);
   const cleanPassword = typeof password === 'string' ? password.trim().substring(0, 128) : '';
 
-  if (!authService.validateCredentials(cleanUsername, cleanPassword)) {
+  // The owner's account first; otherwise an account made with "Create a new
+  // account" (its password is checked untrimmed, as it was chosen).
+  const isOwner = authService.validateCredentials(cleanUsername, cleanPassword);
+  const account = isOwner ? null : accounts.verifyLogin(String(username).trim(), typeof password === 'string' ? password : '');
+  if (!isOwner && !account) {
     authService.recordFailedAttempt(ip, 'password');
     res.locals.countAsAuthFailure = true;
     logger.warn(`Failed login attempt for ${cleanUsername} from ${ip}`);
@@ -88,10 +106,12 @@ router.post('/login', (req, res) => {
   // re-submitting a (possibly stolen) password.
   authService.resetAttempts(ip, 'password');
   res.locals.resetAuthFailures = 'password';
-  const challengeToken = authService.generateChallengeToken(cleanUsername);
-  const totpEnabled = authService.isTotpEnabled();
+  const challengeToken = account
+    ? authService.generateChallengeToken(account.username, { accountId: account.id })
+    : authService.generateChallengeToken(cleanUsername);
+  const totpEnabled = !account && authService.isTotpEnabled();
 
-  logger.info(`User ${cleanUsername} passed password check from ${ip}, second factor issued`);
+  logger.info(`User ${account ? account.username : cleanUsername} passed password check from ${ip}, second factor issued`);
 
   res.json({
     challengeToken,
@@ -99,7 +119,8 @@ router.post('/login', (req, res) => {
     // client offer TOTP when it is enabled.
     step: totpEnabled ? 'second-factor' : 'grid',
     totpEnabled,
-    profiles: profiles.listPublic(),
+    // An account only ever sees (and lands on) its own profile.
+    profiles: account ? [profiles.toPublic(profiles.get(account.profileId))].filter(Boolean) : profiles.listHousehold().map(profiles.toPublic),
     message: 'Password correct, second factor required',
     expiresIn: '5m',
   });
@@ -115,12 +136,24 @@ router.post('/login', (req, res) => {
  * in never bypasses a PIN. Only when every profile has a PIN is one needed.
  */
 function resolveLoginProfile(req, decoded) {
-  const requestedId = req.body?.profileId || null;
-  const requested = requestedId ? profiles.get(requestedId) : null;
+  if (decoded.accountId) {
+    const account = accounts.get(decoded.accountId);
+    const own = account ? profiles.get(account.profileId) : null;
+    if (own) return { profile: own, explicit: true };
+  }
+  // The owner signs in to the household's profiles only: an account made
+  // with sign-up has its own password, so it isn't the owner's to open.
+  const household = (id) => {
+    const p = id ? profiles.get(id) : null;
+    return p && !p.accountId ? p : null;
+  };
+  const requested = household(req.body?.profileId || null);
   if (requested) return { profile: requested, explicit: true };
-  const fromChallenge = decoded.profileId ? profiles.get(decoded.profileId) : null;
+  const fromChallenge = household(decoded.profileId);
   if (fromChallenge) return { profile: fromChallenge, explicit: true };
-  const all = profiles.list();
+  // Without an explicit choice the owner lands on one of their own
+  // profiles, never on the profile of an account made with sign-up.
+  const all = profiles.list().filter(p => !p.accountId);
   const first = all[0];
   if (!first.pinHash) return { profile: first, explicit: false };
   return { profile: all.find(p => !p.pinHash) || first, explicit: false };
@@ -167,18 +200,22 @@ function completeLogin(req, res, decoded) {
   authService.resetAttempts(ip);
   res.locals.resetAuthFailures = 'all';
 
+  const accountId = decoded.accountId || null;
   const session = sessions.create({
     username: decoded.username,
     profileId: resolvedProfile,
+    accountId,
     req,
     remember: !!remember,
     label: req.body.deviceLabel || null,
   });
+  if (accountId) accounts.touchLogin(accountId);
 
   const token = authService.generateAccessToken(decoded.username, {
     sid: session.id,
     profileId: resolvedProfile,
     remember: !!remember,
+    ...(accountId ? { accountId } : {}),
   });
   const verified = authService.verifyToken(token);
 
@@ -187,9 +224,9 @@ function completeLogin(req, res, decoded) {
   res.json({
     token,
     expiresAt: new Date(verified.exp * 1000).toISOString(),
-    user: { username: decoded.username },
+    user: { username: decoded.username, owner: !accountId },
     profile: profiles.toPublic(profile),
-    profileCount: profiles.list().length,
+    profileCount: accountId ? 1 : profiles.listHousehold().length,
     sessionId: session.id,
   });
 }
@@ -210,7 +247,7 @@ router.post('/grid', (req, res) => {
 
   if (profilePinMissing(req, res, decoded)) return undefined;
 
-  const result = validateSecondFactor(challengeToken, { pattern });
+  const result = validateSecondFactor(decoded, { pattern });
   if (!result.ok) {
     authService.recordFailedAttempt(ip, 'second');
     res.locals.countAsAuthFailure = true;
@@ -234,7 +271,7 @@ router.post('/second-factor', (req, res) => {
 
   if (profilePinMissing(req, res, decoded)) return undefined;
 
-  const result = validateSecondFactor(challengeToken, req.body);
+  const result = validateSecondFactor(decoded, req.body);
   if (!result.ok) {
     authService.recordFailedAttempt(ip, 'second');
     res.locals.countAsAuthFailure = true;
@@ -268,6 +305,7 @@ router.post('/refresh', authMiddleware, (req, res) => {
     sid: decoded.sid,
     profileId: req.profileId || decoded.profileId || 'default',
     remember: !!decoded.remember,
+    ...(req.accountId ? { accountId: req.accountId } : {}),
   });
   const verified = authService.verifyToken(token);
   res.json({ token, expiresAt: new Date(verified.exp * 1000).toISOString() });
@@ -291,14 +329,19 @@ router.get('/verify', (req, res) => {
 
   // The session (not the token) says which profile this device is on, so a
   // reload after a profile switch still shows the profile that was picked.
-  const profileId = resolveProfileId(decoded);
+  const identity = resolveIdentity(decoded);
+  if (identity.error === 'ACCOUNT_REMOVED') {
+    return res.status(401).json({ valid: false, error: 'Account removed', code: 'ACCOUNT_REMOVED' });
+  }
+  const profileId = identity.profileId;
   if (!profileId) {
     return res.status(401).json({ valid: false, error: 'Profile removed', code: 'PROFILE_REMOVED' });
   }
+  const account = identity.accountId ? accounts.get(identity.accountId) : null;
 
   res.json({
     valid: true,
-    user: { username: decoded.username },
+    user: { username: account ? account.username : decoded.username, owner: !account },
     profile: profiles.toPublic(profiles.get(profileId)),
     expiresAt: new Date(decoded.exp * 1000).toISOString(),
   });
@@ -316,49 +359,211 @@ router.get('/media-token', authMiddleware, (req, res) => {
 // ---------------------------------------------------------------------------
 // Devices
 // ---------------------------------------------------------------------------
+/**
+ * Devices: the owner sees every device on the server (with the account each
+ * belongs to); an account made with sign-up sees only its own.
+ */
+function visibleSessions(req) {
+  const all = sessions.list();
+  if (req.accountId) return all.filter(s => s.accountId === req.accountId);
+  return all;
+}
+
 router.get('/sessions', authMiddleware, (req, res) => {
   const current = req.user?.sid;
+  const list = visibleSessions(req);
   res.json({
-    sessions: sessions.list().map(s => ({ ...s, current: s.id === current })),
-    total: sessions.list().length,
+    sessions: list.map(s => ({
+      ...s,
+      current: s.id === current,
+      account: s.accountId ? (accounts.get(s.accountId)?.username || 'Deleted account') : null,
+    })),
+    total: list.length,
   });
 });
 
 router.delete('/sessions/:id', authMiddleware, (req, res) => {
-  const ok = sessions.revoke(req.params.id);
-  if (!ok) return res.status(404).json({ error: 'Session not found' });
+  const target = visibleSessions(req).find(s => s.id === req.params.id);
+  if (!target) return res.status(404).json({ error: 'Session not found' });
+  sessions.revoke(req.params.id);
   res.json({ message: 'Device signed out', id: req.params.id });
 });
 
+// Your own other devices (an account's, or the owner's) — not other people's.
 router.post('/sessions/revoke-others', authMiddleware, (req, res) => {
-  const removed = sessions.revokeOthers(req.user?.sid);
+  const removed = sessions.revokeOthers(req.user?.sid, req.accountId || null);
   res.json({ message: `Signed out ${removed} other device(s)`, removed });
+});
+
+// ---------------------------------------------------------------------------
+// "Create a new account" and "Forgot password?"
+// ---------------------------------------------------------------------------
+// Small per-address budgets on top of the global auth limiters: making
+// accounts and asking for reset links are cheap to spam otherwise.
+const budgets = new Map();
+/** Seconds to wait when `ip` has used up `max` per window, else 0. `record` spends one. */
+function overBudget(kind, ip, max, windowMs, { record = true } = {}) {
+  const key = `${kind}|${ip}`;
+  const now = Date.now();
+  const hits = (budgets.get(key) || []).filter(t => now - t < windowMs);
+  if (hits.length >= max) {
+    budgets.set(key, hits);
+    return Math.ceil((windowMs - (now - hits[0])) / 1000);
+  }
+  if (record) hits.push(now);
+  budgets.set(key, hits);
+  if (budgets.size > 10000) budgets.clear(); // bounded memory
+  return 0;
+}
+const REGISTER_MAX = 5;
+const REGISTER_WINDOW_MS = 60 * 60 * 1000;
+
+function sendAccountError(res, err, fallback) {
+  if (err instanceof accounts.AccountError || err instanceof recovery.RecoveryError || err instanceof profiles.ProfileError) {
+    const status = err.status || 400;
+    const body = { error: err.message, code: err.code };
+    if (err.field) body.fields = { [err.field]: err.message };
+    return res.status(status).json(body);
+  }
+  logger.error(`[Auth] ${fallback}: ${err.message}`);
+  return res.status(500).json({ error: fallback });
+}
+
+function setupPending() {
+  try {
+    return require('../services/setupGuard').pending();
+  } catch {
+    return true;
+  }
+}
+
+// Open sign-up: anyone who can reach the server makes an account and is
+// signed in straight away (the owner can turn this off in Settings).
+router.post('/register', async (req, res) => {
+  const ip = authService.getClientIp(req);
+  if (setupPending()) return res.status(409).json({ error: 'Finish setting up Vault first', code: 'SETUP_REQUIRED' });
+  if (!accounts.signupEnabled()) {
+    return res.status(403).json({ error: 'Creating new accounts is turned off on this server. Ask its owner.', code: 'SIGNUP_DISABLED' });
+  }
+  const body = req.body || {};
+  if (body.confirmPassword !== undefined && body.confirmPassword !== body.password) {
+    return res.status(400).json({ error: 'The two passwords don’t match', code: 'PASSWORD_MISMATCH', fields: { confirmPassword: 'The two passwords don’t match' } });
+  }
+  // Only accounts actually made count (a typo in the form doesn't).
+  const wait = overBudget('register', ip, REGISTER_MAX, REGISTER_WINDOW_MS, { record: false });
+  if (wait) {
+    return res.status(429).json({ error: `Too many new accounts from this address. Try again in ${Math.ceil(wait / 60)} minutes.`, code: 'LOCKED_OUT', retryAfter: wait });
+  }
+  let account;
+  try {
+    account = accounts.create({
+      username: body.username,
+      email: body.email,
+      password: body.password,
+      gridPattern: body.gridPattern,
+      gridOrderMatters: !!body.gridOrderMatters,
+    });
+    await accounts.flush();
+  } catch (err) {
+    return sendAccountError(res, err, 'Could not create the account');
+  }
+  overBudget('register', ip, REGISTER_MAX, REGISTER_WINDOW_MS);
+  logger.info(`[Auth] New account "${account.username}" created from ${ip}`);
+  try {
+    require('../services/events').broadcast('profile:changed', { id: account.profileId, action: 'account-created' });
+  } catch { /* nobody listening */ }
+  // Signed in straight away, exactly as after password + grid.
+  const decoded = { username: account.username, accountId: account.id };
+  return completeLogin(req, res, decoded);
+});
+
+// Step 1: ask for a link. Always the same answer (and roughly the same
+// time), whether or not the account exists or has an email address.
+router.post('/recover', (req, res) => {
+  const ip = authService.getClientIp(req);
+  if (setupPending()) return res.status(409).json({ error: 'Finish setting up Vault first', code: 'SETUP_REQUIRED' });
+  const identifier = typeof req.body?.identifier === 'string' ? req.body.identifier : '';
+  if (!identifier.trim()) {
+    return res.status(400).json({ error: 'Enter your username or email address', code: 'MISSING_DATA', fields: { identifier: 'Enter your username or email address' } });
+  }
+  const wait = overBudget('recover', ip, 5, 15 * 60 * 1000);
+  if (wait) {
+    return res.status(429).json({ error: `Too many reset requests. Try again in ${Math.ceil(wait / 60)} minutes.`, code: 'LOCKED_OUT', retryAfter: wait });
+  }
+  // Not awaited: how long sending takes must not tell anything away.
+  recovery.request({
+    identifier,
+    appUrl: typeof req.body?.appUrl === 'string' ? req.body.appUrl.slice(0, 300) : null,
+    serverUrl: typeof req.body?.serverUrl === 'string' ? req.body.serverUrl.slice(0, 300) : null,
+    ip,
+  }).catch(err => logger.error(`[Recovery] ${err.message}`));
+  res.json({
+    message: 'If that matches an account, a reset link is on its way to the email address on file.',
+  });
+});
+
+// Step 2: what is this link for?
+router.post('/recover/check', (req, res) => {
+  try {
+    res.json(recovery.check(req.body?.token));
+  } catch (err) {
+    if (err instanceof recovery.RecoveryError) res.locals.countAsAuthFailure = true;
+    sendAccountError(res, err, 'Could not check the reset link');
+  }
+});
+
+// Step 3: new password + grid. Signs out every device of the account.
+router.post('/recover/reset', async (req, res) => {
+  const ip = authService.getClientIp(req);
+  try {
+    const body = req.body || {};
+    const result = await recovery.reset({
+      token: body.token,
+      password: body.password,
+      confirmPassword: body.confirmPassword,
+      gridPattern: body.gridPattern,
+      gridOrderMatters: body.gridOrderMatters,
+      totpCode: body.totpCode,
+      recoveryCode: body.recoveryCode,
+      ip,
+    });
+    res.json({ message: 'Your password and grid have been changed. Sign in with them now.', ...result });
+  } catch (err) {
+    if (err instanceof recovery.RecoveryError && ['RESET_INVALID', 'INVALID_TOTP'].includes(err.code)) res.locals.countAsAuthFailure = true;
+    sendAccountError(res, err, 'Could not reset the password');
+  }
 });
 
 // ---------------------------------------------------------------------------
 // TOTP management
 // ---------------------------------------------------------------------------
-router.get('/totp', authMiddleware, (req, res) => res.json(authService.totpStatus()));
+// The authenticator app protects the owner's account only.
+function ownerOnly(req, res, next) {
+  if (!req.accountId) return next();
+  return res.status(403).json({ error: 'Only the server owner’s account can use an authenticator app', code: 'OWNER_ONLY' });
+}
 
-router.post('/totp/setup', authMiddleware, (req, res) => {
+router.get('/totp', authMiddleware, ownerOnly, (req, res) => res.json(authService.totpStatus()));
+
+router.post('/totp/setup', authMiddleware, ownerOnly, (req, res) => {
   res.json(authService.setupTotp());
 });
 
-router.post('/totp/enable', authMiddleware, (req, res) => {
+router.post('/totp/enable', authMiddleware, ownerOnly, (req, res) => {
   const result = authService.enableTotp(req.body.code);
   if (!result.ok) return res.status(400).json({ error: result.error });
   logger.info('TOTP second factor enabled');
   res.json({ message: 'Two-factor authentication enabled', recoveryCodes: result.recoveryCodes });
 });
 
-router.post('/totp/disable', authMiddleware, (req, res) => {
+router.post('/totp/disable', authMiddleware, ownerOnly, (req, res) => {
   const result = authService.disableTotp(req.body.password);
   // 400 (not 401): a wrong password here must not end the session client-side.
   if (!result.ok) return res.status(400).json({ error: result.error, code: 'WRONG_PASSWORD' });
   res.json({ message: 'Two-factor authentication disabled' });
 });
 
-router.post('/totp/recovery-codes', authMiddleware, (req, res) => {
+router.post('/totp/recovery-codes', authMiddleware, ownerOnly, (req, res) => {
   const result = authService.regenerateRecoveryCodes(req.body.code);
   if (!result.ok) return res.status(400).json({ error: result.error });
   res.json({ recoveryCodes: result.recoveryCodes });
@@ -426,6 +631,7 @@ router.post('/pair', (req, res, next) => (req.headers.authorization ? authMiddle
     entry.grant = {
       username: req.user.username,
       profileId: req.user.profileId || 'default',
+      accountId: req.accountId || null,
       label: String(req.body?.deviceLabel || 'Device added with a QR code').slice(0, 80),
     };
   }
@@ -535,6 +741,7 @@ router.post('/pair/approve', authMiddleware, (req, res) => {
     // The new device gets the approver's own profile. Taking it from the body
     // let a restricted (e.g. kids) profile pair a device as someone else.
     profileId: req.user.profileId || 'default',
+    accountId: req.accountId || null,
     req,
     label: (typeof req.body.deviceLabel === 'string' && req.body.deviceLabel.trim().slice(0, 60)) || 'Paired device',
   });
@@ -569,5 +776,5 @@ router.post('/pair/exchange', (req, res) => {
   res.json({ token: accessToken, profile: profiles.toPublic(profiles.get(session.profileId)) });
 });
 
-router._resetPairingForTests = () => { pairingCodes.clear(); pairMisses.clear(); globalMisses = { count: 0, since: Date.now() }; };
+router._resetPairingForTests = () => { pairingCodes.clear(); pairMisses.clear(); globalMisses = { count: 0, since: Date.now() }; budgets.clear(); };
 module.exports = router;
