@@ -1,5 +1,13 @@
 name: Deploy Vault to GitHub Pages
 
+# Two jobs, as in GitHub's own Pages workflow template:
+#   build  — checks, tests, then uploads docs/ as the "github-pages" artifact;
+#   deploy — publishes that artifact.
+# They used to be one job. The deploy step then asked for the artifact moments
+# after uploading it and sometimes got "No artifacts named github-pages were
+# found" (runs for PR #50 and #54). Once the build job has finished, its artifact
+# is complete and visible, so the deploy job no longer races the upload.
+
 on:
   push:
     branches: [main, master]
@@ -21,17 +29,14 @@ env:
   NODE_VERSION: "20"
 
 jobs:
-  deploy:
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
+  build:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: ${{ env.NODE_VERSION }}
 
@@ -45,7 +50,7 @@ jobs:
           test -f docs/manifest.json || (echo "manifest.json missing!" && exit 1)
           echo "Core frontend structure OK"
 
-      - name: Verify onboarding wizard (6 steps)
+      - name: Verify onboarding wizard (7 steps)
         run: |
           echo "Checking onboarding flow..."
           test -f docs/js/onboarding.js || (echo "docs/js/onboarding.js missing! Onboarding wizard required." && exit 1)
@@ -58,10 +63,11 @@ jobs:
           grep -q "onboarding.js" docs/js/main.js || (echo "onboarding.js not imported in js/main.js" && exit 1)
           grep -q "onboarding-host" docs/index.html || (echo "onboarding-host not found in index.html" && exit 1)
           
-          # Verify 6 steps are implemented
-          grep -q "Step 1" docs/js/onboarding.js || echo "Warning: Step labels not found"
-          grep -c "currentStep" docs/js/onboarding.js
-          echo "Onboarding wizard verification OK — 6 steps present"
+          # Verify the 7 steps are implemented (6 = Terms of Use, 7 = Ready to Launch)
+          grep -q "totalSteps = 7" docs/js/onboarding.js || (echo "onboarding wizard should have 7 steps" && exit 1)
+          grep -q "bindTermsStep" docs/js/onboarding.js || (echo "Terms of Use step missing from the onboarding wizard" && exit 1)
+          test -f docs/terms.html || (echo "docs/terms.html missing!" && exit 1)
+          echo "Onboarding wizard verification OK — 7 steps present"
 
       - name: Verify backend setup routes
         run: |
@@ -117,13 +123,33 @@ jobs:
           echo "Frontend ready for Pages"
 
       - name: Setup Pages
-        uses: actions/configure-pages@v5
+        uses: actions/configure-pages@v6
 
       - name: Upload artifact
-        uses: actions/upload-pages-artifact@v3
+        uses: actions/upload-pages-artifact@v5
         with:
           path: './docs'
 
+  deploy:
+    needs: build
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url || steps.deployment-retry.outputs.page_url }}
+    runs-on: ubuntu-latest
+    steps:
       - name: Deploy to GitHub Pages
         id: deployment
-        uses: actions/deploy-pages@v4
+        continue-on-error: true
+        uses: actions/deploy-pages@v5
+
+      # GitHub's Pages/Actions API is occasionally unavailable for a moment
+      # ("Fetching artifact metadata failed … re-run the deployment at a later
+      # time"). Try once more after a pause instead of failing the deploy.
+      - name: Wait before retrying
+        if: steps.deployment.outcome == 'failure'
+        run: sleep 60
+
+      - name: Deploy to GitHub Pages (retry)
+        id: deployment-retry
+        if: steps.deployment.outcome == 'failure'
+        uses: actions/deploy-pages@v5
